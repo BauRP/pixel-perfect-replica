@@ -1,0 +1,104 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { Lock, Music4, Wand2 } from "lucide-react";
+import type { ReactNode } from "react";
+import { HelpDot, NavRow, PageHeader, Section, Segmented } from "@/components/sw/ui";
+import { Slider } from "@/components/ui/slider";
+import { updateSettings, useSettings, effectiveDirections, type Settings } from "@/lib/sw/settings";
+
+export const Route = createFileRoute("/studio/")({
+  head: () => ({
+    meta: [
+      { title: "Studio — SoundWorld AR" },
+      { name: "description", content: "Одиннадцать музыкальных настроек SoundWorld AR." },
+      { property: "og:title", content: "Studio — SoundWorld AR" },
+      { property: "og:description", content: "Музыкальные настройки." },
+    ],
+  }),
+  component: Studio,
+});
+
+const set = <K extends keyof Settings>(k: K, v: Settings[K]) => updateSettings((s) => ({ ...s, [k]: v }));
+const sign = (n: number) => (n > 0 ? `+${n}` : String(n));
+
+function Item({ n, title, help, children, value }: { n: number; title: string; help: string; children: ReactNode; value?: string }) {
+  return (
+    <div className="border-b border-border/50 px-4 py-3 last:border-0">
+      <div className="flex items-center gap-2">
+        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-xs text-primary">{n}</span>
+        <h3 className="flex-1 font-sans text-[15px] font-semibold">{title}</h3>
+        {value && <span className="text-sm text-muted-foreground">{value}</span>}
+        <HelpDot title={title} text={help} />
+      </div>
+      <div className="pt-2">{children}</div>
+    </div>
+  );
+}
+
+const MOOD_WORD = (m: number) => (m < 0 ? "Грустная" : m > 0 ? "Весёлая" : "Нейтральная");
+const SPEED_WORD = (v: number) => (v < 0 ? "Медленнее" : v > 0 ? "Быстрее" : "Средняя");
+
+function Studio() {
+  const s = useSettings();
+  const favCount = s.favoriteInstrumentIds.length;
+  const disCount = Object.keys(s.dislikes).length;
+  const dirs = effectiveDirections(s).length;
+
+  return (
+    <>
+      <PageHeader title="Studio" subtitle="Настройки музыки" />
+      <div className="space-y-5 px-4 py-4">
+        <Section>
+          <NavRow to="/studio/tastes" title="Музыкальные вкусы" value={s.allowedAllGenres ? "Все жанры" : `${dirs} направлений`} icon={<Music4 className="size-5" />} />
+        </Section>
+
+        <Section>
+          <Item n={1} title="Настроение" value={`${sign(s.mood)} · ${MOOD_WORD(s.mood)}`} help="Влево — грустнее, вправо — веселее. Это эмоция музыки, а не её скорость.">
+            <Slider aria-label="Настроение" min={-5} max={5} step={1} value={[s.mood]} onValueChange={([v]) => set("mood", v)} className="py-3" />
+            <div className="flex justify-between text-xs text-muted-foreground"><span>Грустная</span><span>Нейтральная</span><span>Весёлая</span></div>
+          </Item>
+          <Item n={2} title="Скорость музыки" value={`${sign(s.speed)} · ${SPEED_WORD(s.speed)}`} help="Меняет темп новой музыки, а не ускоряет готовую запись. Ваш выбор важнее, чем бег или ходьба.">
+            <Slider aria-label="Скорость музыки" min={-3} max={3} step={1} value={[s.speed]} onValueChange={([v]) => set("speed", v)} className="py-3" />
+            <div className="flex justify-between text-xs text-muted-foreground"><span>Медленно</span><span>Средняя</span><span>Быстро</span></div>
+          </Item>
+          <Item n={3} title="Любимые инструменты" help="Выбери инструменты, которые хочешь слышать чаще. Без выбора инструменты подбираются сами. Редкие инструменты не гарантированы.">
+            <NavRow to="/studio/instruments" title="Выбрать инструменты" value={favCount ? `Выбрано: ${favCount}` : "Не выбрано"} />
+          </Item>
+          <Item n={4} title="Нелюбимые инструменты и жанры" help="Ограничь или исключи нежелательные жанры и инструменты. Исключение сильнее любимых.">
+            <NavRow to="/studio/dislikes" title="Настроить ограничения" value={disCount ? `Ограничений: ${disCount}` : "Без ограничений"} />
+          </Item>
+          <Item n={5} title="Насколько музыка реагирует на мир" help="Насколько заметно дождь и движение меняют музыку. Сильная реакция не делает звук громче.">
+            <Segmented label="Реакция" value={s.environmentReaction} onChange={(v) => set("environmentReaction", v)}
+              options={[{ value: "weak", label: "Слабо" }, { value: "medium", label: "Средне" }, { value: "strong", label: "Сильно" }]} />
+          </Item>
+          <Item n={6} title="Смена музыкальной атмосферы" help="Плавный, быстрый или автоматический переход между атмосферами. Один короткий гудок не меняет всю музыку.">
+            <Segmented label="Смена атмосферы" value={s.atmosphereTransition} onChange={(v) => set("atmosphereTransition", v)}
+              options={[{ value: "smooth", label: "Плавно" }, { value: "fast", label: "Быстро" }, { value: "auto", label: "Автоматически" }]} />
+          </Item>
+          <Item n={7} title="Насколько разнообразная музыка нужна" help="От привычного звучания до необычных сочетаний. Исключённые жанры не появятся.">
+            <Segmented label="Разнообразие" value={s.diversity} onChange={(v) => set("diversity", v)}
+              options={[{ value: "familiar", label: "Привычная" }, { value: "moderate", label: "Умеренно разнообразная" }, { value: "experimental", label: "Экспериментальная" }]} />
+          </Item>
+          <Item n={8} title="Активность" help="Распознавание ходьбы, бега и покоя; можно выбрать вручную. Ручной выбор действует всегда, пока не вернёте «Автоматически». Отсутствие шагов ещё не значит покой.">
+            <Segmented label="Активность" value={s.activityMode} onChange={(v) => set("activityMode", v)}
+              options={[{ value: "auto", label: "Автоматически" }, { value: "walking", label: "Ходьба" }, { value: "running", label: "Бег" }, { value: "rest", label: "Покой" }, { value: "transport", label: "Транспорт" }]} />
+          </Item>
+          <Item n={9} title="Продолжительность фрагментов" value="120 секунд" help="Раз в две минуты новая вариация без остановки музыки. Значение фиксировано.">
+            <p className="flex items-center gap-2 text-xs text-muted-foreground"><Lock className="size-3.5" /> Не изменяется</p>
+          </Item>
+          <Item n={10} title="Использование окружающих звуков" help="Звуки управляют музыкой или становятся обработанной частью композиции. Разговоры людей не записываются и не сохраняются.">
+            <Segmented label="Окружающие звуки" value={s.useOfEnvironmentSounds} onChange={(v) => set("useOfEnvironmentSounds", v)}
+              options={[{ value: "controlOnly", label: "Только управление музыкой" }, { value: "mixProcessed", label: "Добавление обработанных звуков в композицию" }]} />
+          </Item>
+          <Item n={11} title="Влияние шагов на ритм" help="Насколько заметно шаги влияют на биты и акценты — музыкально, а не стуком на каждый шаг.">
+            <Segmented label="Влияние шагов" value={s.stepsInfluence} onChange={(v) => set("stepsInfluence", v)}
+              options={[{ value: "weak", label: "Слабое" }, { value: "normal", label: "Обычное" }, { value: "active", label: "Активное" }]} />
+          </Item>
+        </Section>
+
+        <Section title="Дополнительно">
+          <NavRow to="/studio/director" title="Музыкальный режиссёр" value={`${s.directorRules.filter((r) => r.enabled).length} правил`} icon={<Wand2 className="size-5" />} />
+        </Section>
+      </div>
+    </>
+  );
+}

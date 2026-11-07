@@ -10,11 +10,27 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HistoryRouteImport } from './routes/history'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as StudioRouteImport } from './routes/studio'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsAboutRouteImport } from './routes/settings.about'
+import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
+import { Route as StudioIndexRouteImport } from './routes/studio.index'
+import { Route as StudioDirectorRouteImport } from './routes/studio.director'
+import { Route as StudioDislikesRouteImport } from './routes/studio.dislikes'
+import { Route as StudioInstrumentsRouteImport } from './routes/studio.instruments'
+import { Route as StudioTastesRouteImport } from './routes/studio.tastes'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HistoryRoute = HistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -22,31 +38,153 @@ const OnboardingRoute = OnboardingRouteImport.update({
   path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StudioRoute = StudioRouteImport.update({
+  id: '/studio',
+  path: '/studio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsAboutRoute = SettingsAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsDiagnosticsRoute = SettingsDiagnosticsRouteImport.update({
+  id: '/diagnostics',
+  path: '/diagnostics',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const StudioIndexRoute = StudioIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => StudioRoute,
+} as any)
+const StudioDirectorRoute = StudioDirectorRouteImport.update({
+  id: '/director',
+  path: '/director',
+  getParentRoute: () => StudioRoute,
+} as any)
+const StudioDislikesRoute = StudioDislikesRouteImport.update({
+  id: '/dislikes',
+  path: '/dislikes',
+  getParentRoute: () => StudioRoute,
+} as any)
+const StudioInstrumentsRoute = StudioInstrumentsRouteImport.update({
+  id: '/instruments',
+  path: '/instruments',
+  getParentRoute: () => StudioRoute,
+} as any)
+const StudioTastesRoute = StudioTastesRouteImport.update({
+  id: '/tastes',
+  path: '/tastes',
+  getParentRoute: () => StudioRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/history': typeof HistoryRoute
   '/onboarding': typeof OnboardingRoute
+  '/settings': typeof SettingsRouteWithChildren
+  '/studio': typeof StudioRouteWithChildren
+  '/settings/about': typeof SettingsAboutRoute
+  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
+  '/studio/director': typeof StudioDirectorRoute
+  '/studio/dislikes': typeof StudioDislikesRoute
+  '/studio/instruments': typeof StudioInstrumentsRoute
+  '/studio/tastes': typeof StudioTastesRoute
+  '/settings/': typeof SettingsIndexRoute
+  '/studio/': typeof StudioIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/history': typeof HistoryRoute
   '/onboarding': typeof OnboardingRoute
+  '/settings/about': typeof SettingsAboutRoute
+  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
+  '/studio/director': typeof StudioDirectorRoute
+  '/studio/dislikes': typeof StudioDislikesRoute
+  '/studio/instruments': typeof StudioInstrumentsRoute
+  '/studio/tastes': typeof StudioTastesRoute
+  '/settings': typeof SettingsIndexRoute
+  '/studio': typeof StudioIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/history': typeof HistoryRoute
   '/onboarding': typeof OnboardingRoute
+  '/settings': typeof SettingsRouteWithChildren
+  '/studio': typeof StudioRouteWithChildren
+  '/settings/about': typeof SettingsAboutRoute
+  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
+  '/studio/director': typeof StudioDirectorRoute
+  '/studio/dislikes': typeof StudioDislikesRoute
+  '/studio/instruments': typeof StudioInstrumentsRoute
+  '/studio/tastes': typeof StudioTastesRoute
+  '/settings/': typeof SettingsIndexRoute
+  '/studio/': typeof StudioIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/onboarding'
+  fullPaths:
+    | '/'
+    | '/history'
+    | '/onboarding'
+    | '/settings'
+    | '/studio'
+    | '/settings/about'
+    | '/settings/diagnostics'
+    | '/studio/director'
+    | '/studio/dislikes'
+    | '/studio/instruments'
+    | '/studio/tastes'
+    | '/settings/'
+    | '/studio/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/onboarding'
-  id: '__root__' | '/' | '/onboarding'
+  to:
+    | '/'
+    | '/history'
+    | '/onboarding'
+    | '/settings/about'
+    | '/settings/diagnostics'
+    | '/studio/director'
+    | '/studio/dislikes'
+    | '/studio/instruments'
+    | '/studio/tastes'
+    | '/settings'
+    | '/studio'
+  id:
+    | '__root__'
+    | '/'
+    | '/history'
+    | '/onboarding'
+    | '/settings'
+    | '/studio'
+    | '/settings/about'
+    | '/settings/diagnostics'
+    | '/studio/director'
+    | '/studio/dislikes'
+    | '/studio/instruments'
+    | '/studio/tastes'
+    | '/settings/'
+    | '/studio/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HistoryRoute: typeof HistoryRoute
   OnboardingRoute: typeof OnboardingRoute
+  SettingsRoute: typeof SettingsRouteWithChildren
+  StudioRoute: typeof StudioRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -58,6 +196,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/history': {
+      id: '/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/onboarding': {
       id: '/onboarding'
       path: '/onboarding'
@@ -65,12 +210,120 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/studio': {
+      id: '/studio'
+      path: '/studio'
+      fullPath: '/studio'
+      preLoaderRoute: typeof StudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/about': {
+      id: '/settings/about'
+      path: '/about'
+      fullPath: '/settings/about'
+      preLoaderRoute: typeof SettingsAboutRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/diagnostics': {
+      id: '/settings/diagnostics'
+      path: '/diagnostics'
+      fullPath: '/settings/diagnostics'
+      preLoaderRoute: typeof SettingsDiagnosticsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/studio/': {
+      id: '/studio/'
+      path: '/'
+      fullPath: '/studio/'
+      preLoaderRoute: typeof StudioIndexRouteImport
+      parentRoute: typeof StudioRoute
+    }
+    '/studio/director': {
+      id: '/studio/director'
+      path: '/director'
+      fullPath: '/studio/director'
+      preLoaderRoute: typeof StudioDirectorRouteImport
+      parentRoute: typeof StudioRoute
+    }
+    '/studio/dislikes': {
+      id: '/studio/dislikes'
+      path: '/dislikes'
+      fullPath: '/studio/dislikes'
+      preLoaderRoute: typeof StudioDislikesRouteImport
+      parentRoute: typeof StudioRoute
+    }
+    '/studio/instruments': {
+      id: '/studio/instruments'
+      path: '/instruments'
+      fullPath: '/studio/instruments'
+      preLoaderRoute: typeof StudioInstrumentsRouteImport
+      parentRoute: typeof StudioRoute
+    }
+    '/studio/tastes': {
+      id: '/studio/tastes'
+      path: '/tastes'
+      fullPath: '/studio/tastes'
+      preLoaderRoute: typeof StudioTastesRouteImport
+      parentRoute: typeof StudioRoute
+    }
   }
 }
 
+interface SettingsRouteChildren {
+  SettingsAboutRoute: typeof SettingsAboutRoute
+  SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
+}
+
+const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsAboutRoute: SettingsAboutRoute,
+  SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
+}
+
+const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
+  SettingsRouteChildren,
+)
+
+interface StudioRouteChildren {
+  StudioDirectorRoute: typeof StudioDirectorRoute
+  StudioDislikesRoute: typeof StudioDislikesRoute
+  StudioInstrumentsRoute: typeof StudioInstrumentsRoute
+  StudioTastesRoute: typeof StudioTastesRoute
+  StudioIndexRoute: typeof StudioIndexRoute
+}
+
+const StudioRouteChildren: StudioRouteChildren = {
+  StudioDirectorRoute: StudioDirectorRoute,
+  StudioDislikesRoute: StudioDislikesRoute,
+  StudioInstrumentsRoute: StudioInstrumentsRoute,
+  StudioTastesRoute: StudioTastesRoute,
+  StudioIndexRoute: StudioIndexRoute,
+}
+
+const StudioRouteWithChildren =
+  StudioRoute._addFileChildren(StudioRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HistoryRoute: HistoryRoute,
   OnboardingRoute: OnboardingRoute,
+  SettingsRoute: SettingsRouteWithChildren,
+  StudioRoute: StudioRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
