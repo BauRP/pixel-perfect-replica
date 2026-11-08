@@ -69,9 +69,13 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
       : await native.startMicrophoneProbe();
     if (!r.started) return unavailable("Проверка микрофона не запущена");
     started=true;
-    if (includeSteps) {
-      const activity = await native.requestActivity();
-      if (activity.granted) await native.startSteps();
+    // Optional steps can be absent on tablets, emulators and some phones.
+    // Do not abort a healthy microphone diagnostic because steps are unavailable.
+    if (includeSteps && availability.stepsSupported) {
+      try {
+        const activity = await native.requestActivity();
+        if (activity.granted) await native.startSteps();
+      } catch { /* microphone still works without the motion sensor */ }
     }
     return {ok:true,value:undefined};
   } catch(e) {

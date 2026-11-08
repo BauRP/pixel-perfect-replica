@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Mic, Shield, FileText, Wrench } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { NavRow, PageHeader, PendingBadge, Section, Segmented } from "@/components/sw/ui";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { resetSettings, updateSettings, useSettings, type Settings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
+import { androidSensorsAvailable, sensorStatus, type SensorsStatus } from "@/lib/sw/native-sensors";
 
 export const Route = createFileRoute("/settings/")({
   head: () => ({ meta: [{ title: "Настройки — SoundWorld AR" }, { name: "description", content: "Общие настройки приложения SoundWorld AR." }, { property: "og:title", content: "Настройки — SoundWorld AR" }, { property: "og:description", content: "Общие настройки приложения." }] }),
@@ -27,6 +28,12 @@ function ToggleRow({ title, desc, checked, onChange }: { title: string; desc: Re
 
 function SettingsPage() {
   const s = useSettings();
+  const [device,setDevice] = useState<SensorsStatus | null>(null);
+  useEffect(() => {
+    let live=true;
+    void sensorStatus().then(x=>{if(live)setDevice(x)});
+    return ()=>{live=false};
+  },[]);
   return (
     <>
       <PageHeader title="Настройки" />
@@ -41,7 +48,7 @@ function SettingsPage() {
           <div className="flex items-center gap-3 px-4 py-3">
             <Mic className="size-5 text-muted-foreground" />
             <span className="flex-1 text-sm">Активный микрофон</span>
-            <span className="text-right text-xs text-warning">Источник микрофона недоступен: не подключено</span>
+            <span className="text-right text-xs text-warning">{device?.recording ? device.actualInput || "Определяется" : "Микрофон не используется"}</span>
           </div>
         </Section>
 
@@ -67,7 +74,7 @@ function SettingsPage() {
 
         <Section title="Разрешения и система">
           <div className="space-y-1 px-4 py-3 text-sm">
-            <p>Микрофон: <span className="text-muted-foreground">статус недоступен — нативный модуль не подключён</span></p>
+            <p>Микрофон: <span className="text-muted-foreground">{!androidSensorsAvailable()?"В браузере недоступен":device?.microphoneGranted?"Разрешён":"Разрешение не предоставлено"}</span></p>
             <p>Уведомления и кнопки гарнитуры: <span className="text-muted-foreground">появятся с фоновым воспроизведением Android</span></p>
             <p className="text-xs text-muted-foreground">Микрофон не включается до нажатия Play. Звук не отправляется в интернет.</p>
           </div>
