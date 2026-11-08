@@ -28,10 +28,18 @@ jobs:
         run: npm run build
       - name: Offline Android web build
         run: npm run build:android:web
-      - name: Install Android SDK (runner preinstalls command-line tools)
+      - name: Install verified Android command-line tools
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          set -euo pipefail
+          mkdir -p "$HOME/android-sdk/cmdline-tools/latest"
+          curl --fail --location --retry 3 -o /tmp/android-cli.zip "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip"
+          echo "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583  /tmp/android-cli.zip" | sha256sum -c -
+          unzip -q /tmp/android-cli.zip -d /tmp/android-cli
+          mv /tmp/android-cli/cmdline-tools/* "$HOME/android-sdk/cmdline-tools/latest/"
+          echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" --licenses >/dev/null || true
+          "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
       - name: Generate Android host and sync offline assets
         run: |
           npx cap add android
