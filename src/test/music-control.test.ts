@@ -15,6 +15,17 @@ describe("real-world signals to future music directives", () => {
     expect(p.plan(DEFAULT_SETTINGS,3000).atmosphere).toBe("rain");
     expect(p.observeAmbient({atmosphere:"traffic",confidence:.9,timestamp:25000},DEFAULT_SETTINGS)).toBe(true);
   });
+  it("weak mode requires stronger confidence and longer gap between scene changes",()=>{
+    const p=new MusicControlPlanner();
+    const weak={...DEFAULT_SETTINGS,environmentReaction:"weak" as const};
+    expect(p.observeAmbient({atmosphere:"rain",confidence:.7,timestamp:1000},weak)).toBe(false);
+    expect(p.observeAmbient({atmosphere:"rain",confidence:.85,timestamp:2000},weak)).toBe(true);
+    expect(p.observeAmbient({atmosphere:"traffic",confidence:.9,timestamp:30000},weak)).toBe(false);
+    expect(p.observeAmbient({atmosphere:"traffic",confidence:.9,timestamp:38000},weak)).toBe(true);
+    const fast=new MusicControlPlanner(),strong={...DEFAULT_SETTINGS,environmentReaction:"strong" as const};
+    expect(fast.observeAmbient({atmosphere:"rain",confidence:.6,timestamp:1000},strong)).toBe(true);
+    expect(fast.observeAmbient({atmosphere:"traffic",confidence:.6,timestamp:13500},strong)).toBe(true);
+  });
   it("honors slow composition tempo when walking or running fast", () => {
     const p = new MusicControlPlanner();
     expect(p.observePace({bpm:180,confidence:.9,timestamp:1000})).toBe(true);

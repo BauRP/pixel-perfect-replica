@@ -21,6 +21,11 @@ export interface MusicRequest {
   atmosphere: ControlPlan["atmosphere"];
   transitionMs: number;
   directorEffects: string[];
+  diversity: Settings["diversity"];
+  activity: ControlPlan["activity"];
+  density: number;
+  stepAccentStrength: number;
+  allowProcessedAmbientAudio: boolean;
 }
 export function buildMusicRequest(settings:Settings, plan:ControlPlan, favorites:ClipMeta[]):MusicRequest {
   const allowed = effectiveDirections(settings);
@@ -52,5 +57,8 @@ export function buildMusicRequest(settings:Settings, plan:ControlPlan, favorites
     mood:settings.mood, compositionBpm:plan.tempoBpm,
     stepAccentBpm:plan.stepPulseBpm,atmosphere:plan.atmosphere,
     transitionMs:plan.transitionMs,directorEffects:plan.directorEffects,
+    diversity:settings.diversity,activity:plan.activity,density:plan.density,
+    stepAccentStrength:plan.stepAccentStrength,
+    allowProcessedAmbientAudio:plan.allowProcessedAmbientAudio,
   };
 }

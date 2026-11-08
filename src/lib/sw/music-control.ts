@@ -36,11 +36,14 @@ export class MusicControlPlanner {
   setAtmosphereLock(value: boolean) { this.locked = value; }
   observeAmbient(input: StableAmbientEvent, settings: Settings): boolean {
     if (settings.musicOnlyMode || this.locked || input.atmosphere === "unknown") return false;
-    if (!Number.isFinite(input.confidence) || input.confidence < 0.53 ||
+    const threshold = settings.environmentReaction==="weak" ? .8 : settings.environmentReaction==="strong" ? .53 : .65;
+    if (!Number.isFinite(input.confidence) || input.confidence < threshold ||
         !Number.isFinite(input.timestamp)) return false;
     if (input.atmosphere === this.atmosphere) return false;
     // At least 20s before another full AI composition request; micro-adjustments do not use this.
-    if (this.atmosphere !== "unknown" && input.timestamp - this.lastMajorChangeAt < 20000) return false;
+    const minimumMajorInterval = settings.environmentReaction==="weak" ? 35000 :
+      settings.environmentReaction==="strong" ? 12000 : 20000;
+    if (this.atmosphere !== "unknown" && input.timestamp - this.lastMajorChangeAt < minimumMajorInterval) return false;
     this.atmosphere = input.atmosphere;
     this.lastMajorChangeAt = input.timestamp;
     this.regenerationDue = true;

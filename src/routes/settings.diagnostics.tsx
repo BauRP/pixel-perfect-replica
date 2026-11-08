@@ -96,6 +96,9 @@ function Diagnostics() {
             <p>Разрешённых музыкальных направлений: {request?.genreCandidates.length ?? "Нет плана"}</p>
             <p>Исключённых инструментов: {request?.excludedInstruments.length ?? "Нет плана"}</p>
             <p>Вокал: запрещён для будущей генерации</p>
+            <p>Разнообразие: {request?.diversity??"Нет плана"}</p>
+            <p>Интенсивность акцентов шагов: {request?.stepAccentStrength??"Нет плана"}</p>
+            <p>Использование обработанных звуков: {request?.allowProcessedAmbientAudio?"Запрошено, но не реализовано":"Нет"}</p>
             <p className="text-xs text-muted-foreground">Это только план управления будущей генерацией, не воспроизводимый звук.</p>
             {error&&<p role="alert" className="text-destructive">{error}</p>}
           </div>

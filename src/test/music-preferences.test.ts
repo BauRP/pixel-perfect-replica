@@ -34,6 +34,18 @@ describe("future Magenta request must reflect actual user preferences",()=>{
     expect(r.emphasizedGenres).toEqual([]);
     expect(r.genreCandidates).toContain("g01-s01");
   });
+  it("passes all 11 Studio control intentions without claiming generated audio",()=>{
+    const s={...DEFAULT_SETTINGS,diversity:"experimental" as const,
+      environmentReaction:"strong" as const,useOfEnvironmentSounds:"mixProcessed" as const,
+      activityMode:"walking" as const,stepsInfluence:"active" as const};
+    const p=new MusicControlPlanner(),plan=p.plan(s,2000);
+    const r=buildMusicRequest(s,plan,[]);
+    expect(r.diversity).toBe("experimental");
+    expect(r.activity).toBe("walking");
+    expect(r.stepAccentStrength).toBe(.6);
+    expect(r.allowProcessedAmbientAudio).toBe(true);
+    expect(r).not.toHaveProperty("pcm");
+  });
   it("instrumental is mandatory; segment max is 120 s; no song is generated",()=>{
     const x=buildMusicRequest(DEFAULT_SETTINGS,plan,[]);
     expect(x.instrumental).toBe(true);expect(x.lengthSeconds).toBe(120);
