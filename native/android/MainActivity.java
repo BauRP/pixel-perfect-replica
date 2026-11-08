@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
   @Override public void onCreate(Bundle savedInstanceState) {
     registerPlugin(SoundWorldSensorsPlugin.class);
     registerPlugin(SoundWorldPlaybackPlugin.class);
+    registerPlugin(SoundWorldMusicLibraryPlugin.class);
     super.onCreate(savedInstanceState);
   }
 }

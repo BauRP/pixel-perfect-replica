@@ -1,0 +1,53 @@
+/**
+ * Real generated audio files only. The native store receives 48kHz stereo PCM,
+ * never copies microphone samples, and never invents a clip before WAV is complete.
+ */
+import { Capacitor, registerPlugin } from "@capacitor/core";
+import { registerAdapters, type Adapters, type ClipMeta, type Result } from "./engine";
+import type { Settings } from "./settings";
+interface LibraryPlugin {
+  beginClip(args:{genreIdsJson:string;mood:number;speed:number}):Promise<{id:string}>;
+  appendPcm(args:{id:string;base64:string}):Promise<{bytesWritten:number}>;
+  finishClip(args:{id:string}):Promise<{clip:ClipMeta}>;
+  list(args:{filter:"recent"|"favorites"|"exports"}):Promise<{items:ClipMeta[]}>;
+  favorite(args:{id:string;value:boolean}):Promise<{updated:boolean}>;
+  export(args:{id:string}):Promise<{uri:string}>;
+  deleteTemporary(args:{id:string}):Promise<{deleted:boolean}>;
+  recover():Promise<{recovered:number}>;
+}
+const native=registerPlugin<LibraryPlugin>("SoundWorldMusicLibrary");
+const error=(e:unknown):{ok:false;code:"ERROR";message:string}=>({ok:false,code:"ERROR",message:e instanceof Error?e.message:String(e)});
+const unavailable=(msg:string):{ok:false;code:"UNAVAILABLE";message:string}=>({ok:false,code:"UNAVAILABLE",message:msg});
+export const nativeMusicLibraryAvailable=()=>Capacitor.getPlatform()==="android";
+/** Only a real Magenta/audio source may begin this transaction. */
+export async function beginGenuineClip(settings:Settings,genreIds:string[]):Promise<Result<string>> {
+  if(!nativeMusicLibraryAvailable())return unavailable("Только Android");
+  try {const r=await native.beginClip({mood:settings.mood,speed:settings.speed,genreIdsJson:JSON.stringify(genreIds)});return {ok:true,value:r.id};}
+  catch(e){return error(e);}
+}
+/** PCM belongs to the actual generator output; never pass ambient microphone buffers. */
+export async function appendGenuineClipPcm(id:string,pcm:Uint8Array):Promise<Result<number>> {
+  if(!nativeMusicLibraryAvailable())return unavailable("Только Android");
+  if(!pcm.length || pcm.length%4!==0 || pcm.length>192000)return {ok:false,code:"ERROR",message:"Недопустимый размер PCM"};
+  let bin="";for(const value of pcm)bin+=String.fromCharCode(value);
+  try {const r=await native.appendPcm({id,base64:btoa(bin)});return {ok:true,value:r.bytesWritten};}
+  catch(e){return error(e);}
+}
+export async function finishGenuineClip(id:string):Promise<Result<ClipMeta>> {
+  if(!nativeMusicLibraryAvailable())return unavailable("Только Android");
+  try {const r=await native.finishClip({id});return {ok:true,value:r.clip};}
+  catch(e){return error(e);}
+}
+export function installNativeMusicLibraryAdapter():void {
+  if(!nativeMusicLibraryAvailable())return;
+  const library:Adapters["library"]={
+    listLastThreeCompleted:async()=>{try {const x=await native.list({filter:"recent"});return {ok:true,value:x.items};}catch(e){return error(e);}},
+    listFavorites:async()=>{try {const x=await native.list({filter:"favorites"});return {ok:true,value:x.items};}catch(e){return error(e);}},
+    listExports:async()=>{try {const x=await native.list({filter:"exports"});return {ok:true,value:x.items};}catch(e){return error(e);}},
+    markFavorite:async(id,value)=>{try {await native.favorite({id,value});return {ok:true,value:undefined};}catch(e){return error(e);}},
+    exportRealAudio:async(id)=>{try {const x=await native.export({id});return {ok:true,value:{uri:x.uri}};}catch(e){return error(e);}},
+    deleteTemporary:async(id)=>{try {await native.deleteTemporary({id});return {ok:true,value:undefined};}catch(e){return error(e);}},
+    recoverLocalMetadata:async()=>{try {await native.recover();return {ok:true,value:undefined};}catch(e){return error(e);}},
+  };
+  registerAdapters({library});
+}

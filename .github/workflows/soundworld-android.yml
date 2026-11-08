@@ -55,6 +55,7 @@ jobs:
           cp native/android/MainActivity.java "$target/MainActivity.java"
           cp native/android/SoundWorldPlaybackService.java "$target/SoundWorldPlaybackService.java"
           cp native/android/SoundWorldPlaybackPlugin.java "$target/SoundWorldPlaybackPlugin.java"
+          cp native/android/SoundWorldMusicLibraryPlugin.java "$target/SoundWorldMusicLibraryPlugin.java"
           # Production YAMNet asset is bundled at APK build time (not downloaded by the user).
           mkdir -p android/app/src/main/assets
           curl --fail --location --retry 3 --silent --show-error \
