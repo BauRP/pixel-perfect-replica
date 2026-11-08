@@ -31,6 +31,11 @@ describe("settings", () => {
     expect(d.dislikes).toEqual({});
   });
   it("skip selects all 150", () => expect(effectiveDirections(applySkipAllGenres(DEFAULT_SETTINGS))).toHaveLength(150));
+  it("migrates microphone preferences and rejects invalid values", () => {
+    expect(migrateSettings({}).microphonePreference).toBe("auto");
+    expect(migrateSettings({microphonePreference:"headset"}).microphonePreference).toBe("headset");
+    expect(migrateSettings({microphonePreference:"unsafe"}).microphonePreference).toBe("auto");
+  });
   it("persists across reload", () => {
     const st = mem();
     saveSettings(st, { ...DEFAULT_SETTINGS, mood: -4, onboardingCompleted: true });

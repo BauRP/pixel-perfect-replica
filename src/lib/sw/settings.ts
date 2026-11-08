@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { ALL_DIRECTION_IDS, GENRES } from "./catalog";
 
-export const SETTINGS_SCHEMA_VERSION = 1;
+export const SETTINGS_SCHEMA_VERSION = 2;
 export const STORAGE_KEY = "soundworld.settings";
 
 export type Reaction3 = "weak" | "medium" | "strong";
@@ -11,6 +11,7 @@ export type ActivityMode = "auto" | "walking" | "running" | "rest" | "transport"
 export type EnvSoundUse = "controlOnly" | "mixProcessed";
 export type StepsInfluence = "weak" | "normal" | "active";
 export type BatteryMode = "auto" | "maxPerformance";
+export type MicrophonePreference = "auto" | "headset" | "phone";
 export type DislikeLevel = "notPreferred" | "excluded";
 
 export interface DirectorRule {
@@ -38,6 +39,7 @@ export interface Settings {
   batteryMode: BatteryMode;
   musicOnlyMode: boolean;
   autoAudioRouting: boolean;
+  microphonePreference: MicrophonePreference;
   directorRules: DirectorRule[];
 }
 
@@ -69,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   batteryMode: "auto",
   musicOnlyMode: false,
   autoAudioRouting: true,
+  microphonePreference: "auto",
   directorRules: DIRECTOR_RULES.map((r) => ({ id: r.id, enabled: false })),
 };
 
@@ -111,6 +114,7 @@ export function migrateSettings(raw: unknown): Settings {
     batteryMode: oneOf(r.batteryMode, ["auto", "maxPerformance"] as const, d.batteryMode),
     musicOnlyMode: r.musicOnlyMode === true,
     autoAudioRouting: typeof r.autoAudioRouting === "boolean" ? r.autoAudioRouting : d.autoAudioRouting,
+    microphonePreference: oneOf(r.microphonePreference, ["auto", "headset", "phone"] as const, d.microphonePreference),
     directorRules: DIRECTOR_RULES.map((def) => ({
       id: def.id,
       enabled: rulesIn.find((x) => x?.id === def.id)?.enabled === true,
@@ -229,6 +233,8 @@ const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => listeners.delete(l);
 };
+
+export function getSettingsSnapshot(): Settings { return state; }
 
 export function useSettings(): Settings {
   return useSyncExternalStore(subscribe, () => state, () => DEFAULT_SETTINGS);

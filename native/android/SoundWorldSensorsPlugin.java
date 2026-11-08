@@ -60,6 +60,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private boolean listeningSteps = false;
   private volatile String actualInput = "";
   private volatile String actualKind = "";
+  private volatile String inputPreference = "auto";
 
   private boolean hasYamnetAsset() {
     try (java.io.InputStream in = getContext().getAssets().open("yamnet.tflite")) { return in.read() != -1; }
@@ -94,6 +95,17 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private void onMicPermission(PluginCall call) {
     JSObject result = new JSObject();
     result.put("granted", getPermissionState("mic") == PermissionState.GRANTED);
+    call.resolve(result);
+  }
+
+  @PluginMethod
+  public void setInputPreference(PluginCall call) {
+    String requested = call.getString("preference", "auto");
+    if (!"auto".equals(requested) && !"headset".equals(requested) && !"phone".equals(requested)) {
+      call.reject("Неизвестный режим микрофона"); return;
+    }
+    inputPreference = requested;
+    JSObject result = new JSObject(); result.put("selected", requested);
     call.resolve(result);
   }
 
@@ -154,9 +166,13 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
           for (AudioDeviceInfo d : manager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
             if (!d.isSource()) continue;
             int type = d.getType();
-            if (type == AudioDeviceInfo.TYPE_WIRED_HEADSET || type == AudioDeviceInfo.TYPE_USB_HEADSET
-              || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == AudioDeviceInfo.TYPE_BLE_HEADSET) {
-              best = d; break;
+            boolean headset = type == AudioDeviceInfo.TYPE_WIRED_HEADSET || type == AudioDeviceInfo.TYPE_USB_HEADSET
+              || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == AudioDeviceInfo.TYPE_BLE_HEADSET;
+            boolean phone = type == AudioDeviceInfo.TYPE_BUILTIN_MIC;
+            if (("phone".equals(inputPreference) && phone)
+              || (!"phone".equals(inputPreference) && headset)) {
+              best = d;
+              break;
             }
           }
           // Android may reject the preference; always report the actual routed device.
@@ -287,17 +303,20 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     }
   }
 
-  @PluginMethod
-  public void stopMicrophoneProbe(PluginCall call) {
-    stopProbeInternal();
-    JSObject result = new JSObject(); result.put("stopped", true); call.resolve(result);
+  // Stopping an AudioRecord may wait for an in-flight microphone read or inference.
+  // Never run the blocking release on the Android/Capacitor UI thread.
+  private void stopAsync(PluginCall call) {
+    new Thread(() -> {
+      stopProbeInternal();
+      JSObject result = new JSObject(); result.put("stopped", true); call.resolve(result);
+    }, "SoundWorld-Mic-Stop").start();
   }
 
   @PluginMethod
-  public void stopAnalysis(PluginCall call) {
-    stopProbeInternal();
-    JSObject result = new JSObject(); result.put("stopped", true); call.resolve(result);
-  }
+  public void stopMicrophoneProbe(PluginCall call) { stopAsync(call); }
+
+  @PluginMethod
+  public void stopAnalysis(PluginCall call) { stopAsync(call); }
 
   @PluginMethod
   public void actualMicrophone(PluginCall call) {
@@ -344,14 +363,15 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   @Override public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
   @Override protected void handleOnPause() {
-    // Do not capture microphone without active visible diagnostic session.
-    // Future background music uses a separate, audited foreground service.
-    stopProbeInternal(); stopStepsInternal();
+    // Offload blocking recorder release to a worker. Background media service is separate.
+    new Thread(this::stopProbeInternal, "SoundWorld-Lifecycle-Stop").start();
+    stopStepsInternal();
     super.handleOnPause();
   }
 
   @Override protected void handleOnDestroy() {
-    stopProbeInternal(); stopStepsInternal();
+    new Thread(this::stopProbeInternal, "SoundWorld-Destroy-Stop").start();
+    stopStepsInternal();
     super.handleOnDestroy();
   }
 }

@@ -7,6 +7,7 @@ import {
   registerAdapters, type Adapters, type EnvironmentEvent, type Result, type Unsubscribe,
 } from "./engine";
 import { AmbientStabilizer, StepPaceEstimator, type Atmosphere } from "./environment-smoothing";
+import { getSettingsSnapshot } from "./settings";
 
 type NativeResult = { started?: boolean; stopped?: boolean; granted?: boolean; active?: boolean; name?: string; kind?: string; input?: string; output?: string };
 export interface SensorsStatus {
@@ -28,6 +29,7 @@ interface SensorsPlugin {
   status(): Promise<SensorsStatus>;
   requestMicrophone(): Promise<{ granted: boolean }>;
   requestActivity(): Promise<{ granted: boolean }>;
+  setInputPreference(options:{preference:"auto"|"headset"|"phone"}): Promise<{selected:string}>;
   startAnalysis(): Promise<NativeResult>;
   startMicrophoneProbe(): Promise<NativeResult>;
   stopMicrophoneProbe(): Promise<NativeResult>;
@@ -54,6 +56,7 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
   try {
     const permission = await native.requestMicrophone();
     if (!permission.granted) return {ok:false,code:"PERMISSION_DENIED",message:"Микрофон не разрешён"};
+    await native.setInputPreference({preference:getSettingsSnapshot().microphonePreference});
     const availability = await native.status();
     const r = availability.yamnetIncluded
       ? await native.startAnalysis()
@@ -108,6 +111,7 @@ export function installNativeSensorAdapters(): void {
         try {
           const s=await native.status();
           if(!s.microphoneGranted) return {ok:false,code:"PERMISSION_DENIED",message:"Разрешите микрофон при запуске музыки"};
+          await native.setInputPreference({preference:getSettingsSnapshot().microphonePreference});
           const r = await native.startAnalysis();
           return r.started ? {ok:true,value:undefined} : unavailable("Модель YAMNet недоступна");
         }catch(e){return safeError(e);}
@@ -138,7 +142,10 @@ export function installNativeSensorAdapters(): void {
         try {const r=await native.actualMicrophone();return r.active?{ok:true,value:{input:r.name,output:r.output}}:unavailable("Маршрут не подтверждён: запись не запущена");}
         catch(e){return safeError(e);}
       },
-      chooseBestSupportedRoute:async()=>unavailable("Выбор маршрута выполняется при запуске записи; переключение на лету пока недоступно"),
+      chooseBestSupportedRoute:async()=>{
+        try { await native.setInputPreference({preference:getSettingsSnapshot().microphonePreference});return {ok:true,value:undefined}; }
+        catch(e){return safeError(e);}
+      },
       observeInputOutputChanges:()=>()=>{},
     }
   };

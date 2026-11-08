@@ -33,6 +33,11 @@ function SettingsPage() {
       <div className="space-y-5 px-4 py-4">
         <Section title="Звук и микрофон">
           <ToggleRow title="Автоматический выбор устройства" desc="Микрофон гарнитуры, если работает, иначе телефона" checked={s.autoAudioRouting} onChange={(v) => set("autoAudioRouting", v)} />
+          <div className="space-y-2 px-4 py-3">
+            <Segmented label="Предпочитаемый микрофон" value={s.microphonePreference} onChange={(v) => set("microphonePreference", v)}
+              options={[{value:"auto",label:"Автоматически"},{value:"headset",label:"Наушники"},{value:"phone",label:"Телефон"}]} />
+            <p className="text-xs text-muted-foreground">Это предпочтение. Фактически выбранный микрофон проверяется после начала записи.</p>
+          </div>
           <div className="flex items-center gap-3 px-4 py-3">
             <Mic className="size-5 text-muted-foreground" />
             <span className="flex-1 text-sm">Активный микрофон</span>
