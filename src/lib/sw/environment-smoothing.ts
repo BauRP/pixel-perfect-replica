@@ -26,12 +26,14 @@ export class AmbientStabilizer {
   update(p: AmbientPrediction): StableAmbientEvent | null {
     if (!Number.isFinite(p.confidence) || !Number.isFinite(p.timestamp) ||
         p.confidence < this.minConfidence) {
-      this.candidate = "unknown"; this.hits = 0; return null;
+      // Secondary low-confidence labels are common within one YAMNet window.
+      // Ignore them instead of erasing a previously confirmed candidate.
+      return null;
     }
     const next = classifyAtmosphere(p.label);
-    if (next === "unknown") { this.candidate = "unknown"; this.hits = 0; return null; }
+    if (next === "unknown") return null;
     // Distinct YAMNet windows only. Several labels from one window are NOT repeat evidence.
-    if (next === this.candidate && p.timestamp - this.lastSeen < 650 && p.timestamp >= this.lastSeen) return null;
+    if (this.lastSeen > 0 && p.timestamp - this.lastSeen < 650 && p.timestamp >= this.lastSeen) return null;
     if (next !== this.candidate || p.timestamp - this.lastSeen > 3500 || p.timestamp < this.lastSeen) {
       this.candidate = next; this.hits = 1;
     } else this.hits++;

@@ -12,6 +12,13 @@ describe("real event filtering (no simulated detections)",()=>{
     expect(s.update({label:"Car horn",confidence:.15,timestamp:1200})).toBeNull();
     expect(s.stable).toBe("unknown");
   });
+  it("ignores secondary speech/low score without resetting real rain evidence",()=>{
+    const s=new AmbientStabilizer();
+    expect(s.update({label:"Rain",confidence:.8,timestamp:1000})).toBeNull();
+    expect(s.update({label:"Speech",confidence:.7,timestamp:1000})).toBeNull();
+    expect(s.update({label:"Vehicle",confidence:.2,timestamp:1000})).toBeNull();
+    expect(s.update({label:"Rain",confidence:.8,timestamp:2000})?.atmosphere).toBe("rain");
+  });
   it("never treats multiple labels in the same analysis window as independent evidence",()=>{
     const s=new AmbientStabilizer();
     expect(s.update({label:"Rain",confidence:.9,timestamp:1000})).toBeNull();
@@ -23,9 +30,9 @@ describe("real event filtering (no simulated detections)",()=>{
     const s=new AmbientStabilizer(.5,2,1500);
     expect(s.update({label:"Rain",confidence:.7,timestamp:1000})).toBeNull();
     expect(s.update({label:"Rain",confidence:.8,timestamp:2000})?.atmosphere).toBe("rain");
-    expect(s.update({label:"Vehicle",confidence:.8,timestamp:2100})).toBeNull();
-    expect(s.update({label:"Vehicle",confidence:.8,timestamp:2300})).toBeNull();
-    expect(s.update({label:"Vehicle",confidence:.8,timestamp:3600})?.atmosphere).toBe("traffic");
+    expect(s.update({label:"Vehicle",confidence:.8,timestamp:3100})).toBeNull();
+    expect(s.update({label:"Vehicle",confidence:.8,timestamp:3600})).toBeNull();
+    expect(s.update({label:"Vehicle",confidence:.8,timestamp:4200})?.atmosphere).toBe("traffic");
   });
   it("does not infer rest from absent steps",()=>{
     const s=new StepPaceEstimator();
