@@ -18,13 +18,17 @@ interface LibraryPlugin {
   playClip(args:{id:string}):Promise<{playing:boolean;id:string}>;
   pauseClip():Promise<{state:string}>;
   stopClip():Promise<{state:string}>;
-  playbackStatus():Promise<{state:string;clipId:string}>;
+  playbackStatus():Promise<{state:"playing"|"paused"|"stopped";clipId:string}>;
   addListener(event:"clipPlayback",callback:(data:{state:"playing"|"paused"|"stopped";clipId:string})=>void):Promise<PluginListenerHandle>;
 }
 const native=registerPlugin<LibraryPlugin>("SoundWorldMusicLibrary");
 const error=(e:unknown):{ok:false;code:"ERROR";message:string}=>({ok:false,code:"ERROR",message:e instanceof Error?e.message:String(e)});
 const unavailable=(msg:string):{ok:false;code:"UNAVAILABLE";message:string}=>({ok:false,code:"UNAVAILABLE",message:msg});
 export const nativeMusicLibraryAvailable=()=>Capacitor.getPlatform()==="android";
+export async function currentStoredPlayback(){
+  if(!nativeMusicLibraryAvailable())return null;
+  try{return await native.playbackStatus();}catch{return null;}
+}
 /** Only a real Magenta/audio source may begin this transaction. */
 export async function beginGenuineClip(settings:Settings,genreIds:string[]):Promise<Result<string>> {
   if(!nativeMusicLibraryAvailable())return unavailable("Только Android");
