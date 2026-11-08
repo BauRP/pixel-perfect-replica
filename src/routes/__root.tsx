@@ -96,8 +96,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
-  // The Capacitor build already owns <html>/<head>/<body> in native/index.html.
-  shellComponent: import.meta.env.VITE_ANDROID_BUILD ? undefined : RootShell,
+  shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
   errorComponent: ErrorComponent,
