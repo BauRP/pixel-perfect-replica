@@ -68,7 +68,7 @@ describe("settings", () => {
   });
   it("whole genre exclusion is kept and unknown IDs are rejected",()=>{
     const s=setDislike(DEFAULT_SETTINGS,"g01","excluded");
-    expect(s.dislikes.g01).toBe("excluded");
+    expect(s.dislikes["g01"]).toBe("excluded");
     expect(setDislike(s,"invalid-id","excluded")).toBe(s);
     expect(toggleFavoriteInstrument(s,"invalid-id").next).toBe(s);
   });
