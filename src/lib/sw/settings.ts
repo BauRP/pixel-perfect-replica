@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { ALL_DIRECTION_IDS, GENRES } from "./catalog";
+import { ALL_DIRECTION_IDS, ALL_SUBGENRE_IDS, GENRES, INSTRUMENTS } from "./catalog";
 
 export const SETTINGS_SCHEMA_VERSION = 2;
 export const STORAGE_KEY = "soundworld.settings";
@@ -75,6 +75,22 @@ export const DEFAULT_SETTINGS: Settings = {
   directorRules: DIRECTOR_RULES.map((r) => ({ id: r.id, enabled: false })),
 };
 
+/** Isolated settings defaults prevent an accidental nested-array mutation from
+ * changing the defaults for all future resets/first launches. */
+const freshDefaults = (): Settings => ({
+  ...DEFAULT_SETTINGS,
+  chosenGenreIds: [],
+  favoriteInstrumentIds: [],
+  dislikes: {},
+  directorRules: DEFAULT_SETTINGS.directorRules.map(rule=>({...rule})),
+});
+const validSubgenres = new Set(ALL_SUBGENRE_IDS);
+const validDirections = new Set(ALL_DIRECTION_IDS);
+const validInstruments = new Set(INSTRUMENTS.flatMap(group=>group.items.map(x=>x.id)));
+const validDislikes = new Set([...validDirections,...validInstruments]);
+const cleanIds = (raw:unknown, allowed:ReadonlySet<string>):string[] =>
+  Array.isArray(raw) ? [...new Set(raw.filter((id):id is string=>typeof id==="string" && allowed.has(id)))] : [];
+
 const clampInt = (v: unknown, min: number, max: number, def: number) =>
   typeof v === "number" && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.round(v))) : def;
 const oneOf = <T extends string>(v: unknown, opts: readonly T[], def: T): T =>
@@ -82,14 +98,13 @@ const oneOf = <T extends string>(v: unknown, opts: readonly T[], def: T): T =>
 
 /** Validate + migrate any persisted blob into a valid current Settings object. */
 export function migrateSettings(raw: unknown): Settings {
-  const d = DEFAULT_SETTINGS;
-  if (!raw || typeof raw !== "object") return { ...d };
+  const d = freshDefaults();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return d;
   const r = raw as Partial<Record<keyof Settings, unknown>>;
-  const strArr = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
   const dislikes: Record<string, DislikeLevel> = {};
-  if (r.dislikes && typeof r.dislikes === "object") {
+  if (r.dislikes && typeof r.dislikes === "object" && !Array.isArray(r.dislikes)) {
     for (const [k, v] of Object.entries(r.dislikes as object)) {
-      if (v === "notPreferred" || v === "excluded") dislikes[k] = v;
+      if (validDislikes.has(k) && (v === "notPreferred" || v === "excluded")) dislikes[k] = v;
     }
   }
   const rulesIn = Array.isArray(r.directorRules) ? (r.directorRules as DirectorRule[]) : [];
@@ -97,11 +112,11 @@ export function migrateSettings(raw: unknown): Settings {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     onboardingCompleted: r.onboardingCompleted === true,
     allowedAllGenres: r.allowedAllGenres === true,
-    chosenGenreIds: strArr(r.chosenGenreIds),
+    chosenGenreIds: cleanIds(r.chosenGenreIds,validSubgenres),
     mood: clampInt(r.mood, -5, 5, d.mood),
     speed: clampInt(r.speed, -3, 3, d.speed),
     // exclusion wins over favorites
-    favoriteInstrumentIds: strArr(r.favoriteInstrumentIds).filter((id) => dislikes[id] !== "excluded"),
+    favoriteInstrumentIds: cleanIds(r.favoriteInstrumentIds,validInstruments).filter((id) => dislikes[id] !== "excluded"),
     dislikes,
     environmentReaction: oneOf(r.environmentReaction, ["weak", "medium", "strong"] as const, d.environmentReaction),
     atmosphereTransition: oneOf(r.atmosphereTransition, ["smooth", "fast", "auto"] as const, d.atmosphereTransition),
@@ -184,12 +199,12 @@ export interface KeyValueStorage {
 }
 
 export function loadSettings(storage: KeyValueStorage | undefined): Settings {
-  if (!storage) return { ...DEFAULT_SETTINGS };
+  if (!storage) return freshDefaults();
   try {
     const raw = storage.getItem(STORAGE_KEY);
-    return raw ? migrateSettings(JSON.parse(raw)) : { ...DEFAULT_SETTINGS };
+    return raw ? migrateSettings(JSON.parse(raw)) : freshDefaults();
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    return freshDefaults();
   }
 }
 
@@ -224,7 +239,7 @@ export function updateSettings(fn: (s: Settings) => Settings) {
 }
 
 export function resetSettings() {
-  state = { ...DEFAULT_SETTINGS };
+  state = freshDefaults();
   browserStorage()?.removeItem(STORAGE_KEY);
   emit();
 }

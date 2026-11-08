@@ -31,6 +31,21 @@ describe("settings", () => {
     expect(d.dislikes).toEqual({});
   });
   it("skip selects all 150", () => expect(effectiveDirections(applySkipAllGenres(DEFAULT_SETTINGS))).toHaveLength(150));
+  it("defends restored preferences against unknown, duplicate and invalid catalog IDs",()=>{
+    const r=migrateSettings({chosenGenreIds:["g01-s01","g01-s01","bogus",12],
+      favoriteInstrumentIds:["i1-01","i1-01","evil","g01-s01"],dislikes:{"evil":"excluded","i1-01":"notPreferred"}});
+    expect(r.chosenGenreIds).toEqual(["g01-s01"]);
+    expect(r.favoriteInstrumentIds).toEqual(["i1-01"]);
+    expect(r.dislikes).toEqual({"i1-01":"notPreferred"});
+  });
+  it("never mutates default director rules through a fresh migration",()=>{
+    const first=migrateSettings(null);
+    first.directorRules[0]!.enabled=true;
+    first.chosenGenreIds.push("g01-s01");
+    const again=migrateSettings(null);
+    expect(again.directorRules[0]!.enabled).toBe(false);
+    expect(again.chosenGenreIds).toEqual([]);
+  });
   it("migrates microphone preferences and rejects invalid values", () => {
     expect(migrateSettings({}).microphonePreference).toBe("auto");
     expect(migrateSettings({microphonePreference:"headset"}).microphonePreference).toBe("headset");

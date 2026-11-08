@@ -10,6 +10,7 @@ import { AmbientStabilizer, StepPaceEstimator } from "@/lib/sw/environment-smoot
 import { MusicControlPlanner, type ControlPlan } from "@/lib/sw/music-control";
 import { useSettings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
+import { buildMusicRequest } from "@/lib/sw/music-preferences";
 
 export const Route = createFileRoute("/settings/diagnostics")({
   head: () => ({ meta: [{ title: "Диагностика — SoundWorld AR" }] }),
@@ -21,6 +22,7 @@ function Diagnostics() {
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const [plan,setPlan] = useState<ControlPlan | null>(null);
+  const request=plan?buildMusicRequest(settings,plan,[]):null;
   const [status,setStatus] = useState<SensorsStatus | null>(null);
   const [active,setActive] = useState(false);
   const [steps,setSteps] = useState("Нет подтверждённых шагов");
@@ -91,6 +93,9 @@ function Diagnostics() {
             <p>Запрошенный темп будущей музыки: {plan?.tempoBpm ?? "Нет плана"} BPM</p>
             <p>Ритм шагов для отдельной перкуссии: {plan?.stepPulseBpm ?? "Не определён"}</p>
             <p>План смены атмосферы: {plan?.transitionMs ?? "Не определён"} мс</p>
+            <p>Разрешённых музыкальных направлений: {request?.genreCandidates.length ?? "Нет плана"}</p>
+            <p>Исключённых инструментов: {request?.excludedInstruments.length ?? "Нет плана"}</p>
+            <p>Вокал: запрещён для будущей генерации</p>
             <p className="text-xs text-muted-foreground">Это только план управления будущей генерацией, не воспроизводимый звук.</p>
             {error&&<p role="alert" className="text-destructive">{error}</p>}
           </div>
