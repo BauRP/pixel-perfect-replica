@@ -171,7 +171,7 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     int temporaryCount=0;
     for(int i=0;i<index.length();i++) {
       JSONObject clip=index.getJSONObject(i);
-      if(!clip.optBoolean("favorite") && !clip.has("exportedUri")) temporaryCount++;
+      if(!clip.optBoolean("favorite") && !clip.has("exportedUri") && !clip.optBoolean("recoveredProtected")) temporaryCount++;
     }
     for(int i=0;i<index.length() && temporaryCount>3;) {
       JSONObject clip=index.getJSONObject(i);
@@ -288,7 +288,7 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
         for(int i=0;i<index.length();i++) {
           JSONObject entry=index.getJSONObject(i);
           if(entry.getString("id").equals(id)) {
-            if(entry.optBoolean("favorite") || entry.has("exportedUri")) {
+            if(entry.optBoolean("favorite") || entry.has("exportedUri") || entry.optBoolean("recoveredProtected")) {
               call.reject("Избранные и сохранённые записи не удаляются автоматически");return;
             }
             // Persist index before deleting file to avoid creating a broken entry.
@@ -333,7 +333,8 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
             item.put("durationSec",size/(double)(SAMPLE_RATE*FRAME_BYTES));
             item.put("genreIds",new JSONArray());item.put("instrumentIds",new JSONArray());
             item.put("mood",0);item.put("speed",0);
-            item.put("favorite",true); // do NOT automatically evict recovered audio.
+            item.put("favorite",false); // recovery must never forge a user heart.
+            item.put("recoveredProtected",true); // preserve orphaned audio until the user acts.
             item.put("recoveredWithoutSettings",true);
             item.put("uri",Uri.fromFile(file).toString());
             valid.put(item);

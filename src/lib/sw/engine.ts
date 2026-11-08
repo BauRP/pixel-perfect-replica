@@ -66,6 +66,7 @@ export interface ClipMeta {
   durationSec: number;
   genreIds: string[];
   instrumentIds?: string[]; // real request metadata when captured
+  recoveredProtected?: boolean; // recovered WAV preserved without creating a fake favorite
   mood: number;
   speed: number;
   uri?: string; // real local audio file
