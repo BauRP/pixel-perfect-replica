@@ -24,6 +24,11 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import com.getcapacitor.PermissionState;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import android.app.ActivityManager;
+import android.os.BatteryManager;
+import android.os.PowerManager;
 import com.google.mediapipe.tasks.audio.audioclassifier.AudioClassifier;
 import com.google.mediapipe.tasks.audio.audioclassifier.AudioClassifier.AudioClassifierOptions;
 import com.google.mediapipe.tasks.audio.audioclassifier.AudioClassifierResult;
@@ -52,7 +57,11 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private final Object captureLock = new Object();
   private final AtomicBoolean capturing = new AtomicBoolean(false);
   private AudioRecord recorder;
-  private AudioClassifier analyzer;
+  private volatile AudioClassifier analyzer;
+  private ExecutorService inferenceWorker;
+  private final AtomicBoolean inferenceBusy = new AtomicBoolean(false);
+  private volatile int skippedInferenceWindows = 0;
+  private final long appStartedAt = SystemClock.elapsedRealtime();
   private volatile int actualInputType = -1;
   private Thread captureThread;
   private SensorManager sensorManager;
@@ -81,6 +90,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     o.put("stepsSupported", sm != null && sm.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR) != null);
     o.put("recording", capturing.get());
     o.put("actualInput", actualInput);
+    o.put("skippedInferenceWindows", skippedInferenceWindows);
     call.resolve(o);
   }
 
@@ -182,10 +192,14 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         if (rec.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IllegalStateException("Захват микрофона не начался");
         recorder = rec;
         analyzer = preparedClassifier;
+        if (preparedClassifier != null) inferenceWorker = Executors.newSingleThreadExecutor(r -> {
+          Thread t = new Thread(r, "SoundWorld-Yamnet-Worker");t.setDaemon(true);return t;
+        });
         AudioDeviceInfo routed = rec.getRoutedDevice();
         actualInput = routed != null ? String.valueOf(routed.getProductName()) : "Маршрут ещё не определён";
         actualKind = routed != null ? String.valueOf(routed.getType()) : "unknown";
         actualInputType = routed != null ? routed.getType() : -1;
+        skippedInferenceWindows = 0;
         capturing.set(true);
         final AudioRecord active = rec;
         captureThread = new Thread(() -> readMic(active), "SoundWorld-Microphone-Probe");
@@ -223,7 +237,16 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
             soundWindow[soundFilled++] = samples[i] / 32768f;
             if (soundFilled == soundWindow.length) {
               soundFilled = 0;
-              classifyWindow(cls, soundWindow);
+              // Never block the recorder thread on neural-network inference.
+              ExecutorService worker = inferenceWorker;
+              if (worker != null && inferenceBusy.compareAndSet(false, true)) {
+                float[] windowCopy = soundWindow.clone();
+                try { worker.execute(() -> {
+                  try { classifyWindow(cls, windowCopy); }
+                  finally { inferenceBusy.set(false); }
+                }); }
+                catch (java.util.concurrent.RejectedExecutionException ex) { inferenceBusy.set(false); }
+              } else skippedInferenceWindows++;
             }
           }
         }
@@ -294,6 +317,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       capturing.set(false);
       AudioRecord rec = recorder; recorder = null;
       AudioClassifier cls = analyzer; analyzer = null;
+      ExecutorService worker = inferenceWorker; inferenceWorker = null;
+      if (worker != null) worker.shutdownNow();
       if (rec != null) {
         try { if (rec.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) rec.stop(); } catch (Exception ignored) {}
         try { rec.release(); } catch (Exception ignored) {}
@@ -317,6 +342,32 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
 
   @PluginMethod
   public void stopAnalysis(PluginCall call) { stopAsync(call); }
+
+  @PluginMethod
+  public void performanceSnapshot(PluginCall call) {
+    JSObject result = new JSObject();
+    ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
+    if (am != null) {
+      ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
+      am.getMemoryInfo(memory);
+      result.put("ramMb", memory.availMem / (1024L * 1024L));
+      result.put("lowMemory", memory.lowMemory);
+    }
+    BatteryManager battery = (BatteryManager) getContext().getSystemService(Context.BATTERY_SERVICE);
+    if (battery != null) {
+      int capacity = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+      if (capacity >= 0 && capacity <= 100) result.put("battery", capacity);
+    }
+    PowerManager power = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+    if (power != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      result.put("thermalStatus", power.getCurrentThermalStatus());
+    }
+    result.put("elapsedSec", (SystemClock.elapsedRealtime() - appStartedAt) / 1000L);
+    result.put("inferenceSkipped", skippedInferenceWindows);
+    result.put("recording", capturing.get());
+    // Never invent CPU temperature or audio glitches: they are not measured here.
+    call.resolve(result);
+  }
 
   @PluginMethod
   public void actualMicrophone(PluginCall call) {

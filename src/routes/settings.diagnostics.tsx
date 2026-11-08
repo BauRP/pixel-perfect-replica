@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { PageHeader, Section } from "@/components/sw/ui";
 import {
   androidSensorsAvailable, observeRawSteps, observeSensorErrors, observeRawSound, observeMicrophoneLevel, sensorStatus,
-  startSensorDiagnostics, stopSensorDiagnostics, ATMOSPHERE_RU,
+  startSensorDiagnostics, stopSensorDiagnostics, getNativePerformanceSnapshot, ATMOSPHERE_RU,
   type SensorsStatus
 } from "@/lib/sw/native-sensors";
 import { StepPaceEstimator } from "@/lib/sw/environment-smoothing";
@@ -22,10 +22,12 @@ function Diagnostics() {
   const [environment,setEnvironment] = useState("Обстановка не определена");
   const [micInput,setMicInput] = useState("");
   const [micRms,setMicRms] = useState<number | null>(null);
+  const [hardware,setHardware] = useState<{ramMb?:number;battery?:number;thermalStatus?:number;inferenceSkipped:number;lowMemory?:boolean}|null>(null);
   useEffect(()=>{
     const estimator = new StepPaceEstimator();
     let mounted=true;
     void sensorStatus().then(s=>{if(mounted)setStatus(s)});
+    void getNativePerformanceSnapshot().then(s=>{if(mounted)setHardware(s)});
     const removeSteps=observeRawSteps(e=>{
       const pace=estimator.ingest(e.timestamp);
       if (pace.activity!=="unknown")setSteps((pace.activity==="running"?"Бег":"Ходьба")+" · "+pace.bpm+" шагов/мин");
@@ -40,8 +42,9 @@ function Diagnostics() {
     if(!result.ok) {notify.result(result,"");setError(result.message);}
     else {setActive(true);setError("");setEnvironment("Ожидание достоверного результата");}
     setStatus(await sensorStatus());
+    setHardware(await getNativePerformanceSnapshot());
   };
-  const stop=async()=>{await stopSensorDiagnostics();setActive(false);setMicRms(null);setStatus(await sensorStatus());};
+  const stop=async()=>{await stopSensorDiagnostics();setActive(false);setMicRms(null);setStatus(await sensorStatus());setHardware(await getNativePerformanceSnapshot());};
   return (
     <>
       <PageHeader title="Диагностика" back subtitle="Проверка настоящих датчиков Android" />
@@ -56,6 +59,10 @@ function Diagnostics() {
             <p>Живой уровень микрофона: {active&&micRms!==null?Math.round(micRms*1000)/10+"%":"Нет сигнала"}</p>
             <p>Датчик шагов: {status?.stepsSupported?"Найден":"Нет данных / отсутствует"}</p>
             <p>Активность: {steps}</p>
+            <p>Доступная оперативная память: {hardware?.ramMb === undefined?"Нет данных":hardware.ramMb+" МБ"}</p>
+            <p>Заряд батареи: {hardware?.battery === undefined?"Нет данных":hardware.battery+"%"}</p>
+            <p>Тепловой статус Android: {hardware?.thermalStatus === undefined?"Нет данных":hardware.thermalStatus}</p>
+            <p>Пропущенные окна анализа: {hardware?.inferenceSkipped ?? "Нет данных"}</p>
             <p>Обстановка: {status?.yamnetIncluded ? environment : ATMOSPHERE_RU.unknown}</p>
             {error&&<p role="alert" className="text-destructive">{error}</p>}
           </div>

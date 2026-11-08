@@ -37,6 +37,7 @@ interface SensorsPlugin {
   startSteps(): Promise<NativeResult>;
   stopSteps(): Promise<NativeResult>;
   actualMicrophone(): Promise<{ name: string; kind: string; active: boolean; output: string }>;
+  performanceSnapshot(): Promise<{ramMb?:number;battery?:number;elapsedSec:number;thermalStatus?:number;lowMemory?:boolean;inferenceSkipped:number;recording:boolean}>;
   addListener(event: "yamnet" | "step" | "analysisError" | "micLevel", callback: (value: any) => void): Promise<PluginListenerHandle>;
 }
 const native = registerPlugin<SensorsPlugin>("SoundWorldSensors");
@@ -47,6 +48,10 @@ const safeError = (e: unknown): {ok:false;code:"ERROR";message:string} => ({
   code: "ERROR",
   message: e instanceof Error ? e.message : "Ошибка модуля Android",
 });
+export async function getNativePerformanceSnapshot() {
+  if (!androidSensorsAvailable()) return null;
+  try { return await native.performanceSnapshot(); } catch { return null; }
+}
 export async function sensorStatus(): Promise<SensorsStatus | null> {
   if (!androidSensorsAvailable()) return null;
   try { return await native.status(); } catch { return null; }
@@ -132,6 +137,13 @@ export function installNativeSensorAdapters(): void {
         const rate=pace.ingest(e.timestamp);
         if(rate.activity!=="unknown")cb({activity:rate.activity,confidence:rate.confidence});
       }),
+    },
+    performance: {
+      snapshot: async () => {
+        try {const r=await native.performanceSnapshot();return {ok:true,value:{...(r.ramMb === undefined?{}:{ramMb:r.ramMb}),...(r.battery===undefined?{}:{battery:r.battery}),elapsedSec:r.elapsedSec}};}
+        catch(e){return safeError(e);}
+      },
+      applyBatteryMode:async()=>unavailable("Нейросеть пока не поддерживает управление нагрузкой"),
     },
     router: {
       currentActualMicrophone:async()=>{
