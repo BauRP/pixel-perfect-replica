@@ -377,6 +377,12 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
          !"fmt ".equals(new String(header,12,4,java.nio.charset.StandardCharsets.US_ASCII)) ||
          !"data".equals(new String(header,36,4,java.nio.charset.StandardCharsets.US_ASCII)))
         throw new IOException("Некорректный WAV");
+      int format=(header[20]&255)|((header[21]&255)<<8);
+      int channels=(header[22]&255)|((header[23]&255)<<8);
+      long rate=(header[24]&255L)|((header[25]&255L)<<8)|((header[26]&255L)<<16)|((header[27]&255L)<<24);
+      int bits=(header[34]&255)|((header[35]&255)<<8);
+      if(format!=1||channels!=2||rate!=SAMPLE_RATE||bits!=16)
+        throw new IOException("Неподдерживаемый формат WAV");
       long size=(header[40]&255L)|((header[41]&255L)<<8)|((header[42]&255L)<<16)|((header[43]&255L)<<24);
       if(size!=file.length()-44 || size%FRAME_BYTES!=0)
         throw new IOException("Повреждён размер WAV");

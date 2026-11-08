@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAdapters, type ClipMeta } from "@/lib/sw/engine";
 import { genreNameById } from "@/lib/sw/catalog";
 import { notify } from "@/lib/sw/notify";
+import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 
 export const Route = createFileRoute("/history")({
   head: () => ({ meta: [{ title: "История и избранное — SoundWorld AR" }, { name: "description", content: "Настоящие сохранённые фрагменты SoundWorld AR" }] }),
@@ -39,6 +40,7 @@ function HistoryPage(){
   useEffect(()=>{
     let mounted=true;
     void library.recoverLocalMetadata().then(()=>{if(mounted)void reload();});
+    void currentStoredPlayback().then(x=>{if(mounted&&x)setPlayback(x)});
     const unsubscribe=library.observeStoredPlayback(state=>{if(mounted)setPlayback(state)});
     return ()=>{mounted=false;unsubscribe();};
   },[library,reload]);

@@ -9,6 +9,7 @@ import { effectiveDirections, useSettings } from "@/lib/sw/settings";
 import { genreNameById } from "@/lib/sw/catalog";
 import { PendingBadge } from "@/components/sw/ui";
 import { cn } from "@/lib/utils";
+import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -40,6 +41,7 @@ function Player() {
     const lib=getAdapters().library;
     let mounted=true;
     void lib.listLastThreeCompleted().then(r=>{if(mounted&&r.ok)setRecentClips(r.value)});
+    void currentStoredPlayback().then(x=>{if(mounted&&x)setStoredPlayback(x)});
     const off=lib.observeStoredPlayback(v=>{if(mounted)setStoredPlayback(v)});
     return ()=>{mounted=false;off()};
   },[]);
@@ -60,7 +62,9 @@ function Player() {
   const onPlay = () => run(async () => {
     const r = storedPlayback.state==="playing"
       ? await withTimeout(library.pauseStoredClip())
-      : await withTimeout(playing ? engine.pauseSession() : engine.startLiveSession(s));
+      : storedPlayback.state==="paused" && storedPlayback.clipId
+        ? await withTimeout(library.playStoredClip(storedPlayback.clipId))
+        : await withTimeout(playing ? engine.pauseSession() : engine.startLiveSession(s));
     notify.result(r, playing ? "Пауза" : "Запуск сессии");
   });
   const onNext = () => run(async () => notify.result(await withTimeout(engine.requestNextVariation(s)), "Запрошена новая вариация"));
