@@ -3,7 +3,7 @@ import {
   Heart, SkipBack, SkipForward, Play, Pause, Download, History, Undo2, Lock, Radio, CloudRain, Footprints, Bus, Music2, Activity,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { getAdapters, withTimeout, type SessionState } from "@/lib/sw/engine";
+import { getAdapters, withTimeout, type SessionState, type ClipMeta } from "@/lib/sw/engine";
 import { notify } from "@/lib/sw/notify";
 import { effectiveDirections, useSettings } from "@/lib/sw/settings";
 import { genreNameById } from "@/lib/sw/catalog";
@@ -31,9 +31,18 @@ function Player() {
   const s = useSettings();
   const [state, setState] = useState<SessionState>("IDLE");
   const [busy, setBusy] = useState(false);
+  const [recentClips,setRecentClips]=useState<ClipMeta[]>([]);
+  const [storedPlayback,setStoredPlayback]=useState<{state:"playing"|"paused"|"stopped";clipId:string}>({state:"stopped",clipId:""});
   const busyRef = useRef(false);
 
   useEffect(() => getAdapters().engine.observeEngineState(setState), []);
+  useEffect(()=>{
+    const lib=getAdapters().library;
+    let mounted=true;
+    void lib.listLastThreeCompleted().then(r=>{if(mounted&&r.ok)setRecentClips(r.value)});
+    const off=lib.observeStoredPlayback(v=>{if(mounted)setStoredPlayback(v)});
+    return ()=>{mounted=false;off()};
+  },[]);
 
   const run = async (fn: () => Promise<unknown>) => {
     if (busyRef.current) return; // debounce rapid taps
@@ -45,16 +54,25 @@ function Player() {
   const { engine, library } = getAdapters();
   const playing = state === "LIVE" || state === "HISTORY" || state === "RESERVE";
   const live = state === "LIVE";
-  const hasClip = false; // no real completed clip exists until engine integration
+  const latestClip = recentClips[0];
+  const hasClip = !!latestClip; // only real, verified and completed files
 
   const onPlay = () => run(async () => {
-    const r = await withTimeout(playing ? engine.pauseSession() : engine.startLiveSession(s));
+    const r = storedPlayback.state==="playing"
+      ? await withTimeout(library.pauseStoredClip())
+      : await withTimeout(playing ? engine.pauseSession() : engine.startLiveSession(s));
     notify.result(r, playing ? "Пауза" : "Запуск сессии");
   });
   const onNext = () => run(async () => notify.result(await withTimeout(engine.requestNextVariation(s)), "Запрошена новая вариация"));
-  const onHeart = () => run(async () => notify.result(await withTimeout(library.markFavorite("current", true)), "Добавлено в избранное"));
+  const onHeart = () => run(async () => {
+    if(!latestClip)return;
+    const r=await withTimeout(library.markFavorite(latestClip.id,!latestClip.favorite));
+    if(r.ok)setRecentClips(prev=>prev.map(c=>c.id===latestClip.id?{...c,favorite:!c.favorite}:c));
+    notify.result(r,"Изменено избранное");
+  });
   const onExport = () => run(async () => {
-    const r = await withTimeout(library.exportRealAudio("current"));
+    if(!latestClip)return;
+    const r = await withTimeout(library.exportRealAudio(latestClip.id));
     if (r.ok) notify.saved("Файл сохранён на телефон"); else notify.result(r, "");
   });
 
@@ -99,19 +117,22 @@ function Player() {
       </div>
 
       <div className="mt-5 flex items-center justify-between">
-        <button aria-label="В избранное (сердце)" aria-pressed={false} disabled={busy} onClick={onHeart} className="grid size-12 place-items-center rounded-full text-muted-foreground hover:text-heart">
-          <Heart className="size-6" />
+        <button aria-label="В избранное (сердце)" aria-pressed={latestClip?.favorite??false} disabled={busy || !hasClip} onClick={onHeart} className="grid size-12 place-items-center rounded-full text-muted-foreground hover:text-heart">
+          <Heart className={cn("size-6",latestClip?.favorite&&"fill-current text-rose-500")} />
         </button>
-        <button aria-label="Предыдущий фрагмент" disabled={busy || !hasClip} onClick={() => notify.notIntegrated("Нет завершённых фрагментов")} className="grid size-14 place-items-center rounded-full text-foreground disabled:opacity-35">
+        <button aria-label="Предыдущий фрагмент" disabled={busy || !hasClip} onClick={() => void run(async()=>{
+          if(!latestClip)return;
+          notify.result(await withTimeout(library.playStoredClip(latestClip.id)),"Воспроизведение сохранённого фрагмента");
+        })} className="grid size-14 place-items-center rounded-full text-foreground disabled:opacity-35">
           <SkipBack className="size-7" fill="currentColor" />
         </button>
-        <button aria-label={playing ? "Пауза" : "Играть"} disabled={busy} onClick={onPlay} className="grid size-20 place-items-center rounded-full bg-primary text-primary-foreground shadow-play transition-transform active:scale-95 disabled:opacity-70">
-          {playing ? <Pause className="size-8" fill="currentColor" /> : <Play className="ml-1 size-8" fill="currentColor" />}
+        <button aria-label={playing || storedPlayback.state==="playing" ? "Пауза" : "Играть"} disabled={busy} onClick={onPlay} className="grid size-20 place-items-center rounded-full bg-primary text-primary-foreground shadow-play transition-transform active:scale-95 disabled:opacity-70">
+          {playing || storedPlayback.state==="playing" ? <Pause className="size-8" fill="currentColor" /> : <Play className="ml-1 size-8" fill="currentColor" />}
         </button>
         <button aria-label="Следующая вариация" disabled={busy} onClick={onNext} className="grid size-14 place-items-center rounded-full text-foreground">
           <SkipForward className="size-7" fill="currentColor" />
         </button>
-        <button aria-label="Сохранить на телефон" disabled={busy} onClick={onExport} className="grid size-12 place-items-center rounded-full text-muted-foreground hover:text-foreground">
+        <button aria-label="Сохранить на телефон" disabled={busy || !hasClip} onClick={onExport} className="grid size-12 place-items-center rounded-full text-muted-foreground hover:text-foreground">
           <Download className="size-6" />
         </button>
       </div>
