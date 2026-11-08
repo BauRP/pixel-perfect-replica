@@ -37,7 +37,7 @@ export class GeneratedPcmSession {
     private readonly settings: Settings, private readonly genres: string[]) {}
 
   get status() { return { state: this.state, bytesInCurrentClip: this.bytes,
-    completedClips: this.completed, error: this.lastFailure }; }
+    completedClips: this.completed, pendingPackets: this.pending, error: this.lastFailure }; }
 
   /**
    * Serialize every packet, preserving playback order and 120s WAV boundaries.
