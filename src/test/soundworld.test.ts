@@ -66,6 +66,12 @@ describe("settings", () => {
     expect(groupState("g01", new Set(["g01-s01"]))).toBe("partial");
     expect(groupState("g01", new Set(GENRES[0]!.subgenres.map((s) => s.id)))).toBe("all");
   });
+  it("whole genre exclusion is kept and unknown IDs are rejected",()=>{
+    const s=setDislike(DEFAULT_SETTINGS,"g01","excluded");
+    expect(s.dislikes.g01).toBe("excluded");
+    expect(setDislike(s,"invalid-id","excluded")).toBe(s);
+    expect(toggleFavoriteInstrument(s,"invalid-id").next).toBe(s);
+  });
   it("exclusion wins over favorite", () => {
     let s = toggleFavoriteInstrument(DEFAULT_SETTINGS, "i1-01").next;
     s = setDislike(s, "i1-01", "excluded");

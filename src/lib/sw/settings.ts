@@ -168,6 +168,7 @@ export function groupState(groupId: string, selected: Set<string>): GroupState {
 
 /** Sets an instrument favorite; returns a conflict string if it is excluded. */
 export function toggleFavoriteInstrument(s: Settings, id: string): { next: Settings; conflict?: string } {
+  if (!validInstruments.has(id)) return {next:s,conflict:"invalid"};
   if (s.dislikes[id] === "excluded") return { next: s, conflict: "excluded" };
   const has = s.favoriteInstrumentIds.includes(id);
   return {
@@ -180,6 +181,7 @@ export function toggleFavoriteInstrument(s: Settings, id: string): { next: Setti
 
 /** Setting exclusion removes the same item from favorites (exclusion wins). */
 export function setDislike(s: Settings, id: string, level: DislikeLevel | null): Settings {
+  if(!validDislikes.has(id)) return s;
   const dislikes = { ...s.dislikes };
   if (level) dislikes[id] = level;
   else delete dislikes[id];

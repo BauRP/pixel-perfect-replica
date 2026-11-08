@@ -19,10 +19,14 @@ function Tastes() {
     setSel(next);
     updateSettings((x) => ({ ...x, chosenGenreIds: [...next], allowedAllGenres: next.size === ALL_SUBGENRE_IDS.length }));
   };
+  const excludedParentCount = Object.keys(s.dislikes).filter(id=>/^g[0-9]{2}$/.test(id)&&s.dislikes[id]==="excluded").length;
   return (
     <>
       <PageHeader title="Музыкальные вкусы" back subtitle="Сохраняется автоматически" />
-      <div className="px-4 py-4"><GenrePicker selected={sel} onChange={change} /></div>
+      <div className="px-4 py-4">
+        {excludedParentCount>0&&<p role="note" className="mb-3 rounded-lg border border-warning/40 p-3 text-xs text-warning">Исключено целых жанров: {excludedParentCount}. Их поджанры не попадут в будущую музыку, даже если здесь отмечены.</p>}
+        <GenrePicker selected={sel} onChange={change} />
+      </div>
     </>
   );
 }

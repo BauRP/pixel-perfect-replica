@@ -45,8 +45,12 @@ function Dislikes() {
           <Section key={c.id} title={c.name}>{c.items.map((i) => <Row key={i.id} id={i.id} name={i.name} />)}</Section>
         ))}
         <h2 className="px-1 pt-2 text-sm font-semibold">Жанры</h2>
+        <p className="px-1 text-xs text-muted-foreground">Исключение целого жанра запрещает все его поджанры, даже если они ранее выбраны в музыкальных вкусах.</p>
         {GENRES.map((g) => (
-          <Section key={g.id} title={g.name}>{g.subgenres.map((x) => <Row key={x.id} id={x.id} name={x.name} />)}</Section>
+          <Section key={g.id} title={g.name}>
+            <Row id={g.id} name={"Весь жанр: "+g.name}/>
+            {g.subgenres.map((x) => <Row key={x.id} id={x.id} name={x.name} />)}
+          </Section>
         ))}
       </div>
     </>
