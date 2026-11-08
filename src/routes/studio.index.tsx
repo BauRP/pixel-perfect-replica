@@ -53,11 +53,11 @@ function Studio() {
 
         <Section>
           <Item n={1} title="Настроение" value={`${sign(s.mood)} · ${MOOD_WORD(s.mood)}`} help="Влево — грустнее, вправо — веселее. Это эмоция музыки, а не её скорость.">
-            <Slider aria-label="Настроение" min={-5} max={5} step={1} value={[s.mood]} onValueChange={([v]) => set("mood", v)} className="py-3" />
+            <Slider aria-label="Настроение" min={-5} max={5} step={1} value={[s.mood]} onValueChange={([v]) => set("mood", v ?? 0)} className="py-3" />
             <div className="flex justify-between text-xs text-muted-foreground"><span>Грустная</span><span>Нейтральная</span><span>Весёлая</span></div>
           </Item>
           <Item n={2} title="Скорость музыки" value={`${sign(s.speed)} · ${SPEED_WORD(s.speed)}`} help="Меняет темп новой музыки, а не ускоряет готовую запись. Ваш выбор важнее, чем бег или ходьба.">
-            <Slider aria-label="Скорость музыки" min={-3} max={3} step={1} value={[s.speed]} onValueChange={([v]) => set("speed", v)} className="py-3" />
+            <Slider aria-label="Скорость музыки" min={-3} max={3} step={1} value={[s.speed]} onValueChange={([v]) => set("speed", v ?? 0)} className="py-3" />
             <div className="flex justify-between text-xs text-muted-foreground"><span>Медленно</span><span>Средняя</span><span>Быстро</span></div>
           </Item>
           <Item n={3} title="Любимые инструменты" help="Выбери инструменты, которые хочешь слышать чаще. Без выбора инструменты подбираются сами. Редкие инструменты не гарантированы.">

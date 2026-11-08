@@ -28,3 +28,7 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Project rules
+- All native/AI capabilities go through typed adapters in `src/lib/sw/engine.ts`; UI never calls mic/AI directly, and stubs must return UNAVAILABLE, never fake success — keeps Phase 1 honest and swappable.
+- User settings live in the versioned schema in `src/lib/sw/settings.ts`; add fields via `migrateSettings` — so old saved data keeps loading.

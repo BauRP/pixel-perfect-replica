@@ -35,7 +35,7 @@ function Player() {
 
   useEffect(() => getAdapters().engine.observeEngineState(setState), []);
 
-  const run = async (fn: () => Promise<void>) => {
+  const run = async (fn: () => Promise<unknown>) => {
     if (busyRef.current) return; // debounce rapid taps
     busyRef.current = true;
     setBusy(true);
