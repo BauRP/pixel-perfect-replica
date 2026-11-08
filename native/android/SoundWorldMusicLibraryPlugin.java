@@ -10,6 +10,9 @@ import android.media.AudioManager;
 import android.media.AudioFocusRequest;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
+import android.content.BroadcastReceiver;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
@@ -58,6 +61,7 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   private AudioFocusRequest playbackFocus;
   private String playingId;
   private String playbackState = "stopped";
+  private BroadcastReceiver noisyReceiver;
 
   private File directory() {
     File dir = new File(getContext().getFilesDir(), "generated_music");
@@ -389,6 +393,22 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     }
   }
 
+  @Override public void load() {
+    super.load();
+    // When wired/Bluetooth headphones vanish, do not surprise the listener with speaker audio.
+    noisyReceiver=new BroadcastReceiver() {
+      @Override public void onReceive(Context context,Intent intent) {
+        if(AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) {
+          writer.execute(()->pausePlayer());
+        }
+      }
+    };
+    IntentFilter filter=new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+    if(Build.VERSION.SDK_INT>=33)
+      getContext().registerReceiver(noisyReceiver,filter,Context.RECEIVER_NOT_EXPORTED);
+    else getContext().registerReceiver(noisyReceiver,filter);
+  }
+
   private void publishPlayback(String state) {
     playbackState=state;
     JSObject data=new JSObject();
@@ -481,6 +501,10 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   }
 
   @Override protected void handleOnDestroy() {
+    if(noisyReceiver!=null) {
+      try {getContext().unregisterReceiver(noisyReceiver);}catch(Exception ignored){}
+      noisyReceiver=null;
+    }
     writer.execute(()->{releasePlayer();abortRecording();});
     writer.shutdown();
     super.handleOnDestroy();
