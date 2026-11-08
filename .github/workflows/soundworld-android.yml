@@ -17,8 +17,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - uses: oven-sh/setup-bun@v2
       - name: Install dependencies
-        run: npm install --no-package-lock
+        run: bun install
       - name: Type check
         run: npx tsc --noEmit
       - name: Unit tests
