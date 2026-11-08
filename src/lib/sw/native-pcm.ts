@@ -14,7 +14,7 @@ interface PCMPlugin {
   status(): Promise<{audible:boolean;queuedChunks:number;serviceActive:boolean}>;
 }
 const native = registerPlugin<PCMPlugin>("SoundWorldPlayback");
-const unavailable = (msg:string):Result => ({ok:false,code:"UNAVAILABLE",message:msg});
+const unavailable = (msg:string):{ok:false;code:"UNAVAILABLE";message:string} => ({ok:false,code:"UNAVAILABLE",message:msg});
 export async function currentAudioSinkStatus() {
   if(Capacitor.getPlatform()!=="android") return null;
   try {return await native.status();}catch{return null;}
