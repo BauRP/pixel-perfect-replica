@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { PageHeader, Section } from "@/components/sw/ui";
 import {
-  androidSensorsAvailable, observeRawSteps, observeSensorErrors, observeRawSound, sensorStatus,
+  androidSensorsAvailable, observeRawSteps, observeSensorErrors, observeRawSound, observeMicrophoneLevel, sensorStatus,
   startSensorDiagnostics, stopSensorDiagnostics, ATMOSPHERE_RU,
   type SensorsStatus
 } from "@/lib/sw/native-sensors";
@@ -20,6 +20,8 @@ function Diagnostics() {
   const [steps,setSteps] = useState("Нет подтверждённых шагов");
   const [error,setError] = useState("");
   const [environment,setEnvironment] = useState("Обстановка не определена");
+  const [micInput,setMicInput] = useState("");
+  const [micRms,setMicRms] = useState<number | null>(null);
   useEffect(()=>{
     const estimator = new StepPaceEstimator();
     let mounted=true;
@@ -30,15 +32,16 @@ function Diagnostics() {
     });
     const removeErrors=observeSensorErrors(setError);
     const removeSounds=observeRawSound(e=>setEnvironment(e.label+" · "+Math.round(e.confidence*100)+"%"));
-    return ()=>{mounted=false;removeSteps();removeErrors();removeSounds();void stopSensorDiagnostics()};
+    const removeMic=observeMicrophoneLevel(e=>{setMicInput(e.input);setMicRms(e.rms)});
+    return ()=>{mounted=false;removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
   },[]);
   const start=async()=>{
     const result=await startSensorDiagnostics(true);
     if(!result.ok) {notify.result(result,"");setError(result.message);}
-    else {setActive(true);setError("");}
+    else {setActive(true);setError("");setEnvironment("Ожидание достоверного результата");}
     setStatus(await sensorStatus());
   };
-  const stop=async()=>{await stopSensorDiagnostics();setActive(false);setStatus(await sensorStatus());};
+  const stop=async()=>{await stopSensorDiagnostics();setActive(false);setMicRms(null);setStatus(await sensorStatus());};
   return (
     <>
       <PageHeader title="Диагностика" back subtitle="Проверка настоящих датчиков Android" />
@@ -49,7 +52,8 @@ function Diagnostics() {
             <p>YAMNet: {status?.yamnetIncluded?"Модель найдена":"Модель не подключена"}</p>
             <p>Magenta RealTime 2 Small: не подключена</p>
             <p>Микрофон: {status?.microphoneGranted?"Разрешение есть":"Разрешение не получено"}</p>
-            <p>Источник микрофона: {status?.recording?status.actualInput||"Проверяется":"Не используется"}</p>
+            <p>Источник микрофона: {active?(micInput||status?.actualInput||"Определяется"):"Не используется"}</p>
+            <p>Живой уровень микрофона: {active&&micRms!==null?Math.round(micRms*1000)/10+"%":"Нет сигнала"}</p>
             <p>Датчик шагов: {status?.stepsSupported?"Найден":"Нет данных / отсутствует"}</p>
             <p>Активность: {steps}</p>
             <p>Обстановка: {status?.yamnetIncluded ? environment : ATMOSPHERE_RU.unknown}</p>

@@ -54,7 +54,10 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
   try {
     const permission = await native.requestMicrophone();
     if (!permission.granted) return {ok:false,code:"PERMISSION_DENIED",message:"Микрофон не разрешён"};
-    const r = await native.startMicrophoneProbe();
+    const availability = await native.status();
+    const r = availability.yamnetIncluded
+      ? await native.startAnalysis()
+      : await native.startMicrophoneProbe();
     if (!r.started) return unavailable("Проверка микрофона не запущена");
     if (includeSteps) {
       const activity = await native.requestActivity();

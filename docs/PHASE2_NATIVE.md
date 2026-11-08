@@ -21,3 +21,6 @@ Official project documentation: https://github.com/magenta/magenta-realtime and 
 
 ## Verified checkpoints
 Use GitHub Actions results to grant points only after CI success. The full progress report is in PROGRESS.md.
+
+## Validation (8 Nov 2026)
+GitHub Actions build https://github.com/BauRP/pixel-perfect-replica/actions/runs/42431583556 passed 18 unit tests, TypeScript check, web and Android builds, and uploaded the APK with Google YAMNet. The pinned model SHA256 is `4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf`. All detections are off unless the user deliberately starts a session or diagnostic. No music is generated yet.
