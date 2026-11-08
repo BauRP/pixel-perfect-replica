@@ -15,7 +15,7 @@ function Instruments() {
   const s = useSettings();
   const toggle = (id: string) => {
     const r = toggleFavoriteInstrument(s, id);
-    if (r.conflict) return notify.error("Этот инструмент исключён в пункте 4 — сначала снимите исключение");
+    if (r.conflict) { notify.error("Этот инструмент исключён в пункте 4 — сначала снимите исключение"); return; }
     updateSettings(() => r.next);
   };
   return (

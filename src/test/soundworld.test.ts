@@ -44,7 +44,7 @@ describe("settings", () => {
   });
   it("partial group state", () => {
     expect(groupState("g01", new Set(["g01-s01"]))).toBe("partial");
-    expect(groupState("g01", new Set(GENRES[0].subgenres.map((s) => s.id)))).toBe("all");
+    expect(groupState("g01", new Set(GENRES[0]!.subgenres.map((s) => s.id)))).toBe("all");
   });
   it("exclusion wins over favorite", () => {
     let s = toggleFavoriteInstrument(DEFAULT_SETTINGS, "i1-01").next;

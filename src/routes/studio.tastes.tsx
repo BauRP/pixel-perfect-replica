@@ -15,7 +15,7 @@ function Tastes() {
   const s = useSettings();
   const [sel, setSel] = useState(() => new Set(s.allowedAllGenres ? ALL_SUBGENRE_IDS : s.chosenGenreIds));
   const change = (next: Set<string>) => {
-    if (next.size === 0) return notify.error("Нужен хотя бы один жанр");
+    if (next.size === 0) { notify.error("Нужен хотя бы один жанр"); return; }
     setSel(next);
     updateSettings((x) => ({ ...x, chosenGenreIds: [...next], allowedAllGenres: next.size === ALL_SUBGENRE_IDS.length }));
   };

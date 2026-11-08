@@ -100,7 +100,12 @@ export interface Permissions {
 
 const noopUnsub: Unsubscribe = () => {};
 
-export const unavailableAdapters = {
+export interface Adapters {
+  engine: MusicEngine; environment: EnvironmentAnalyzer; router: AudioDeviceRouter; activity: ActivityProvider;
+  library: MusicLibrary; background: BackgroundAudioBridge; performance: PerformanceMonitor; permissions: Permissions;
+}
+
+export const unavailableAdapters: Adapters = {
   engine: {
     checkAvailability: () => unavailable(),
     startLiveSession: () => unavailable(),
@@ -115,20 +120,20 @@ export const unavailableAdapters = {
       return noopUnsub;
     },
     observePlaybackState: () => noopUnsub,
-  } satisfies MusicEngine,
+  },
   environment: {
     checkAvailability: () => unavailable("Анализ окружения (YAMNet) не подключён"),
     startCapture: () => unavailable("Микрофон не подключён"),
     stopCapture: () => unavailable("Микрофон не подключён"),
     observeEnvironment: () => noopUnsub,
-  } satisfies EnvironmentAnalyzer,
+  },
   router: {
     currentActualMicrophone: () => unavailable("Источник микрофона недоступен: не подключено"),
     observeInputOutputChanges: () => noopUnsub,
     chooseBestSupportedRoute: () => unavailable("Маршрутизация звука не подключена"),
     verifyActualRoute: () => unavailable("Маршрутизация звука не подключена"),
-  } satisfies AudioDeviceRouter,
-  activity: { observeWalkingRunningTransportRest: () => noopUnsub } satisfies ActivityProvider,
+  },
+  activity: { observeWalkingRunningTransportRest: () => noopUnsub },
   library: {
     listLastThreeCompleted: () => Promise.resolve({ ok: true, value: [] }),
     listFavorites: () => Promise.resolve({ ok: true, value: [] }),
@@ -137,24 +142,23 @@ export const unavailableAdapters = {
     exportRealAudio: () => unavailable("Нет аудиофайла для сохранения: движок не подключён"),
     deleteTemporary: () => unavailable("Нет временных фрагментов"),
     recoverLocalMetadata: () => Promise.resolve({ ok: true, value: undefined }),
-  } satisfies MusicLibrary,
+  },
   background: {
     startForegroundMediaService: () => unavailable("Фоновое воспроизведение Android не подключено"),
     stopForegroundMediaService: () => unavailable("Фоновое воспроизведение Android не подключено"),
     onAudioFocusLoss: () => noopUnsub,
     onHeadsetDisconnected: () => noopUnsub,
-  } satisfies BackgroundAudioBridge,
+  },
   performance: {
     snapshot: () => unavailable("Нет данных: модуль не подключён"),
     applyBatteryMode: () => unavailable("Нет данных: модуль не подключён"),
-  } satisfies PerformanceMonitor,
+  },
   permissions: {
     microphone: () => unavailable("Нативные разрешения не подключены"),
     requestMicrophone: () => unavailable("Нативные разрешения не подключены"),
-  } satisfies Permissions,
+  },
 };
 
-export type Adapters = typeof unavailableAdapters;
 let adapters: Adapters = unavailableAdapters;
 
 /** Dependency injection point for the native (Capacitor/Kotlin) implementation. */
