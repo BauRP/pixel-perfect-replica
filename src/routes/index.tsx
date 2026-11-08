@@ -10,6 +10,7 @@ import { genreNameById } from "@/lib/sw/catalog";
 import { PendingBadge } from "@/components/sw/ui";
 import { cn } from "@/lib/utils";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
+import { latestRealClip } from "@/lib/sw/stored-clips";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -56,7 +57,7 @@ function Player() {
   const { engine, library } = getAdapters();
   const playing = state === "LIVE" || state === "HISTORY" || state === "RESERVE";
   const live = state === "LIVE";
-  const latestClip = recentClips[0];
+  const latestClip = latestRealClip(recentClips);
   const hasClip = !!latestClip; // only real, verified and completed files
 
   const onPlay = () => run(async () => {
