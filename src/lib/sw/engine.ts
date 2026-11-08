@@ -81,6 +81,10 @@ export interface MusicLibrary {
   exportRealAudio(clipId: string): Promise<Result<{ uri: string }>>;
   deleteTemporary(clipId: string): Promise<Result>;
   recoverLocalMetadata(): Promise<Result>;
+  playStoredClip(clipId: string): Promise<Result>;
+  pauseStoredClip(): Promise<Result>;
+  stopStoredClip(): Promise<Result>;
+  observeStoredPlayback(cb:(state:{state:"playing"|"paused"|"stopped";clipId:string})=>void):Unsubscribe;
 }
 
 export interface BackgroundAudioBridge {
@@ -144,6 +148,10 @@ export const unavailableAdapters: Adapters = {
     exportRealAudio: () => unavailable("Нет аудиофайла для сохранения: движок не подключён"),
     deleteTemporary: () => unavailable("Нет временных фрагментов"),
     recoverLocalMetadata: () => Promise.resolve({ ok: true, value: undefined }),
+    playStoredClip: () => unavailable("Нет настоящей сохранённой записи"),
+    pauseStoredClip: () => unavailable("Файл не воспроизводится"),
+    stopStoredClip: () => unavailable("Файл не воспроизводится"),
+    observeStoredPlayback: () => noopUnsub,
   },
   background: {
     startForegroundMediaService: () => unavailable("Фоновое воспроизведение Android не подключено"),

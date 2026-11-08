@@ -2,7 +2,7 @@
  * Real generated audio files only. The native store receives 48kHz stereo PCM,
  * never copies microphone samples, and never invents a clip before WAV is complete.
  */
-import { Capacitor, registerPlugin } from "@capacitor/core";
+import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { registerAdapters, type Adapters, type ClipMeta, type Result } from "./engine";
 import type { Settings } from "./settings";
 interface LibraryPlugin {
@@ -15,6 +15,11 @@ interface LibraryPlugin {
   export(args:{id:string}):Promise<{uri:string}>;
   deleteTemporary(args:{id:string}):Promise<{deleted:boolean}>;
   recover():Promise<{recovered:number}>;
+  playClip(args:{id:string}):Promise<{playing:boolean;id:string}>;
+  pauseClip():Promise<{state:string}>;
+  stopClip():Promise<{state:string}>;
+  playbackStatus():Promise<{state:string;clipId:string}>;
+  addListener(event:"clipPlayback",callback:(data:{state:"playing"|"paused"|"stopped";clipId:string})=>void):Promise<PluginListenerHandle>;
 }
 const native=registerPlugin<LibraryPlugin>("SoundWorldMusicLibrary");
 const error=(e:unknown):{ok:false;code:"ERROR";message:string}=>({ok:false,code:"ERROR",message:e instanceof Error?e.message:String(e)});
@@ -53,6 +58,14 @@ export function installNativeMusicLibraryAdapter():void {
     exportRealAudio:async(id)=>{try {const x=await native.export({id});return {ok:true,value:{uri:x.uri}};}catch(e){return error(e);}},
     deleteTemporary:async(id)=>{try {await native.deleteTemporary({id});return {ok:true,value:undefined};}catch(e){return error(e);}},
     recoverLocalMetadata:async()=>{try {await native.recover();return {ok:true,value:undefined};}catch(e){return error(e);}},
+    playStoredClip:async(id)=>{try {await native.playClip({id});return {ok:true,value:undefined};}catch(e){return error(e);}},
+    pauseStoredClip:async()=>{try {await native.pauseClip();return {ok:true,value:undefined};}catch(e){return error(e);}},
+    stopStoredClip:async()=>{try {await native.stopClip();return {ok:true,value:undefined};}catch(e){return error(e);}},
+    observeStoredPlayback:cb=>{
+      let closed=false;
+      const handle=native.addListener("clipPlayback",e=>{if(!closed)cb(e)});
+      return ()=>{closed=true;void handle.then(h=>h.remove()).catch(()=>{});};
+    },
   };
   registerAdapters({library});
 }

@@ -6,6 +6,12 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
+import android.media.AudioManager;
+import android.media.AudioFocusRequest;
+import android.media.AudioAttributes;
+import android.media.MediaPlayer;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Base64;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -47,6 +53,11 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   private String recordingId;
   private JSONObject recordingMetadata;
   private long written;
+  private MediaPlayer player;
+  private AudioManager playbackAudioManager;
+  private AudioFocusRequest playbackFocus;
+  private String playingId;
+  private String playbackState = "stopped";
 
   private File directory() {
     File dir = new File(getContext().getFilesDir(), "generated_music");
@@ -175,7 +186,7 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     }
     for(int i=0;i<index.length() && temporaryCount>3;) {
       JSONObject clip=index.getJSONObject(i);
-      if (!clip.optBoolean("favorite") && !clip.has("exportedUri")) {
+      if (!clip.optBoolean("favorite") && !clip.has("exportedUri") && !clip.optBoolean("recoveredProtected")) {
         String id=clip.getString("id");
         // Persist catalog before deleting older data to avoid loss on a write failure.
         evicted.add(id);
@@ -210,13 +221,15 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
       try {
         JSONArray source=loadIndex();
         JSONArray output=new JSONArray();
-        int start="recent".equals(filter)?Math.max(0,source.length()-3):0;
-        for(int i=start;i<source.length();i++) {
+        if (!"recent".equals(filter) && !"favorites".equals(filter) && !"exports".equals(filter))
+          throw new IllegalArgumentException("Неизвестный список файлов");
+        for(int i=source.length()-1;i>=0;i--) {
           JSONObject item=source.getJSONObject(i);
           if(!clipFile(item.getString("id")).isFile()) continue;
           if("favorites".equals(filter) && !item.optBoolean("favorite")) continue;
           if("exports".equals(filter) && !item.has("exportedUri")) continue;
           output.put(item);
+          if ("recent".equals(filter) && output.length() >= 3) break;
         }
         JSObject r=new JSObject();r.put("items",output);call.resolve(r);
       } catch(Exception ex){call.reject("Ошибка чтения файлов: "+ex.getMessage());}
@@ -346,8 +359,123 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     });
   }
 
+  /** Reads only a validated locally generated file, never an arbitrary device path. */
+  private void verifyPlayableClip(String id) throws Exception {
+    File file=clipFile(id);
+    if (!file.isFile() || file.length()<=44 || file.length()>MAX_PCM+44)
+      throw new IOException("Файл WAV отсутствует или повреждён");
+    boolean listed=false;
+    JSONArray catalog=loadIndex();
+    for(int i=0;i<catalog.length();i++) {
+      if(id.equals(catalog.getJSONObject(i).optString("id"))) {listed=true;break;}
+    }
+    if(!listed) throw new IOException("Запись отсутствует в каталоге");
+    try(RandomAccessFile wav=new RandomAccessFile(file,"r")) {
+      byte[] header=new byte[44]; wav.readFully(header);
+      if(!"RIFF".equals(new String(header,0,4,java.nio.charset.StandardCharsets.US_ASCII)) ||
+         !"WAVE".equals(new String(header,8,4,java.nio.charset.StandardCharsets.US_ASCII)) ||
+         !"fmt ".equals(new String(header,12,4,java.nio.charset.StandardCharsets.US_ASCII)) ||
+         !"data".equals(new String(header,36,4,java.nio.charset.StandardCharsets.US_ASCII)))
+        throw new IOException("Некорректный WAV");
+      long size=(header[40]&255L)|((header[41]&255L)<<8)|((header[42]&255L)<<16)|((header[43]&255L)<<24);
+      if(size!=file.length()-44 || size%FRAME_BYTES!=0)
+        throw new IOException("Повреждён размер WAV");
+    }
+  }
+
+  private void publishPlayback(String state) {
+    playbackState=state;
+    JSObject data=new JSObject();
+    data.put("state",state);
+    data.put("clipId",playingId == null ? "" : playingId);
+    notifyListeners("clipPlayback",data);
+  }
+
+  private void releasePlayer() {
+    MediaPlayer old=player;
+    player=null;
+    if(old!=null) {
+      try {old.setOnCompletionListener(null);}catch(Exception ignored){}
+      try {old.stop();}catch(Exception ignored){}
+      try {old.release();}catch(Exception ignored){}
+    }
+    if(playbackAudioManager!=null && playbackFocus!=null) {
+      try {playbackAudioManager.abandonAudioFocusRequest(playbackFocus);}catch(Exception ignored){}
+    }
+    playbackFocus=null;
+    playingId=null;
+    publishPlayback("stopped");
+  }
+
+  private void pausePlayer() {
+    if(player!=null && "playing".equals(playbackState)) {
+      try {player.pause();publishPlayback("paused");}
+      catch(Exception ignored) {releasePlayer();}
+    }
+  }
+
+  @PluginMethod public void playClip(PluginCall call) {
+    String id=call.getString("id");
+    writer.execute(()->{
+      try {
+        verifyPlayableClip(id);
+        if(id.equals(playingId) && player!=null) {
+          player.start();publishPlayback("playing");
+        } else {
+          releasePlayer();
+          playbackAudioManager=(AudioManager)getContext().getSystemService(Context.AUDIO_SERVICE);
+          if(playbackAudioManager==null)throw new IOException("Звуковая система недоступна");
+          AudioAttributes attrs=new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build();
+          playbackFocus=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(attrs).setOnAudioFocusChangeListener(change->{
+              if(change<=0) writer.execute(this::pausePlayer);
+            },new Handler(Looper.getMainLooper())).build();
+          if(playbackAudioManager.requestAudioFocus(playbackFocus)!=AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+            throw new IOException("Нет разрешения на воспроизведение звука");
+          MediaPlayer created=new MediaPlayer();
+          player=created;
+          created.setAudioAttributes(attrs);
+          created.setDataSource(clipFile(id).getAbsolutePath());
+          created.setOnCompletionListener(p->writer.execute(this::releasePlayer));
+          created.prepare();
+          created.start();
+          playingId=id;
+          publishPlayback("playing");
+        }
+        JSObject result=new JSObject();result.put("playing",true);result.put("id",id);call.resolve(result);
+      }catch(Exception ex) {
+        releasePlayer();call.reject("Не удалось воспроизвести WAV: "+ex.getMessage());
+      }
+    });
+  }
+
+  @PluginMethod public void pauseClip(PluginCall call) {
+    writer.execute(()->{
+      pausePlayer();
+      JSObject result=new JSObject();result.put("state",playbackState);call.resolve(result);
+    });
+  }
+
+  @PluginMethod public void stopClip(PluginCall call) {
+    writer.execute(()->{
+      releasePlayer();
+      JSObject result=new JSObject();result.put("state","stopped");call.resolve(result);
+    });
+  }
+
+  @PluginMethod public void playbackStatus(PluginCall call) {
+    writer.execute(()->{
+      JSObject result=new JSObject();
+      result.put("state",playbackState);
+      result.put("clipId",playingId == null ? "" : playingId);
+      call.resolve(result);
+    });
+  }
+
   @Override protected void handleOnDestroy() {
-    writer.execute(this::abortRecording);
+    writer.execute(()->{releasePlayer();abortRecording();});
     writer.shutdown();
     super.handleOnDestroy();
   }
