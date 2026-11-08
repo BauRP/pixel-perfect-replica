@@ -38,12 +38,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     : loc.pathname.startsWith("/studio") ? "/studio" : loc.pathname.startsWith("/settings") ? "/settings" : "";
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-background bg-page-glow">
-      <main className={cn("flex-1", !onboarding && "pb-24")}>{children}</main>
+    <div className="sw-shell mx-auto flex min-h-dvh w-full min-w-0 max-w-md flex-col bg-background bg-page-glow md:max-w-2xl">
+      <main className={cn("sw-main min-w-0 flex-1", !onboarding && "pb-[calc(6rem+env(safe-area-inset-bottom))]")}>{children}</main>
       {!onboarding && (
         <nav
           aria-label="Основная навигация"
-          className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md border-t border-border/60 bg-background/95 pb-safe backdrop-blur-md"
+          className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md border-t border-border/60 bg-background/95 pb-safe backdrop-blur-md md:max-w-2xl"
         >
           <ul className="grid grid-cols-3">
             {TABS.map((t) => {
@@ -54,11 +54,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                     to={t.to}
                     aria-current={on ? "page" : undefined}
                     className={cn(
-                      "flex min-h-16 flex-col items-center justify-center gap-1 text-xs font-semibold transition-colors",
+                      "sw-tab-link flex min-h-16 flex-col items-center justify-center gap-1 text-xs font-semibold transition-colors",
                       on ? "text-primary" : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    <span className={cn("grid h-8 w-14 place-items-center rounded-full", on && "bg-primary/15")}>
+                    <span className={cn("sw-tab-icon grid h-8 w-14 place-items-center rounded-full", on && "bg-primary/15")}>
                       <t.icon className="size-5" />
                     </span>
                     {t.label}

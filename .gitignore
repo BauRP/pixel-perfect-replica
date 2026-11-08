@@ -30,3 +30,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated native Android host, produced by Capacitor CLI
+android/
+dist-android/
