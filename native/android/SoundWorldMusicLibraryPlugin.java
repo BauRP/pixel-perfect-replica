@@ -68,7 +68,7 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Не удалось создать папку музыки");
     return dir;
   }
-  private boolean validId(String id) { return id != null && id.matches("[0-9a-f\\-]{36}"); }
+  private boolean validId(String id) { return id != null && id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"); }
   private File clipFile(String id) {
     if (!validId(id)) throw new IllegalArgumentException("Недопустимый идентификатор аудио");
     return new File(directory(), id + ".wav");
@@ -263,7 +263,7 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
       Uri outputUri=null;
       try {
         File file=clipFile(id);
-        if(!file.isFile() || file.length()<=44)throw new IOException("Реальный WAV отсутствует");
+        verifyPlayableClip(id);
         JSONArray index=loadIndex();
         JSONObject record=null;
         for(int i=0;i<index.length();i++) {
@@ -309,6 +309,7 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
               call.reject("Избранные и сохранённые записи не удаляются автоматически");return;
             }
             // Persist index before deleting file to avoid creating a broken entry.
+            if(id.equals(playingId)) releasePlayer();
             index.remove(i);saveIndex(index);clipFile(id).delete();removed=true;break;
           }
         }
@@ -327,7 +328,19 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
         if(partials!=null)for(File file:partials)if(!file.equals(partial))file.delete();
         for(int i=0;i<index.length();i++) {
           JSONObject item=index.getJSONObject(i);
-          if(clipFile(item.getString("id")).isFile()) valid.put(item);
+          String id=item.optString("id","");
+          if(!validId(id)) continue;
+          File file=clipFile(id);
+          try {
+            verifyWavFile(file);
+            valid.put(item);
+          } catch(Exception invalidFile) {
+            // Never silently erase user's favorite/export metadata.
+            // The UI suppresses inaccessible audio, but a recovered file can
+            // still regain its existing metadata on a future repair.
+            if(item.optBoolean("favorite") || item.has("exportedUri") || item.optBoolean("recoveredProtected"))
+              valid.put(item);
+          }
         }
         // Recover genuine WAVs that were fully committed to disk, but whose
         // metadata write failed. Never invent audio: check RIFF/WAVE and PCM length.
@@ -338,13 +351,9 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
           String name=file.getName();
           String id=name.substring(0,name.length()-4);
           if(!validId(id)||known.contains(id)||file.length()<=44||file.length()>MAX_PCM+44)continue;
-          try(RandomAccessFile wav=new RandomAccessFile(file,"r")) {
-            byte[] header=new byte[44]; wav.readFully(header);
-            if(!new String(header,0,4,java.nio.charset.StandardCharsets.US_ASCII).equals("RIFF") ||
-               !new String(header,8,4,java.nio.charset.StandardCharsets.US_ASCII).equals("WAVE") ||
-               !new String(header,36,4,java.nio.charset.StandardCharsets.US_ASCII).equals("data"))continue;
-            long size=(header[40]&255L)|((header[41]&255L)<<8)|((header[42]&255L)<<16)|((header[43]&255L)<<24);
-            if(size!=file.length()-44||size%FRAME_BYTES!=0)continue;
+          try {
+            verifyWavFile(file);
+            long size=file.length()-44;
             JSONObject item=new JSONObject();
             item.put("id",id);item.put("createdAt",file.lastModified());
             item.put("durationSec",size/(double)(SAMPLE_RATE*FRAME_BYTES));
@@ -357,23 +366,16 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
             valid.put(item);
           } catch(Exception ignored) { /* invalid WAV is not registered */ }
         }
-        if(valid.length()!=index.length() || valid.length()!=known.size())saveIndex(valid);
+        if(!valid.toString().equals(index.toString()))saveIndex(valid);
         JSObject r=new JSObject();r.put("recovered",valid.length());call.resolve(r);
       }catch(Exception ex){call.reject("Ошибка восстановления: "+ex.getMessage());}
     });
   }
 
   /** Reads only a validated locally generated file, never an arbitrary device path. */
-  private void verifyPlayableClip(String id) throws Exception {
-    File file=clipFile(id);
+  private void verifyWavFile(File file) throws Exception {
     if (!file.isFile() || file.length()<=44 || file.length()>MAX_PCM+44)
       throw new IOException("Файл WAV отсутствует или повреждён");
-    boolean listed=false;
-    JSONArray catalog=loadIndex();
-    for(int i=0;i<catalog.length();i++) {
-      if(id.equals(catalog.getJSONObject(i).optString("id"))) {listed=true;break;}
-    }
-    if(!listed) throw new IOException("Запись отсутствует в каталоге");
     try(RandomAccessFile wav=new RandomAccessFile(file,"r")) {
       byte[] header=new byte[44]; wav.readFully(header);
       if(!"RIFF".equals(new String(header,0,4,java.nio.charset.StandardCharsets.US_ASCII)) ||
@@ -391,6 +393,18 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
       if(size!=file.length()-44 || size%FRAME_BYTES!=0)
         throw new IOException("Повреждён размер WAV");
     }
+  }
+
+  /** Do not trust a user-supplied URI or a guessed filename. */
+  private void verifyPlayableClip(String id) throws Exception {
+    File file=clipFile(id);
+    boolean listed=false;
+    JSONArray catalog=loadIndex();
+    for(int i=0;i<catalog.length();i++) {
+      if(id.equals(catalog.getJSONObject(i).optString("id"))) {listed=true;break;}
+    }
+    if(!listed) throw new IOException("Запись отсутствует в каталоге");
+    verifyWavFile(file);
   }
 
   @Override public void load() {
