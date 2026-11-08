@@ -53,6 +53,8 @@ jobs:
           mkdir -p "$target"
           cp native/android/SoundWorldSensorsPlugin.java "$target/SoundWorldSensorsPlugin.java"
           cp native/android/MainActivity.java "$target/MainActivity.java"
+          cp native/android/SoundWorldPlaybackService.java "$target/SoundWorldPlaybackService.java"
+          cp native/android/SoundWorldPlaybackPlugin.java "$target/SoundWorldPlaybackPlugin.java"
           # Production YAMNet asset is bundled at APK build time (not downloaded by the user).
           mkdir -p android/app/src/main/assets
           curl --fail --location --retry 3 --silent --show-error \
@@ -72,6 +74,9 @@ jobs:
           for name in ('android.permission.RECORD_AUDIO','android.permission.ACTIVITY_RECOGNITION'):
               if name not in text:
                   text=text.replace('<application',f'<uses-permission android:name="{name}" />\\n    <application',1)
+          # Actual output only after user Play and genuine PCM; never auto-start on boot.
+          text=text.replace('<application', '<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />\\n    <application', 1)
+          text=text.replace('</application>', '<service android:name=".SoundWorldPlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback" />\\n    </application>', 1)
           path.write_text(text)
           PY
       - name: Build shell-only debug APK
