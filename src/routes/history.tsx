@@ -44,7 +44,7 @@ function HistoryPage(){
     const unsubscribe=library.observeStoredPlayback(state=>{if(mounted)setPlayback(state)});
     return ()=>{mounted=false;unsubscribe();};
   },[library,reload]);
-  const execute=async(action:()=>Promise<import("@/lib/sw/engine").Result>,message:string)=>{
+  const execute=async<T,>(action:()=>Promise<import("@/lib/sw/engine").Result<T>>,message:string)=>{
     if(busy)return;
     setBusy(true);
     try{
