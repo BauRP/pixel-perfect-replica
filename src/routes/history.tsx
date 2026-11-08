@@ -88,11 +88,11 @@ function HistoryPage(){
     <div className="px-4 py-4">
       {error&&<p role="alert" className="mb-3 rounded-lg border border-destructive/40 p-3 text-sm text-destructive">{error}</p>}
       <Tabs defaultValue="last">
-        <TabsList className="grid h-12 w-full grid-cols-4">
-          <TabsTrigger value="last">Последние 3</TabsTrigger>
-          <TabsTrigger value="fav">Избранное</TabsTrigger>
-          <TabsTrigger value="exp">Сохранённое</TabsTrigger>
-          <TabsTrigger value="trip">Путешествие</TabsTrigger>
+        <TabsList className="sw-history-tabs grid h-auto min-h-12 w-full grid-cols-4">
+          <TabsTrigger className="sw-history-tab min-w-0 px-1 text-[11px] whitespace-normal leading-tight" value="last">Последние 3</TabsTrigger>
+          <TabsTrigger className="sw-history-tab min-w-0 px-1 text-[11px] whitespace-normal leading-tight" value="fav">Избранное</TabsTrigger>
+          <TabsTrigger className="sw-history-tab min-w-0 px-1 text-[11px] whitespace-normal leading-tight" value="exp">Сохранённое</TabsTrigger>
+          <TabsTrigger className="sw-history-tab min-w-0 px-1 text-[11px] whitespace-normal leading-tight" value="trip">Путешествие</TabsTrigger>
         </TabsList>
         <TabsContent value="last" className="pt-4">
           {data.last.length?clipList(data.last):<Empty icon={Clock} title="Пока пусто" text="Здесь появятся последние три действительно созданных музыкальных фрагмента."/>}

@@ -97,7 +97,7 @@ function Player() {
       </div>
 
       {/* Cover: decorative illustration, not AI album art */}
-      <div className="relative mt-5 aspect-square w-full overflow-hidden rounded-[2rem] bg-cover-art shadow-card" role="img" aria-label="Декоративная обложка, не созданная ИИ">
+      <div className="sw-player-cover relative mt-5 aspect-square w-full overflow-hidden rounded-[2rem] bg-cover-art shadow-card" role="img" aria-label="Декоративная обложка, не созданная ИИ">
         <div className="absolute inset-[18%] rounded-full border border-foreground/10 animate-breathe" />
         <div className="absolute inset-[32%] rounded-full border border-foreground/15" />
         <div className="absolute inset-[44%] rounded-full bg-background/40 backdrop-blur-sm" />
