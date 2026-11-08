@@ -173,7 +173,7 @@ export function addCompletedClip(list: ClipMeta[], clip: ClipMeta, max = 3): { k
   const evicted: ClipMeta[] = [];
   const temps = () => all.filter((c) => !c.favorite && !c.exportedUri);
   while (temps().length > max) {
-    const oldest = temps().sort((a, b) => a.createdAt - b.createdAt)[0];
+    const oldest = temps().sort((a, b) => a.createdAt - b.createdAt)[0]!;
     all.splice(all.indexOf(oldest), 1);
     evicted.push(oldest);
   }

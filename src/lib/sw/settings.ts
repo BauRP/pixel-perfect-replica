@@ -81,7 +81,7 @@ const oneOf = <T extends string>(v: unknown, opts: readonly T[], def: T): T =>
 export function migrateSettings(raw: unknown): Settings {
   const d = DEFAULT_SETTINGS;
   if (!raw || typeof raw !== "object") return { ...d };
-  const r = raw as Record<string, unknown>;
+  const r = raw as Partial<Record<keyof Settings, unknown>>;
   const strArr = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
   const dislikes: Record<string, DislikeLevel> = {};
   if (r.dislikes && typeof r.dislikes === "object") {
