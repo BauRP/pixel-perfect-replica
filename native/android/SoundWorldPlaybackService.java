@@ -36,6 +36,7 @@ public final class SoundWorldPlaybackService extends Service {
   private static volatile SoundWorldPlaybackService active;
   private final ArrayBlockingQueue<byte[]> chunks = new ArrayBlockingQueue<>(16);
   private final AtomicBoolean running = new AtomicBoolean(false);
+  private final AtomicBoolean writerActive = new AtomicBoolean(false);
   private final AtomicBoolean paused = new AtomicBoolean(false);
   private volatile boolean actualPlayback = false;
   private AudioTrack audioTrack;
@@ -107,12 +108,18 @@ public final class SoundWorldPlaybackService extends Service {
   public synchronized boolean offerPcm(byte[] pcm) {
     // 16-bit stereo: samples must align to 4 bytes; <1s at 48kHz; never store ambient microphone data.
     if (pcm == null || pcm.length == 0 || pcm.length % 4 != 0 || pcm.length > 192000 || paused.get()) return false;
-    if (!chunks.offer(pcm)) return false;
-    if (running.compareAndSet(false, true)) {
+    if (!running.get() && writerActive.get()) return false; // previous AudioTrack is still releasing
+    if (writerActive.compareAndSet(false, true)) {
+      running.set(true);
+      if (!chunks.offer(pcm)) {
+        running.set(false);
+        writerActive.set(false);
+        return false;
+      }
       writer = new Thread(this::writeAudio, "SoundWorld-PCM-Output");
       writer.setDaemon(true);
       writer.start();
-    }
+    } else if (!running.get() || !chunks.offer(pcm)) return false;
     return true; // queued, not necessarily audible yet
   }
 
@@ -163,16 +170,18 @@ public final class SoundWorldPlaybackService extends Service {
     } finally {
       releaseAudio();
       running.set(false);
+      writerActive.set(false);
     }
   }
 
   private void publishState(boolean playing) {
-    if (session == null) return;
+    MediaSession currentSession = session;
+    if (currentSession == null) return;
     PlaybackState state = new PlaybackState.Builder()
       .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_STOP)
       .setState(playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
         PlaybackState.PLAYBACK_POSITION_UNKNOWN, playing ? 1f : 0f).build();
-    session.setPlaybackState(state);
+    try { currentSession.setPlaybackState(state); } catch (IllegalStateException ignored) {}
   }
 
   public synchronized void pauseAudio() {
@@ -204,7 +213,8 @@ public final class SoundWorldPlaybackService extends Service {
   @Override public void onDestroy() {
     pauseAudio();
     if (unplug != null) { try { unregisterReceiver(unplug); } catch(Exception ignored) {} }
-    if (session != null) {session.setActive(false);session.release();}
+    MediaSession oldSession = session; session = null;
+    if (oldSession != null) {oldSession.setActive(false);oldSession.release();}
     active = null;
     super.onDestroy();
   }
