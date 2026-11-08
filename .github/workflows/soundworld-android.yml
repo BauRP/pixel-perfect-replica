@@ -88,8 +88,10 @@ jobs:
           set -euo pipefail
           apk=android/app/build/outputs/apk/debug/app-debug.apk
           test -s "$apk"
-          unzip -Z -1 "$apk" | grep -Fxq "assets/yamnet.tflite"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" | grep -Fq "sdkVersion:'31'"
+          unzip -Z -1 "$apk" > /tmp/soundworld-apk-entries.txt
+          grep -Fx "assets/yamnet.tflite" /tmp/soundworld-apk-entries.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" > /tmp/soundworld-apk-badging.txt
+          grep -F "sdkVersion:'31'" /tmp/soundworld-apk-badging.txt
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
