@@ -58,6 +58,7 @@ export async function sensorStatus(): Promise<SensorsStatus | null> {
 }
 export async function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
   if (!androidSensorsAvailable()) return unavailable("Только в Android APK");
+  let started=false;
   try {
     const permission = await native.requestMicrophone();
     if (!permission.granted) return {ok:false,code:"PERMISSION_DENIED",message:"Микрофон не разрешён"};
@@ -67,12 +68,16 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
       ? await native.startAnalysis()
       : await native.startMicrophoneProbe();
     if (!r.started) return unavailable("Проверка микрофона не запущена");
+    started=true;
     if (includeSteps) {
       const activity = await native.requestActivity();
       if (activity.granted) await native.startSteps();
     }
     return {ok:true,value:undefined};
-  } catch(e) { return safeError(e); }
+  } catch(e) {
+    if(started)await stopSensorDiagnostics();
+    return safeError(e);
+  }
 }
 export async function stopSensorDiagnostics(): Promise<void> {
   if (!androidSensorsAvailable()) return;

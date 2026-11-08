@@ -98,6 +98,7 @@ public final class SoundWorldPlaybackService extends Service {
     if (ACTION_STOP.equals(action)) { stopSelf(); return START_NOT_STICKY; }
     if (ACTION_PAUSE.equals(action)) { pauseAudio(); return START_NOT_STICKY; }
     if (!ACTION_START.equals(action)) { stopSelf(); return START_NOT_STICKY; }
+    paused.set(false);
     startForeground(NOTIFICATION_ID, notification("Ожидание настоящего аудио"));
     return START_NOT_STICKY; // Android must never auto-restart mic or audio by itself
   }
