@@ -192,6 +192,18 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     partial=null;recordingId=null;recordingMetadata=null;written=0;
   }
 
+  /** Abort the active incomplete temporary file, never a finished favorite/export. */
+  @PluginMethod public void abortClip(PluginCall call) {
+    String id = call.getString("id");
+    writer.execute(() -> {
+      if (id == null || !id.equals(recordingId)) {
+        call.reject("Запись не найдена или уже завершена"); return;
+      }
+      abortRecording();
+      JSObject result = new JSObject(); result.put("aborted", true); call.resolve(result);
+    });
+  }
+
   @PluginMethod public void list(PluginCall call) {
     String filter=call.getString("filter","recent");
     writer.execute(() -> {
@@ -293,11 +305,41 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     writer.execute(() -> {
       try {
         JSONArray index=loadIndex();JSONArray valid=new JSONArray();
+        // Incomplete recordings after process death are not playable WAV files.
+        File[] partials=directory().listFiles((dir,name)->name.endsWith(".partial"));
+        if(partials!=null)for(File file:partials)if(!file.equals(partial))file.delete();
         for(int i=0;i<index.length();i++) {
           JSONObject item=index.getJSONObject(i);
           if(clipFile(item.getString("id")).isFile()) valid.put(item);
         }
-        if(valid.length()!=index.length())saveIndex(valid);
+        // Recover genuine WAVs that were fully committed to disk, but whose
+        // metadata write failed. Never invent audio: check RIFF/WAVE and PCM length.
+        java.util.HashSet<String> known = new java.util.HashSet<>();
+        for(int i=0;i<valid.length();i++) known.add(valid.getJSONObject(i).getString("id"));
+        File[] files=directory().listFiles((dir,name)->name.endsWith(".wav"));
+        if(files!=null)for(File file:files) {
+          String name=file.getName();
+          String id=name.substring(0,name.length()-4);
+          if(!validId(id)||known.contains(id)||file.length()<=44||file.length()>MAX_PCM+44)continue;
+          try(RandomAccessFile wav=new RandomAccessFile(file,"r")) {
+            byte[] header=new byte[44]; wav.readFully(header);
+            if(!new String(header,0,4,java.nio.charset.StandardCharsets.US_ASCII).equals("RIFF") ||
+               !new String(header,8,4,java.nio.charset.StandardCharsets.US_ASCII).equals("WAVE") ||
+               !new String(header,36,4,java.nio.charset.StandardCharsets.US_ASCII).equals("data"))continue;
+            long size=(header[40]&255L)|((header[41]&255L)<<8)|((header[42]&255L)<<16)|((header[43]&255L)<<24);
+            if(size!=file.length()-44||size%FRAME_BYTES!=0)continue;
+            JSONObject item=new JSONObject();
+            item.put("id",id);item.put("createdAt",file.lastModified());
+            item.put("durationSec",size/(double)(SAMPLE_RATE*FRAME_BYTES));
+            item.put("genreIds",new JSONArray());item.put("instrumentIds",new JSONArray());
+            item.put("mood",0);item.put("speed",0);
+            item.put("favorite",true); // do NOT automatically evict recovered audio.
+            item.put("recoveredWithoutSettings",true);
+            item.put("uri",Uri.fromFile(file).toString());
+            valid.put(item);
+          } catch(Exception ignored) { /* invalid WAV is not registered */ }
+        }
+        if(valid.length()!=index.length() || valid.length()!=known.size())saveIndex(valid);
         JSObject r=new JSObject();r.put("recovered",valid.length());call.resolve(r);
       }catch(Exception ex){call.reject("Ошибка восстановления: "+ex.getMessage());}
     });

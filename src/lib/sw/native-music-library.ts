@@ -9,6 +9,7 @@ interface LibraryPlugin {
   beginClip(args:{genreIdsJson:string;instrumentIdsJson:string;mood:number;speed:number}):Promise<{id:string}>;
   appendPcm(args:{id:string;base64:string}):Promise<{bytesWritten:number}>;
   finishClip(args:{id:string}):Promise<{clip:ClipMeta}>;
+  abortClip(args:{id:string}):Promise<{aborted:boolean}>;
   list(args:{filter:"recent"|"favorites"|"exports"}):Promise<{items:ClipMeta[]}>;
   favorite(args:{id:string;value:boolean}):Promise<{updated:boolean}>;
   export(args:{id:string}):Promise<{uri:string}>;
@@ -37,6 +38,10 @@ export async function finishGenuineClip(id:string):Promise<Result<ClipMeta>> {
   if(!nativeMusicLibraryAvailable())return unavailable("Только Android");
   try {const r=await native.finishClip({id});return {ok:true,value:r.clip};}
   catch(e){return error(e);}
+}
+export async function abortGenuineClip(id:string):Promise<void> {
+  if(!nativeMusicLibraryAvailable())return;
+  try {await native.abortClip({id});} catch { /* already finished / unavailable */ }
 }
 export function installNativeMusicLibraryAdapter():void {
   if(!nativeMusicLibraryAvailable())return;

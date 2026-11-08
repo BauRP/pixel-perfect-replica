@@ -134,3 +134,25 @@ export class GeneratedPcmSession {
     }
   }
 }
+
+/** Real-PCM-only handoff to Android native AudioTrack and 120-second WAV storage.
+ * The caller must explicitly start an actual model and request the audio sink.
+ * Creating this object does not open a microphone, play tones or create files.
+ */
+export function createNativeGeneratedPcmSession(settings:Settings,genres:string[]) {
+  const outputPromise=import("./native-pcm");
+  const libraryPromise=import("./native-music-library");
+  const sink:AudioSink={
+    append:async(bytes)=>{
+      const x=await outputPromise;
+      return x.appendRealPcm(bytes);
+    },
+  };
+  const store:ClipStore={
+    begin:async(s,g)=> (await libraryPromise).beginGenuineClip(s,g),
+    append:async(id,bytes)=> (await libraryPromise).appendGenuineClipPcm(id,bytes),
+    finish:async(id)=> (await libraryPromise).finishGenuineClip(id),
+    abort:async(id)=> (await libraryPromise).abortGenuineClip(id),
+  };
+  return new GeneratedPcmSession(sink,store,settings,genres);
+}

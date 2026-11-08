@@ -43,6 +43,9 @@ export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
     return {ok:true,value:"queued"};
   }catch(e){return {ok:false,code:"ERROR",message:String(e)};}
 }
+export async function pauseNativeAudioSink():Promise<void>{
+  if(Capacitor.getPlatform()==="android")await native.pause().catch(()=>{});
+}
 export async function stopNativeAudioSink():Promise<void>{
   if(Capacitor.getPlatform()==="android")await native.stop().catch(()=>{});
 }
