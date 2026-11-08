@@ -6,7 +6,7 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { registerAdapters, type Adapters, type ClipMeta, type Result } from "./engine";
 import type { Settings } from "./settings";
 interface LibraryPlugin {
-  beginClip(args:{genreIdsJson:string;mood:number;speed:number}):Promise<{id:string}>;
+  beginClip(args:{genreIdsJson:string;instrumentIdsJson:string;mood:number;speed:number}):Promise<{id:string}>;
   appendPcm(args:{id:string;base64:string}):Promise<{bytesWritten:number}>;
   finishClip(args:{id:string}):Promise<{clip:ClipMeta}>;
   list(args:{filter:"recent"|"favorites"|"exports"}):Promise<{items:ClipMeta[]}>;
@@ -22,7 +22,7 @@ export const nativeMusicLibraryAvailable=()=>Capacitor.getPlatform()==="android"
 /** Only a real Magenta/audio source may begin this transaction. */
 export async function beginGenuineClip(settings:Settings,genreIds:string[]):Promise<Result<string>> {
   if(!nativeMusicLibraryAvailable())return unavailable("Только Android");
-  try {const r=await native.beginClip({mood:settings.mood,speed:settings.speed,genreIdsJson:JSON.stringify(genreIds)});return {ok:true,value:r.id};}
+  try {const r=await native.beginClip({mood:settings.mood,speed:settings.speed,genreIdsJson:JSON.stringify(genreIds),instrumentIdsJson:JSON.stringify(settings.favoriteInstrumentIds)});return {ok:true,value:r.id};}
   catch(e){return error(e);}
 }
 /** PCM belongs to the actual generator output; never pass ambient microphone buffers. */

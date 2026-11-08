@@ -83,6 +83,13 @@ jobs:
       - name: Build shell-only debug APK
         working-directory: android
         run: bash ./gradlew assembleDebug
+      - name: Verify offline model and supported Android floor in built APK
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$apk"
+          unzip -Z -1 "$apk" | grep -Fxq "assets/yamnet.tflite"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" | grep -Fq "sdkVersion:'31'"
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:

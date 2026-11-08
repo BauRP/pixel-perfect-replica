@@ -65,6 +65,7 @@ export interface ClipMeta {
   createdAt: number;
   durationSec: number;
   genreIds: string[];
+  instrumentIds?: string[]; // real request metadata when captured
   mood: number;
   speed: number;
   uri?: string; // real local audio file

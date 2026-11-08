@@ -22,6 +22,7 @@ import java.io.OutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.UUID;
+import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -92,6 +93,9 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
         recordingMetadata.put("id", id);
         recordingMetadata.put("createdAt", System.currentTimeMillis());
         recordingMetadata.put("genreIds", genres);
+        JSONArray instruments = new JSONArray(call.getString("instrumentIdsJson", "[]"));
+        if (instruments.length() > 100) throw new IllegalArgumentException("Слишком много инструментов");
+        recordingMetadata.put("instrumentIds", instruments);
         recordingMetadata.put("mood", mood);
         recordingMetadata.put("speed", speed);
         recordingMetadata.put("favorite", false);
@@ -151,8 +155,9 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
         recordingMetadata.put("uri", Uri.fromFile(completed).toString());
         JSONArray index=loadIndex();
         index.put(recordingMetadata);
-        prune(index);
+        ArrayList<String> evicted = prune(index);
         saveIndex(index);
+        for (String previous : evicted) clipFile(previous).delete();
         JSObject r = new JSObject();r.put("clip", recordingMetadata);call.resolve(r);
         partial=null;recordingId=null;recordingMetadata=null;written=0;
       } catch(Exception ex) {
@@ -161,7 +166,8 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     });
   }
 
-  private void prune(JSONArray index) throws Exception {
+  private ArrayList<String> prune(JSONArray index) throws Exception {
+    ArrayList<String> evicted = new ArrayList<>();
     int temporaryCount=0;
     for(int i=0;i<index.length();i++) {
       JSONObject clip=index.getJSONObject(i);
@@ -171,11 +177,12 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
       JSONObject clip=index.getJSONObject(i);
       if (!clip.optBoolean("favorite") && !clip.has("exportedUri")) {
         String id=clip.getString("id");
-        // Delete oldest unprotected local file only. Favorites and exports remain.
-        clipFile(id).delete();
+        // Persist catalog before deleting older data to avoid loss on a write failure.
+        evicted.add(id);
         index.remove(i);temporaryCount--;
       } else i++;
     }
+    return evicted;
   }
 
   private void abortRecording() {
@@ -249,7 +256,8 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
           output.flush();
         }
         ContentValues done=new ContentValues();done.put(MediaStore.Audio.Media.IS_PENDING,0);
-        getContext().getContentResolver().update(outputUri,done,null,null);
+        if(getContext().getContentResolver().update(outputUri,done,null,null)<1)
+          throw new IOException("Не удалось подтвердить сохранение файла");
         record.put("exportedUri",outputUri.toString());
         saveIndex(index);
         JSObject r=new JSObject();r.put("uri",outputUri.toString());call.resolve(r);
