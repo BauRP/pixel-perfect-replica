@@ -11,6 +11,7 @@ export interface ControlPlan {
   atmosphere: Atmosphere;
   tempoBpm: number; // requested composition tempo, NOT playback-rate manipulation
   stepPulseBpm: number | null; // separate accent layer; does not speed up source music
+  stepAccentStrength: number; // weak/normal/active affect intensity, not sensor availability
   mood: number;
   activity: "walking" | "running" | "unknown";
   density: number; // 0..1, no playback-volume changes
@@ -57,17 +58,18 @@ export class MusicControlPlanner {
   }
   plan(settings: Settings, now: number): ControlPlan {
     const tempoBpm = 94 + clamp(settings.speed, -3, 3) * 10;
-    const fresh = this.lastPace && now >= this.lastPace.timestamp &&
+    const fresh = !settings.musicOnlyMode && this.lastPace && now >= this.lastPace.timestamp &&
       now - this.lastPace.timestamp <= 4500 ? this.lastPace : null;
-    const stepsAllowed = settings.stepsInfluence !== "weak";
-    const basePulse = fresh && stepsAllowed && settings.activityMode !== "rest" &&
+    const basePulse = fresh && settings.activityMode !== "rest" &&
       settings.activityMode !== "transport" ? fresh.bpm : null;
     // Respect deliberate slow tempo even while the listener is running:
     // step accents may be HALF-TIME, without retiming the generated music.
     const halfTime = basePulse !== null && settings.speed <= -2 && basePulse > 125;
     const stepPulseBpm = basePulse === null ? null :
       Math.round(clamp(halfTime ? basePulse / 2 : basePulse, 55, 180));
-    const activity = !fresh ? "unknown" : fresh.bpm >= 145 ? "running" : "walking";
+    const activity = settings.activityMode === "running" ? "running" : settings.activityMode === "walking" ? "walking" :
+      settings.activityMode === "rest" || settings.activityMode === "transport" ? "unknown" :
+      !fresh ? "unknown" : fresh.bpm >= 145 ? "running" : "walking";
     const strength = settings.environmentReaction === "weak" ? .12 :
       settings.environmentReaction === "medium" ? .28 : .44;
     const density = clamp(.36 + Math.max(0, settings.mood) * .035 +
@@ -82,7 +84,9 @@ export class MusicControlPlanner {
     const regenerate = !settings.musicOnlyMode && !this.locked && this.regenerationDue;
     this.regenerationDue = false;
     return {
-      atmosphere: env, tempoBpm, stepPulseBpm, mood: settings.mood,
+      atmosphere: env, tempoBpm, stepPulseBpm,
+      stepAccentStrength: settings.stepsInfluence === "weak" ? .12 : settings.stepsInfluence === "active" ? .6 : .32,
+      mood: settings.mood,
       activity, density, transitionMs: transitions[settings.atmosphereTransition],
       regenerate, lockedAtmosphere: this.locked,
       directorEffects, allowProcessedAmbientAudio: !settings.musicOnlyMode &&

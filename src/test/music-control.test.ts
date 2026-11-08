@@ -48,6 +48,14 @@ describe("real-world signals to future music directives", () => {
     expect(x.atmosphere).toBe("unknown");
     expect(x.allowProcessedAmbientAudio).toBe(false);
     expect(x.regenerate).toBe(false);
+    expect(x.stepPulseBpm).toBeNull();
+  });
+  it("weak steps still receive quiet accents rather than being disabled",()=>{
+    const p=new MusicControlPlanner();p.observePace({bpm:90,confidence:.8,timestamp:1000});
+    const weak=p.plan({...DEFAULT_SETTINGS,stepsInfluence:"weak"},1000);
+    const active=p.plan({...DEFAULT_SETTINGS,stepsInfluence:"active"},1000);
+    expect(weak.stepPulseBpm).toBe(90);
+    expect(weak.stepAccentStrength).toBeLessThan(active.stepAccentStrength);
   });
 });
 describe("audio interruption safety rules",()=>{
