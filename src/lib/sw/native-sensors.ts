@@ -39,8 +39,8 @@ interface SensorsPlugin {
 }
 const native = registerPlugin<SensorsPlugin>("SoundWorldSensors");
 export const androidSensorsAvailable = () => Capacitor.getPlatform() === "android";
-const unavailable = <T>(message: string): Result<T> => ({ ok: false, code: "UNAVAILABLE", message });
-const safeError = (e: unknown): Result => ({
+const unavailable = (message: string): {ok:false;code:"UNAVAILABLE";message:string} => ({ ok: false, code: "UNAVAILABLE", message });
+const safeError = (e: unknown): {ok:false;code:"ERROR";message:string} => ({
   ok: false,
   code: "ERROR",
   message: e instanceof Error ? e.message : "Ошибка модуля Android",
