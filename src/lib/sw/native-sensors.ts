@@ -29,11 +29,13 @@ interface SensorsPlugin {
   requestMicrophone(): Promise<{ granted: boolean }>;
   requestActivity(): Promise<{ granted: boolean }>;
   startAnalysis(): Promise<NativeResult>;
+  startMicrophoneProbe(): Promise<NativeResult>;
+  stopMicrophoneProbe(): Promise<NativeResult>;
   stopAnalysis(): Promise<NativeResult>;
   startSteps(): Promise<NativeResult>;
   stopSteps(): Promise<NativeResult>;
   actualMicrophone(): Promise<{ name: string; kind: string; active: boolean; output: string }>;
-  addListener(event: "yamnet" | "step" | "analysisError", callback: (value: any) => void): Promise<PluginListenerHandle>;
+  addListener(event: "yamnet" | "step" | "analysisError" | "micLevel", callback: (value: any) => void): Promise<PluginListenerHandle>;
 }
 const native = registerPlugin<SensorsPlugin>("SoundWorldSensors");
 export const androidSensorsAvailable = () => Capacitor.getPlatform() === "android";
@@ -52,8 +54,8 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
   try {
     const permission = await native.requestMicrophone();
     if (!permission.granted) return {ok:false,code:"PERMISSION_DENIED",message:"Микрофон не разрешён"};
-    const r = await native.startAnalysis();
-    if (!r.started) return unavailable("YAMNet не запущен");
+    const r = await native.startMicrophoneProbe();
+    if (!r.started) return unavailable("Проверка микрофона не запущена");
     if (includeSteps) {
       const activity = await native.requestActivity();
       if (activity.granted) await native.startSteps();
@@ -63,15 +65,16 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
 }
 export async function stopSensorDiagnostics(): Promise<void> {
   if (!androidSensorsAvailable()) return;
-  await Promise.allSettled([native.stopAnalysis(),native.stopSteps()]);
+  await Promise.allSettled([native.stopMicrophoneProbe(),native.stopSteps()]);
 }
-function subscribe<T>(event: "yamnet"|"step"|"analysisError", cb: (data:T)=>void):Unsubscribe {
+function subscribe<T>(event: "yamnet"|"step"|"analysisError"|"micLevel", cb: (data:T)=>void):Unsubscribe {
   if (!androidSensorsAvailable()) return () => {};
   let closed = false;
   const handle = native.addListener(event, data=>{if(!closed) cb(data as T);});
   return () => {closed=true; void handle.then(h=>h.remove()).catch(()=>{});};
 }
 export function observeRawSound(cb:(sound:RawSound)=>void):Unsubscribe { return subscribe("yamnet",cb); }
+export function observeMicrophoneLevel(cb:(level:{rms:number;timestamp:number;input:string})=>void):Unsubscribe {return subscribe("micLevel",cb);}
 export function observeRawSteps(cb:(step:RawStep)=>void):Unsubscribe { return subscribe("step",cb); }
 export function observeSensorErrors(cb:(message:string)=>void):Unsubscribe {
   return subscribe<{message:string}>("analysisError",e=>cb(e.message));
@@ -102,7 +105,7 @@ export function installNativeSensorAdapters(): void {
         try {
           const s=await native.status();
           if(!s.microphoneGranted) return {ok:false,code:"PERMISSION_DENIED",message:"Разрешите микрофон при запуске музыки"};
-          const r=await native.startAnalysis();return r.started?{ok:true,value:undefined}:unavailable("YAMNet не запущен");
+          return unavailable("Нейросеть YAMNet не включена в APK; захват доступен только в диагностике");
         }catch(e){return safeError(e);}
       },
       stopCapture: async () => {

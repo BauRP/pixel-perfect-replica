@@ -1,4 +1,4 @@
-name: SoundWorld Android shell (Phase 2)
+name: SoundWorld Android native sensors (Phase 2)
 
 on:
   push:
@@ -46,12 +46,28 @@ jobs:
           npx cap add android
           npx cap sync android
           sed -i 's/minSdkVersion = [0-9]*/minSdkVersion = 31/' android/variables.gradle
+      - name: Install real SoundWorld native sensor plugin
+        run: |
+          set -euo pipefail
+          target=android/app/src/main/java/kz/soundworld/ar
+          mkdir -p "$target"
+          cp native/android/SoundWorldSensorsPlugin.java "$target/SoundWorldSensorsPlugin.java"
+          cp native/android/MainActivity.java "$target/MainActivity.java"
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path('android/app/src/main/AndroidManifest.xml')
+          text=path.read_text()
+          for name in ('android.permission.RECORD_AUDIO','android.permission.ACTIVITY_RECOGNITION'):
+              if name not in text:
+                  text=text.replace('<application',f'<uses-permission android:name="{name}" />\\n    <application',1)
+          path.write_text(text)
+          PY
       - name: Build shell-only debug APK
         working-directory: android
         run: bash ./gradlew assembleDebug
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: soundworld-phase2-shell-debug-apk
+          name: soundworld-phase2-native-diagnostics-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
