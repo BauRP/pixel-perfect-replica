@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { PageHeader, Section } from "@/components/sw/ui";
 import {
-  androidSensorsAvailable, observeRawSteps, observeSensorErrors, sensorStatus,
+  androidSensorsAvailable, observeRawSteps, observeSensorErrors, observeRawSound, sensorStatus,
   startSensorDiagnostics, stopSensorDiagnostics, ATMOSPHERE_RU,
   type SensorsStatus
 } from "@/lib/sw/native-sensors";
@@ -19,6 +19,7 @@ function Diagnostics() {
   const [active,setActive] = useState(false);
   const [steps,setSteps] = useState("Нет подтверждённых шагов");
   const [error,setError] = useState("");
+  const [environment,setEnvironment] = useState("Обстановка не определена");
   useEffect(()=>{
     const estimator = new StepPaceEstimator();
     let mounted=true;
@@ -28,7 +29,8 @@ function Diagnostics() {
       if (pace.activity!=="unknown")setSteps((pace.activity==="running"?"Бег":"Ходьба")+" · "+pace.bpm+" шагов/мин");
     });
     const removeErrors=observeSensorErrors(setError);
-    return ()=>{mounted=false;removeSteps();removeErrors();void stopSensorDiagnostics()};
+    const removeSounds=observeRawSound(e=>setEnvironment(e.label+" · "+Math.round(e.confidence*100)+"%"));
+    return ()=>{mounted=false;removeSteps();removeErrors();removeSounds();void stopSensorDiagnostics()};
   },[]);
   const start=async()=>{
     const result=await startSensorDiagnostics(true);
@@ -50,7 +52,7 @@ function Diagnostics() {
             <p>Источник микрофона: {status?.recording?status.actualInput||"Проверяется":"Не используется"}</p>
             <p>Датчик шагов: {status?.stepsSupported?"Найден":"Нет данных / отсутствует"}</p>
             <p>Активность: {steps}</p>
-            <p>Обстановка: {ATMOSPHERE_RU.unknown} (YAMNet не подключена)</p>
+            <p>Обстановка: {status?.yamnetIncluded ? environment : ATMOSPHERE_RU.unknown}</p>
             {error&&<p role="alert" className="text-destructive">{error}</p>}
           </div>
         </Section>
@@ -66,7 +68,7 @@ function Diagnostics() {
         </div>
         <p className="text-xs text-muted-foreground">
           Проверка запускается только по нажатию и выключается при уходе с экрана.
-          Никакие разговоры не сохраняются. Распознавание YAMNet и музыка заработают только после установки настоящих моделей.
+          Никакие разговоры не сохраняются. Проверка микрофона не включает YAMNet автоматически. Музыкальная генерация пока недоступна.
         </p>
       </div>
     </>

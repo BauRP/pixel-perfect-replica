@@ -24,6 +24,16 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import com.getcapacitor.PermissionState;
 import java.util.concurrent.atomic.AtomicBoolean;
+import com.google.mediapipe.tasks.audio.audioclassifier.AudioClassifier;
+import com.google.mediapipe.tasks.audio.audioclassifier.AudioClassifier.AudioClassifierOptions;
+import com.google.mediapipe.tasks.audio.audioclassifier.AudioClassifierResult;
+import com.google.mediapipe.tasks.components.containers.AudioData;
+import com.google.mediapipe.tasks.components.containers.AudioData.AudioDataFormat;
+import com.google.mediapipe.tasks.components.containers.Category;
+import com.google.mediapipe.tasks.components.containers.Classifications;
+import com.google.mediapipe.tasks.components.containers.ClassificationResult;
+import com.google.mediapipe.tasks.core.BaseOptions;
+import java.io.IOException;
 
 /**
  * Real on-device microphone routing/probe and Android step detector.
@@ -42,12 +52,19 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private final Object captureLock = new Object();
   private final AtomicBoolean capturing = new AtomicBoolean(false);
   private AudioRecord recorder;
+  private AudioClassifier analyzer;
+  private volatile int actualInputType = -1;
   private Thread captureThread;
   private SensorManager sensorManager;
   private Sensor stepDetector;
   private boolean listeningSteps = false;
   private volatile String actualInput = "";
   private volatile String actualKind = "";
+
+  private boolean hasYamnetAsset() {
+    try (java.io.InputStream in = getContext().getAssets().open("yamnet.tflite")) { return in.read() != -1; }
+    catch (IOException e) { return false; }
+  }
 
   private boolean granted(String permission) {
     return ContextCompat.checkSelfPermission(getContext(), permission) == PackageManager.PERMISSION_GRANTED;
@@ -56,7 +73,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   @PluginMethod
   public void status(PluginCall call) {
     JSObject o = new JSObject();
-    o.put("yamnetIncluded", false); // no actual neural model bundled yet
+    o.put("yamnetIncluded", hasYamnetAsset()); // verified local asset presence, not successful inference
     o.put("microphoneGranted", granted(Manifest.permission.RECORD_AUDIO));
     o.put("activityGranted", granted(Manifest.permission.ACTIVITY_RECOGNITION));
     SensorManager sm = (SensorManager) getContext().getSystemService(Context.SENSOR_SERVICE);
@@ -96,12 +113,17 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
 
   @PluginMethod
   public void startAnalysis(PluginCall call) {
-    // Actual YAMNet inference is not yet implemented: refuse rather than pretend.
-    call.reject("Локальная модель YAMNet ещё не установлена");
+    if (!hasYamnetAsset()) { call.reject("Модель YAMNet отсутствует в APK"); return; }
+    new Thread(() -> openCapture(call, true), "SoundWorld-Yamnet-Init").start();
   }
 
   @PluginMethod
   public void startMicrophoneProbe(PluginCall call) {
+    new Thread(() -> openCapture(call, false), "SoundWorld-Mic-Init").start();
+  }
+
+  /** All I/O and model initialization happens off the Android UI thread. */
+  private void openCapture(PluginCall call, boolean classify) {
     if (!granted(Manifest.permission.RECORD_AUDIO)) {
       call.reject("Требуется разрешение микрофона");
       return;
@@ -113,7 +135,15 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       int min = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
       if (min <= 0) { call.reject("Устройство не поддерживает захват 16 кГц"); return; }
       AudioRecord rec = null;
+      AudioClassifier preparedClassifier = null;
       try {
+        if (classify) {
+          AudioClassifierOptions options = AudioClassifierOptions.builder()
+            .setBaseOptions(BaseOptions.builder().setModelAssetPath("yamnet.tflite").build())
+            .setMaxResults(5)
+            .build();
+          preparedClassifier = AudioClassifier.createFromOptions(getContext(), options);
+        }
         rec = new AudioRecord(MediaRecorder.AudioSource.MIC, 16000,
           AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
           Math.max(min * 2, 3200));
@@ -135,9 +165,11 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         rec.startRecording();
         if (rec.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IllegalStateException("Захват микрофона не начался");
         recorder = rec;
+        analyzer = preparedClassifier;
         AudioDeviceInfo routed = rec.getRoutedDevice();
         actualInput = routed != null ? String.valueOf(routed.getProductName()) : "Маршрут ещё не определён";
         actualKind = routed != null ? String.valueOf(routed.getType()) : "unknown";
+        actualInputType = routed != null ? routed.getType() : -1;
         capturing.set(true);
         final AudioRecord active = rec;
         captureThread = new Thread(() -> readMic(active), "SoundWorld-Microphone-Probe");
@@ -147,6 +179,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       } catch (Exception ex) {
         capturing.set(false);
         if (rec != null) { try { rec.release(); } catch (Exception ignored) {} }
+        if (preparedClassifier != null) try { preparedClassifier.close(); } catch (Exception ignored) {}
         recorder = null; actualInput = ""; actualKind = "";
         call.reject("Не удалось открыть микрофон: " + ex.getMessage());
       }
@@ -156,6 +189,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private void readMic(AudioRecord rec) {
     short[] samples = new short[1600];
     long lastReport = 0;
+    // 15600 samples = 975 ms, the input window required by YAMNet.
+    final float[] soundWindow = new float[15600];
+    int soundFilled = 0;
     try {
       while (capturing.get()) {
         int n = rec.read(samples, 0, samples.length);
@@ -165,6 +201,16 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
           continue;
         }
         long now = SystemClock.elapsedRealtime();
+        AudioClassifier cls = analyzer;
+        if (cls != null) {
+          for (int i = 0; i < n; i++) {
+            soundWindow[soundFilled++] = samples[i] / 32768f;
+            if (soundFilled == soundWindow.length) {
+              soundFilled = 0;
+              classifyWindow(cls, soundWindow);
+            }
+          }
+        }
         if (now - lastReport < 250) continue;
         lastReport = now;
         double squares = 0;
@@ -174,6 +220,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         if (routed != null) {
           actualInput = String.valueOf(routed.getProductName());
           actualKind = String.valueOf(routed.getType());
+          actualInputType = routed.getType();
         }
         JSObject data = new JSObject();
         data.put("rms", rms); data.put("timestamp", System.currentTimeMillis());
@@ -188,6 +235,39 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     }
   }
 
+  private void classifyWindow(AudioClassifier cls, float[] samples) {
+    try {
+      AudioDataFormat format = AudioDataFormat.builder().setSampleRate(16000f).build();
+      AudioData audioData = AudioData.create(format, samples.length);
+      audioData.load(samples);
+      AudioClassifierResult result = cls.classify(audioData);
+      int sent = 0;
+      for (ClassificationResult window : result.classificationResults()) {
+        for (Classifications head : window.classifications()) {
+          for (Category category : head.categories()) {
+            if (sent >= 3 || category.score() < 0.18f) return;
+            String label = category.categoryName();
+            if (label == null || label.isEmpty()) continue;
+            JSObject data = new JSObject();
+            data.put("label", label);
+            data.put("confidence", category.score());
+            data.put("timestamp", System.currentTimeMillis());
+            int t = actualInputType;
+            String source = (t == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || t == AudioDeviceInfo.TYPE_BLE_HEADSET)
+              ? "bluetoothMic" : (t == AudioDeviceInfo.TYPE_WIRED_HEADSET || t == AudioDeviceInfo.TYPE_USB_HEADSET)
+              ? "headsetMic" : "phoneMic";
+            data.put("source", source);
+            notifyListeners("yamnet", data);
+            sent++;
+          }
+        }
+      }
+    } catch (Exception ex) {
+      sendError("Ошибка YAMNet: " + ex.getMessage());
+      // Keep microphone probe alive; classification errors do not block the UI.
+    }
+  }
+
   private void sendError(String message) {
     JSObject error = new JSObject(); error.put("message", message);
     notifyListeners("analysisError", error);
@@ -197,11 +277,13 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     synchronized (captureLock) {
       capturing.set(false);
       AudioRecord rec = recorder; recorder = null;
+      AudioClassifier cls = analyzer; analyzer = null;
       if (rec != null) {
         try { if (rec.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) rec.stop(); } catch (Exception ignored) {}
         try { rec.release(); } catch (Exception ignored) {}
       }
-      actualInput = ""; actualKind = "";
+      if (cls != null) try { cls.close(); } catch (Exception ignored) {}
+      actualInput = ""; actualKind = ""; actualInputType = -1;
     }
   }
 

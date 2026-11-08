@@ -53,6 +53,18 @@ jobs:
           mkdir -p "$target"
           cp native/android/SoundWorldSensorsPlugin.java "$target/SoundWorldSensorsPlugin.java"
           cp native/android/MainActivity.java "$target/MainActivity.java"
+          # Production YAMNet asset is bundled at APK build time (not downloaded by the user).
+          mkdir -p android/app/src/main/assets
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite" \
+            -o android/app/src/main/assets/yamnet.tflite
+          test "$(stat -c%s android/app/src/main/assets/yamnet.tflite)" -gt 1000000
+          sha256sum android/app/src/main/assets/yamnet.tflite
+          cat >> android/app/build.gradle <<'GRADLE'
+          dependencies {
+              implementation 'com.google.mediapipe:tasks-audio:0.10.35'
+          }
+          GRADLE
           python3 - <<'PY'
           from pathlib import Path
           path=Path('android/app/src/main/AndroidManifest.xml')

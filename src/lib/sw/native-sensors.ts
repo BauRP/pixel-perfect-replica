@@ -105,7 +105,8 @@ export function installNativeSensorAdapters(): void {
         try {
           const s=await native.status();
           if(!s.microphoneGranted) return {ok:false,code:"PERMISSION_DENIED",message:"Разрешите микрофон при запуске музыки"};
-          return unavailable("Нейросеть YAMNet не включена в APK; захват доступен только в диагностике");
+          const r = await native.startAnalysis();
+          return r.started ? {ok:true,value:undefined} : unavailable("Модель YAMNet недоступна");
         }catch(e){return safeError(e);}
       },
       stopCapture: async () => {
