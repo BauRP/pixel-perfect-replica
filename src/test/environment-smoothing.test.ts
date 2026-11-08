@@ -12,6 +12,13 @@ describe("real event filtering (no simulated detections)",()=>{
     expect(s.update({label:"Car horn",confidence:.15,timestamp:1200})).toBeNull();
     expect(s.stable).toBe("unknown");
   });
+  it("never treats multiple labels in the same analysis window as independent evidence",()=>{
+    const s=new AmbientStabilizer();
+    expect(s.update({label:"Rain",confidence:.9,timestamp:1000})).toBeNull();
+    expect(s.update({label:"Rain",confidence:.9,timestamp:1000})).toBeNull();
+    expect(s.update({label:"Rain",confidence:.9,timestamp:1100})).toBeNull();
+    expect(s.update({label:"Rain",confidence:.9,timestamp:2100})?.atmosphere).toBe("rain");
+  });
   it("confirms consecutive matching classifications, respects hold time",()=>{
     const s=new AmbientStabilizer(.5,2,1500);
     expect(s.update({label:"Rain",confidence:.7,timestamp:1000})).toBeNull();

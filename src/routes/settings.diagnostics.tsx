@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageHeader, Section } from "@/components/sw/ui";
 import {
   androidSensorsAvailable, observeRawSteps, observeSensorErrors, observeRawSound, observeMicrophoneLevel, sensorStatus,
   startSensorDiagnostics, stopSensorDiagnostics, getNativePerformanceSnapshot, ATMOSPHERE_RU,
   type SensorsStatus
 } from "@/lib/sw/native-sensors";
-import { StepPaceEstimator } from "@/lib/sw/environment-smoothing";
+import { AmbientStabilizer, StepPaceEstimator } from "@/lib/sw/environment-smoothing";
+import { MusicControlPlanner, type ControlPlan } from "@/lib/sw/music-control";
+import { useSettings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
 
 export const Route = createFileRoute("/settings/diagnostics")({
@@ -15,6 +17,10 @@ export const Route = createFileRoute("/settings/diagnostics")({
 });
 
 function Diagnostics() {
+  const settings = useSettings();
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const [plan,setPlan] = useState<ControlPlan | null>(null);
   const [status,setStatus] = useState<SensorsStatus | null>(null);
   const [active,setActive] = useState(false);
   const [steps,setSteps] = useState("Нет подтверждённых шагов");
@@ -25,17 +31,35 @@ function Diagnostics() {
   const [hardware,setHardware] = useState<{ramMb?:number;battery?:number;thermalStatus?:number;inferenceSkipped:number;lowMemory?:boolean}|null>(null);
   useEffect(()=>{
     const estimator = new StepPaceEstimator();
+    const stabilizer = new AmbientStabilizer();
+    const planner = new MusicControlPlanner();
+    const updatePlan = () => setPlan(planner.plan(settingsRef.current,Date.now()));
     let mounted=true;
     void sensorStatus().then(s=>{if(mounted)setStatus(s)});
     void getNativePerformanceSnapshot().then(s=>{if(mounted)setHardware(s)});
     const removeSteps=observeRawSteps(e=>{
       const pace=estimator.ingest(e.timestamp);
-      if (pace.activity!=="unknown")setSteps((pace.activity==="running"?"Бег":"Ходьба")+" · "+pace.bpm+" шагов/мин");
+      if (pace.activity!=="unknown"){
+        setSteps((pace.activity==="running"?"Бег":"Ходьба")+" · "+pace.bpm+" шагов/мин");
+        planner.observePace({bpm:pace.bpm,confidence:pace.confidence,timestamp:e.timestamp});
+        updatePlan();
+      }
     });
     const removeErrors=observeSensorErrors(setError);
-    const removeSounds=observeRawSound(e=>setEnvironment(e.label+" · "+Math.round(e.confidence*100)+"%"));
+    const removeSounds=observeRawSound(e=>{
+      const stable=stabilizer.update(e);
+      if(!stable)return;
+      setEnvironment(stable.atmosphere+" · "+Math.round(stable.confidence*100)+"%");
+      planner.observeAmbient(stable, settingsRef.current);
+      updatePlan();
+    });
     const removeMic=observeMicrophoneLevel(e=>{setMicInput(e.input);setMicRms(e.rms)});
-    return ()=>{mounted=false;removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
+    const interval=setInterval(()=>{
+      if (!mounted) return;
+      void getNativePerformanceSnapshot().then(x=>{if(mounted)setHardware(x)});
+      updatePlan();
+    },3000);
+    return ()=>{mounted=false;clearInterval(interval);removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
   },[]);
   const start=async()=>{
     const result=await startSensorDiagnostics(true);
@@ -44,7 +68,7 @@ function Diagnostics() {
     setStatus(await sensorStatus());
     setHardware(await getNativePerformanceSnapshot());
   };
-  const stop=async()=>{await stopSensorDiagnostics();setActive(false);setMicRms(null);setStatus(await sensorStatus());setHardware(await getNativePerformanceSnapshot());};
+  const stop=async()=>{await stopSensorDiagnostics();setActive(false);setMicRms(null);setPlan(null);setStatus(await sensorStatus());setHardware(await getNativePerformanceSnapshot());};
   return (
     <>
       <PageHeader title="Диагностика" back subtitle="Проверка настоящих датчиков Android" />
@@ -64,6 +88,10 @@ function Diagnostics() {
             <p>Тепловой статус Android: {hardware?.thermalStatus === undefined?"Нет данных":hardware.thermalStatus}</p>
             <p>Пропущенные окна анализа: {hardware?.inferenceSkipped ?? "Нет данных"}</p>
             <p>Обстановка: {status?.yamnetIncluded ? environment : ATMOSPHERE_RU.unknown}</p>
+            <p>Запрошенный темп будущей музыки: {plan?.tempoBpm ?? "Нет плана"} BPM</p>
+            <p>Ритм шагов для отдельной перкуссии: {plan?.stepPulseBpm ?? "Не определён"}</p>
+            <p>План смены атмосферы: {plan?.transitionMs ?? "Не определён"} мс</p>
+            <p className="text-xs text-muted-foreground">Это только план управления будущей генерацией, не воспроизводимый звук.</p>
             {error&&<p role="alert" className="text-destructive">{error}</p>}
           </div>
         </Section>

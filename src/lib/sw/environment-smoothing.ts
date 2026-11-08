@@ -30,6 +30,8 @@ export class AmbientStabilizer {
     }
     const next = classifyAtmosphere(p.label);
     if (next === "unknown") { this.candidate = "unknown"; this.hits = 0; return null; }
+    // Distinct YAMNet windows only. Several labels from one window are NOT repeat evidence.
+    if (next === this.candidate && p.timestamp - this.lastSeen < 650 && p.timestamp >= this.lastSeen) return null;
     if (next !== this.candidate || p.timestamp - this.lastSeen > 3500 || p.timestamp < this.lastSeen) {
       this.candidate = next; this.hits = 1;
     } else this.hits++;
