@@ -17,17 +17,20 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
       - name: Install dependencies
         run: npm install --no-package-lock
       - name: Type check
-        run: npx tsgo -b --noEmit
+        run: npx tsc --noEmit
       - name: Unit tests
         run: npm test
       - name: Web build
         run: npm run build
       - name: Offline Android web build
         run: npm run build:android:web
+      - name: Install Android SDK (runner preinstalls command-line tools)
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
       - name: Generate Android host and sync offline assets
         run: |
           npx cap add android
