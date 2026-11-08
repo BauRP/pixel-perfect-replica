@@ -30,6 +30,8 @@ export class GeneratedPcmSession {
   private stopRequested = false;
   private lastFailure: string | null = null;
   private completed = 0;
+  private pending = 0;
+  private readonly maxPending = 8;
 
   constructor(private readonly sink: AudioSink, private readonly store: ClipStore,
     private readonly settings: Settings, private readonly genres: string[]) {}
@@ -49,9 +51,13 @@ export class GeneratedPcmSession {
       pcm.length > PCM_TRANSFER_BYTES * 16) {
       return Promise.resolve({ok:false,code:"ERROR",message:"Неверный PCM кадр"});
     }
+    if (this.pending >= this.maxPending) return Promise.resolve({
+      ok:false,code:"UNAVAILABLE",message:"Очередь генератора переполнена",
+    });
+    this.pending++;
     // Copy immediately so a model reusing its output buffer cannot corrupt queued samples.
     const owned = pcm.slice();
-    const next = this.chain.then(()=>this.process(owned));
+    const next = this.chain.then(()=>this.process(owned)).finally(()=>{this.pending--;});
     this.chain = next.then(()=>undefined,()=>undefined);
     return next;
   }

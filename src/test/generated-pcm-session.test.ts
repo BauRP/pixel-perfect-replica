@@ -46,6 +46,22 @@ describe("real PCM stream without fabricated audio",()=>{
     expect((await a).ok).toBe(true);
     expect(r.sent).toEqual([PCM_TRANSFER_BYTES,4]);
   });
+  it("bounds pending producer buffers to prevent unlimited memory growth",async()=>{
+    let release:()=>void=()=>{};
+    const gate=new Promise<void>(resolve=>{release=resolve});
+    const r=rig();
+    const slow={append:async(chunk:Uint8Array):Promise<Result<"queued">>=>{
+      await gate;return r.sink.append(chunk);
+    }};
+    const p=new GeneratedPcmSession(slow,r.store,DEFAULT_SETTINGS,[]);
+    const packets=Array.from({length:8},()=>p.submit(new Uint8Array(4)));
+    const refused=await p.submit(new Uint8Array(4));
+    expect(refused.ok).toBe(false);
+    expect(p.status.pendingPackets).toBe(8);
+    release();
+    expect((await Promise.all(packets)).every(x=>x.ok)).toBe(true);
+    expect(p.status.pendingPackets).toBe(0);
+  });
   it("does not create a fake favorite or file when disk fails",async()=>{
     const r=rig();const p=new GeneratedPcmSession(r.sink,r.store,DEFAULT_SETTINGS,[]);
     r.failNext();
