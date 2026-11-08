@@ -11,7 +11,7 @@ describe("real saved recording selection",()=>{
     expect(latestRealClip([mk(a,100),mk(b,200)])?.id).toBe(b);
   });
   it("never selects a fabricated current ID or an incomplete recording",()=>{
-    expect(latestRealClip([mk("current",300),mk(a,400,{uri:undefined}),mk(b,200)])?.id).toBe(b);
+    expect(latestRealClip([mk("current",300),{...mk(a,400),uri:""},mk(b,200)])?.id).toBe(b);
     expect(latestRealClip([mk(a,100,{durationSec:0})])).toBeNull();
   });
   it("does not evict exported, liked or recovered protected audio",()=>{
