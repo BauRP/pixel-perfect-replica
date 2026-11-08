@@ -123,7 +123,8 @@ public final class SoundWorldPlaybackService extends Service {
         .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
           .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
         .setOnAudioFocusChangeListener(change -> {
-          if (change <= AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) pauseAudio();
+          if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
+              change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) pauseAudio();
         }).build();
       if (audioManager.requestAudioFocus(focusRequest) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) return;
       int min = AudioTrack.getMinBufferSize(48000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT);
