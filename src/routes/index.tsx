@@ -73,7 +73,7 @@ function Player() {
     if(!latestClip)return;
     const r=await withTimeout(library.markFavorite(latestClip.id,!latestClip.favorite));
     if(r.ok)setRecentClips(prev=>prev.map(c=>c.id===latestClip.id?{...c,favorite:!c.favorite}:c));
-    notify.result(r,"Изменено избранное");
+    if(r.ok)notify.saved("Избранное обновлено");else notify.result(r,"");
   });
   const onExport = () => run(async () => {
     if(!latestClip)return;
@@ -110,7 +110,7 @@ function Player() {
           <p className="truncate text-sm text-muted-foreground">{genreSummary} · настроение {s.mood > 0 ? `+${s.mood}` : s.mood}</p>
         </div>
         <span aria-live="polite" className={cn("mt-1 shrink-0 rounded-full px-3 py-1 text-xs font-semibold", state === "UNAVAILABLE" ? "bg-warning/15 text-warning" : "bg-primary/15 text-primary")}>
-          {STATE_LABEL[state]}
+          {storedPlayback.state==="playing"?"Воспроизведение WAV":storedPlayback.state==="paused"?"Пауза WAV":STATE_LABEL[state]}
         </span>
       </div>
 
@@ -151,7 +151,7 @@ function Player() {
         ].map((a) => (
           <button
             key={a.label}
-            disabled={busy}
+            disabled={busy || !live}
             aria-disabled={!live}
             onClick={() => run(async () => notify.result(await withTimeout(a.fn()), a.label))}
             className={cn("flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-2xl border border-border bg-surface p-2 text-center text-[11px] leading-tight", !live && "opacity-55")}
