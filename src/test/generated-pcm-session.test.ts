@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { GeneratedPcmSession, PCM_SEGMENT_BYTES, PCM_TRANSFER_BYTES } from "../lib/sw/generated-pcm-session";
 import { DEFAULT_SETTINGS } from "../lib/sw/settings";
 import type { ClipMeta, Result } from "../lib/sw/engine";
@@ -69,6 +69,29 @@ describe("real PCM stream without fabricated audio",()=>{
     expect(r.recorded[0]!.aborted).toBe(true);
     expect(p.status.state).toBe("error");
     expect((await p.submit(new Uint8Array(16))).ok).toBe(false);
+  });
+  it("two concurrent stops never finish the same WAV twice",async()=>{
+    const r=rig();let finishes=0;
+    const store={...r.store,finish:async(id:string)=>{finishes++;return r.store.finish(id);}};
+    const p=new GeneratedPcmSession(r.sink,store,DEFAULT_SETTINGS,[]);
+    expect((await p.submit(new Uint8Array(4))).ok).toBe(true);
+    const [a,b]=await Promise.all([p.stop(),p.stop()]);
+    expect(a.ok&&b.ok).toBe(true);
+    expect(finishes).toBe(1);
+  });
+  it("a blocked output times out and aborts only its incomplete WAV",async()=>{
+    vi.useFakeTimers();
+    try{
+      const r=rig();
+      const hung={append:async():Promise<Result<"queued">>=>new Promise(()=>{})};
+      const p=new GeneratedPcmSession(hung,r.store,DEFAULT_SETTINGS,[]);
+      const pending=p.submit(new Uint8Array(4));
+      await vi.advanceTimersByTimeAsync(12001);
+      const failed=await pending;
+      expect(failed.ok).toBe(false);
+      expect(p.status.state).toBe("error");
+      expect(r.recorded[0]?.aborted).toBe(true);
+    }finally{vi.useRealTimers();}
   });
   it("enforces 120 second clip boundary without losing frames",async()=>{
     const r=rig();const p=new GeneratedPcmSession(r.sink,r.store,DEFAULT_SETTINGS,[]);

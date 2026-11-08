@@ -32,6 +32,8 @@ export class GeneratedPcmSession {
   private completed = 0;
   private pending = 0;
   private readonly maxPending = 8;
+  private stopInFlight: Promise<Result<void>> | null = null;
+  private readonly operationTimeoutMs = 12000;
 
   constructor(private readonly sink: AudioSink, private readonly store: ClipStore,
     private readonly settings: Settings, private readonly genres: string[]) {}
@@ -62,9 +64,23 @@ export class GeneratedPcmSession {
     return next;
   }
 
+  /**
+   * A hung native callback must not keep the producer queue occupied forever.
+   * A timed-out write is treated as fatal; a late native completion is never
+   * counted as a finished frame or used to resume playback.
+   */
+  private async bounded<T>(operation:Promise<Result<T>>):Promise<Result<T>> {
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const deadline=new Promise<Result<T>>(resolve=>{
+      timer=setTimeout(()=>resolve({ok:false,code:"TIMEOUT",message:"Аудиомодуль не ответил вовремя"}),this.operationTimeoutMs);
+    });
+    try{return await Promise.race([operation,deadline]);}
+    finally{if(timer!==undefined)clearTimeout(timer);}
+  }
+
   private async openIfNeeded(): Promise<Result<void>> {
     if (this.id !== null) return {ok:true,value:undefined};
-    const started = await this.store.begin(this.settings, this.genres);
+    const started = await this.bounded(this.store.begin(this.settings, this.genres));
     if (!started.ok) return started;
     this.id = started.value;
     this.bytes = 0;
@@ -80,7 +96,7 @@ export class GeneratedPcmSession {
       this.id = null;
       return {ok:true,value:undefined};
     }
-    const finished = await this.store.finish(id);
+    const finished = await this.bounded(this.store.finish(id));
     if (!finished.ok) return finished;
     this.completed++;
     this.id = null;
@@ -98,9 +114,9 @@ export class GeneratedPcmSession {
         const length = Math.min(PCM_TRANSFER_BYTES, pcm.length-processed, PCM_SEGMENT_BYTES-this.bytes);
         const part = pcm.subarray(processed,processed+length);
         // Output is queued before the persisted WAV bytes. Never claim audible here.
-        const pushed = await this.sink.append(part);
+        const pushed = await this.bounded(this.sink.append(part));
         if(!pushed.ok) return this.fail(pushed.message);
-        const written = await this.store.append(this.id!,part);
+        const written = await this.bounded(this.store.append(this.id!,part));
         if(!written.ok) return this.fail(written.message);
         this.bytes += length;
         processed += length;
@@ -125,19 +141,23 @@ export class GeneratedPcmSession {
     return {ok:false,code:"ERROR",message};
   }
 
-  async stop():Promise<Result<void>> {
+  stop():Promise<Result<void>> {
+    if(this.stopInFlight) return this.stopInFlight;
     this.stopRequested = true;
-    await this.chain;
-    if(this.state === "error") return {ok:false,code:"ERROR",message:this.lastFailure??"Ошибка"};
-    try {
-      const result = await this.finishIfOpen();
-      if(!result.ok) {this.state="error";this.lastFailure=result.message;return result;}
-      this.state = "stopped";
-      return {ok:true,value:undefined};
-    }catch(e){
-      this.state = "error";
-      return {ok:false,code:"ERROR",message:e instanceof Error?e.message:"Ошибка завершения"};
-    }
+    this.stopInFlight=(async()=>{
+      await this.chain;
+      if(this.state === "error") return {ok:false,code:"ERROR",message:this.lastFailure??"Ошибка"};
+      try {
+        const result = await this.finishIfOpen();
+        if(!result.ok) {this.state="error";this.lastFailure=result.message;return result;}
+        this.state = "stopped";
+        return {ok:true,value:undefined};
+      }catch(e){
+        this.state = "error";
+        return {ok:false,code:"ERROR",message:e instanceof Error?e.message:"Ошибка завершения"};
+      }
+    })();
+    return this.stopInFlight;
   }
 }
 
