@@ -62,23 +62,27 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
   try {
     const permission = await native.requestMicrophone();
     if (!permission.granted) return {ok:false,code:"PERMISSION_DENIED",message:"Микрофон не разрешён"};
-    await native.setInputPreference({preference:getSettingsSnapshot().microphonePreference});
     const availability = await native.status();
-    const r = availability.yamnetIncluded
-      ? await native.startAnalysis()
-      : await native.startMicrophoneProbe();
-    if (!r.started) return unavailable("Проверка микрофона не запущена");
-    started=true;
-    // Optional steps can be absent on tablets, emulators and some phones.
-    // Do not abort a healthy microphone diagnostic because steps are unavailable.
+    // Request all permissions BEFORE starting audio: Android may pause the
+    // Activity while showing a permission dialog, which stops diagnostic capture.
     if (includeSteps && availability.stepsSupported) {
       try {
         const activity = await native.requestActivity();
         if (activity.granted) await native.startSteps();
       } catch { /* microphone still works without the motion sensor */ }
     }
+    await native.setInputPreference({preference:getSettingsSnapshot().microphonePreference});
+    const r = availability.yamnetIncluded
+      ? await native.startAnalysis()
+      : await native.startMicrophoneProbe();
+    if (!r.started) {
+      await native.stopSteps().catch(()=>{});
+      return unavailable("Проверка микрофона не запущена");
+    }
+    started=true;
     return {ok:true,value:undefined};
   } catch(e) {
+    await native.stopSteps().catch(()=>{});
     if(started)await stopSensorDiagnostics();
     return safeError(e);
   }
