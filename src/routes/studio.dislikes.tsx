@@ -19,11 +19,11 @@ function Row({ id, name }: { id: string; name: string }) {
     updateSettings((x) => setDislike(x, id, next));
   };
   return (
-    <div className="flex items-center gap-2 border-b border-border/50 px-4 py-2 last:border-0">
-      <span className="flex-1 text-sm">{capitalize(name)}</span>
+    <div className="flex items-center gap-1.5 border-b border-border/50 px-2.5 py-1.5 last:border-0">
+      <span className="min-w-0 flex-1 text-xs leading-snug">{capitalize(name)}</span>
       {(["notPreferred", "excluded"] as const).map((l) => (
         <button key={l} aria-pressed={cur === l} onClick={() => pick(l)}
-          className={cn("min-h-11 rounded-lg px-2.5 text-xs font-semibold",
+          className={cn("min-h-11 shrink-0 rounded-lg px-1.5 text-[10px] font-semibold leading-tight",
             cur === l ? (l === "excluded" ? "bg-destructive text-destructive-foreground" : "bg-warning text-primary-foreground") : "bg-background/50 text-muted-foreground")}>
           {l === "excluded" ? "Исключить" : "Не предпочитаю"}
         </button>
@@ -38,13 +38,13 @@ function Dislikes() {
   return (
     <>
       <PageHeader title="Нелюбимое" back subtitle={n ? `Ограничений: ${n}` : "По умолчанию — без ограничений"} />
-      <div className="space-y-5 px-4 py-4">
+      <div className="space-y-3 px-3 py-3">
         {n > 0 && <button onClick={() => updateSettings((x) => ({ ...x, dislikes: {} }))} className="min-h-12 text-sm font-semibold text-primary">Снять все ограничения</button>}
         <h2 className="px-1 text-sm font-semibold">Инструменты</h2>
         {INSTRUMENTS.map((c) => (
           <Section key={c.id} title={c.name}>{c.items.map((i) => <Row key={i.id} id={i.id} name={i.name} />)}</Section>
         ))}
-        <h2 className="px-1 pt-2 text-sm font-semibold">Жанры</h2>
+        <h2 className="px-1 pt-1 text-sm font-semibold">Жанры</h2>
         <p className="px-1 text-xs text-muted-foreground">Исключение целого жанра запрещает все его поджанры, даже если они ранее выбраны в музыкальных вкусах.</p>
         {GENRES.map((g) => (
           <Section key={g.id} title={g.name}>
