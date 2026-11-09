@@ -32,7 +32,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const onboarding = loc.pathname === "/onboarding";
+  // On first-run, onboarding hides the tabs. As soon as the user completes
+  // or skips their genre selection, display tabs immediately even if the
+  // router is still committing its navigation from /onboarding to /.
+  const onboarding = loc.pathname === "/onboarding" && !settings.onboardingCompleted;
+  const showTabs = settings.onboardingCompleted;
   const activeTab = loc.pathname === "/" || loc.pathname.startsWith("/history")
     ? "/"
     : loc.pathname.startsWith("/studio") ? "/studio" : loc.pathname.startsWith("/settings") ? "/settings" : "";
@@ -40,7 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="sw-shell mx-auto flex h-full min-h-0 w-full min-w-0 max-w-md flex-col overflow-hidden bg-background bg-page-glow md:max-w-2xl">
       <main className={cn("sw-main min-h-0 min-w-0 flex-1", onboarding ? "overflow-hidden" : "overflow-y-auto overscroll-contain")}>{children}</main>
-      {!onboarding && (
+      {showTabs && (
         <nav
           aria-label="Основная навигация"
           className="sw-bottom-nav z-30 w-full shrink-0 border-t border-border/60 bg-background/95 pb-safe backdrop-blur-md"
