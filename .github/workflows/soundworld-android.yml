@@ -133,6 +133,18 @@ jobs:
           emulator-boot-timeout: 360
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: bash scripts/check_android_startup.sh
+      - name: Verify actual Android 16 startup and screens (API 36)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          disk-size: 2048M
+          ram-size: 2048M
+          emulator-boot-timeout: 360
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: bash scripts/check_android_startup.sh
       # Actions artifact storage can be exhausted. Releases use a separate
       # delivery path and provide an ordinary APK download link.
       - name: Prepare downloadable APK with checksum
