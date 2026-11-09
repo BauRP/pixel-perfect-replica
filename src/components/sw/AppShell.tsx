@@ -38,12 +38,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     : loc.pathname.startsWith("/studio") ? "/studio" : loc.pathname.startsWith("/settings") ? "/settings" : "";
 
   return (
-    <div className="sw-shell mx-auto flex min-h-dvh w-full min-w-0 max-w-md flex-col bg-background bg-page-glow md:max-w-2xl">
-      <main className={cn("sw-main min-w-0 flex-1", !onboarding && "pb-[calc(4.5rem+env(safe-area-inset-bottom))]")}>{children}</main>
+    <div className="sw-shell mx-auto flex h-dvh min-h-0 w-full min-w-0 max-w-md flex-col overflow-hidden bg-background bg-page-glow md:max-w-2xl">
+      <main className={cn("sw-main min-h-0 min-w-0 flex-1", onboarding ? "overflow-hidden" : "overflow-y-auto overscroll-contain")}>{children}</main>
       {!onboarding && (
         <nav
           aria-label="Основная навигация"
-          className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md border-t border-border/60 bg-background/95 pb-safe backdrop-blur-md md:max-w-2xl"
+          className="sw-bottom-nav z-30 w-full shrink-0 border-t border-border/60 bg-background/95 pb-safe backdrop-blur-md"
         >
           <ul className="grid grid-cols-3">
             {TABS.map((t) => {
