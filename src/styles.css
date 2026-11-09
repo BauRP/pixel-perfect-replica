@@ -211,6 +211,17 @@ body { min-width: 0; min-height: 100%; overflow-x: hidden; }
 @media (max-height: 650px) {
   .sw-player .sw-player-cover { height: clamp(100px, 20dvh, 138px); }
 }
+/* Preserve center translation while the decorative ring breathes. */
+.sw-player-cover .animate-breathe {
+  animation-name: sw-centered-breathe;
+}
+@keyframes sw-centered-breathe {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: .85; }
+  50% { transform: translate(-50%, -50%) scale(1.04); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sw-player-cover .animate-breathe { animation: none; }
+}
 .sw-player { min-width: 0; }
 .sw-player button:focus-visible,
 .sw-player a:focus-visible {
