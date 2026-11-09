@@ -51,9 +51,19 @@ check_start() {
 # A process can stay alive with a blank or broken React WebView.
 # Accessibility inspection confirms real screen content and navigation.
 capture_ui() {
-  adb shell uiautomator dump /sdcard/window.xml >/dev/null
-  adb exec-out cat /sdcard/window.xml > /tmp/soundworld-window.xml
-  test -s /tmp/soundworld-window.xml
+  # UIAutomator itself can crash or return an empty file on older WebViews.
+  # Never overwrite the last valid XML; retry before falling back to the
+  # independently logged React DOM geometry.
+  for _ in 1 2 3; do
+    adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+    adb exec-out cat /sdcard/window.xml > /tmp/soundworld-window-next.xml 2>/dev/null || true
+    if grep -q '<hierarchy' /tmp/soundworld-window-next.xml 2>/dev/null; then
+      mv /tmp/soundworld-window-next.xml /tmp/soundworld-window.xml
+      break
+    fi
+    sleep 1
+  done
+  test -s /tmp/soundworld-window.xml || return 1
 
   # A heavily loaded GitHub emulator may show a SYSTEM UI ANR dialog
   # on top of a healthy app. Never confuse it with a SoundWorld crash.
@@ -72,8 +82,11 @@ for node in root.iter("node"):
 PY
 )"
     if [[ -n "$coords" ]]; then adb shell input tap $coords; sleep 3; fi
-    adb shell uiautomator dump /sdcard/window.xml >/dev/null
-    adb exec-out cat /sdcard/window.xml > /tmp/soundworld-window.xml
+    adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+    adb exec-out cat /sdcard/window.xml > /tmp/soundworld-window-next.xml 2>/dev/null || true
+    if grep -q '<hierarchy' /tmp/soundworld-window-next.xml 2>/dev/null; then
+      mv /tmp/soundworld-window-next.xml /tmp/soundworld-window.xml
+    fi
   fi
 }
 find_ui_text() {
@@ -145,7 +158,7 @@ wait_for_ui() {
   local text="$1"
   for _ in 1 2 3 4 5 6 7 8; do
     capture_ui || true
-    if find_ui_text "$text"; then return 0; fi
+    if find_ui_text "$text" 2>/dev/null; then return 0; fi
     case "$text" in
       "Живая музыка") visible_dom_route "/" "$text" && return 0 ;;
       "Настроение") visible_dom_route "/studio" "Studio" && return 0 ;;
