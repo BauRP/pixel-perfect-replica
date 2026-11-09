@@ -47,6 +47,73 @@ check_start() {
   fi
 }
 
+
+# A process can stay alive with a blank or broken React WebView.
+# Accessibility inspection confirms real screen content and navigation.
+capture_ui() {
+  adb shell uiautomator dump /sdcard/window.xml >/dev/null
+  adb exec-out cat /sdcard/window.xml > /tmp/soundworld-window.xml
+  test -s /tmp/soundworld-window.xml
+}
+find_ui_text() {
+  local needle="$1"
+  python3 - "$needle" <<'PY'
+import sys, xml.etree.ElementTree as ET
+needle=sys.argv[1].casefold()
+root=ET.parse("/tmp/soundworld-window.xml").getroot()
+hits=[]
+for node in root.iter("node"):
+    text=" ".join((node.get("text",""),node.get("content-desc",""))).casefold()
+    if needle in text: hits.append(node.get("bounds",""))
+print("FOUND" if hits else "MISSING",sys.argv[1],hits[:3])
+sys.exit(0 if hits else 1)
+PY
+}
+wait_for_ui() {
+  local text="$1"
+  for _ in 1 2 3 4 5; do
+    capture_ui || true
+    if find_ui_text "$text"; then return 0; fi
+    sleep 2
+  done
+  echo "::error::WebView failed to expose expected screen: $text"
+  head -c 6000 /tmp/soundworld-window.xml || true
+  adb logcat -d -v time | grep -E 'chromium|WebView|AndroidRuntime|Capacitor' | tail -n 150 || true
+  return 1
+}
+tap_ui_text() {
+  local text="$1"
+  capture_ui
+  local pos
+  pos="$(python3 - "$text" <<'PY'
+import re,sys,xml.etree.ElementTree as ET
+needle=sys.argv[1].casefold()
+root=ET.parse("/tmp/soundworld-window.xml").getroot()
+for node in root.iter("node"):
+    value=(node.get("text","")+" "+node.get("content-desc","")).casefold()
+    if needle in value:
+        a=list(map(int,re.findall(r'\d+',node.get("bounds",""))))
+        if len(a)==4:
+            print((a[0]+a[2])//2,(a[1]+a[3])//2)
+            break
+PY
+)"
+  if [[ -z "$pos" ]]; then
+    echo "::error::Missing tap target: $text"
+    return 1
+  fi
+  echo "Tap $text at $pos"
+  adb shell input tap $pos
+}
+
 check_start 1
+wait_for_ui "Музыкальные вкусы"
+tap_ui_text "Пропустить"
+wait_for_ui "Живая музыка"
+tap_ui_text "Studio"
+wait_for_ui "Настроение"
+tap_ui_text "Настройки"
+wait_for_ui "Звук и микрофон"
 check_start 2
-echo "PASS: 2 SoundWorld launches remained alive; no app fatal exception"
+wait_for_ui "Живая музыка"
+echo "PASS: two Android starts, onboarding skip, Player, Studio and Settings render"
