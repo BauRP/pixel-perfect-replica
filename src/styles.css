@@ -231,6 +231,28 @@ body { min-width: 0; min-height: 100%; overflow-x: hidden; }
   background-color: #050d17;
   background-image: radial-gradient(80% 40% at 50% 0%, rgb(28 53 96 / 55%), transparent 70%);
 }
+/* Capacitor Android WebView 91: h-full/min-h-0 utility combinations can
+   leave a min-content-sized shell larger than #root. Android CI observed
+   root 751px, shell 978px and nav ending at 986px. Pin the shell inside
+   the actual available root height; scroll only its main child. */
+#root > .sw-shell,
+#root .sw-shell {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sw-shell > .sw-main {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-x: hidden;
+}
+.sw-shell > .sw-bottom-nav {
+  flex: 0 0 auto;
+}
 /* Compact player: maintain the atmospheric cover artwork without wasting
    almost an entire phone screen on a square. Fits narrow/short Android devices. */
 .sw-player .sw-player-cover {
