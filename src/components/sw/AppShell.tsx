@@ -25,24 +25,28 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [hydrated, settings.onboardingCompleted, loc.pathname, navigate]);
 
   useEffect(() => {
-    // Diagnostic only: this log lets Android CI distinguish hidden tabs from
-    // a visually clipped nav, without modifying the layout.
-    const nav = document.querySelector(".sw-bottom-nav");
-    const shell = document.querySelector(".sw-shell");
-    const root = document.getElementById("root");
-    const rect = (el: Element | null) => {
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) };
-    };
-    console.info("SW_NAV_GEOMETRY", JSON.stringify({
-      path: loc.pathname, completed: settings.onboardingCompleted,
-      nav: rect(nav), shell: rect(shell), root: rect(root),
-      vh: window.innerHeight, vw: window.innerWidth,
-      dpr: window.devicePixelRatio,
-      heading: document.querySelector("h1")?.textContent?.trim() ?? "",
-      tabs: Array.from(document.querySelectorAll(".sw-tab-link")).map(el => el.textContent?.trim() ?? ""),
-    }));
+    // Delay the Android smoke-test marker until the new route's children have
+    // committed. The old immediate log captured path "/" with the previous
+    // onboarding <h1> during route transitions.
+    const timer = window.setTimeout(() => {
+      const nav = document.querySelector(".sw-bottom-nav");
+      const shell = document.querySelector(".sw-shell");
+      const root = document.getElementById("root");
+      const rect = (el: Element | null) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) };
+      };
+      console.info("SW_NAV_GEOMETRY", JSON.stringify({
+        path: loc.pathname, completed: settings.onboardingCompleted,
+        nav: rect(nav), shell: rect(shell), root: rect(root),
+        vh: window.innerHeight, vw: window.innerWidth,
+        dpr: window.devicePixelRatio,
+        heading: document.querySelector("h1")?.textContent?.trim() ?? "",
+        tabs: Array.from(document.querySelectorAll(".sw-tab-link")).map(el => el.textContent?.trim() ?? ""),
+      }));
+    }, 300);
+    return () => window.clearTimeout(timer);
   }, [loc.pathname, settings.onboardingCompleted]);
 
   if (!hydrated) {
