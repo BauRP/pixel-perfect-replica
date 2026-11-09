@@ -35,7 +35,7 @@ export function GenrePicker({ selected, onChange }: { selected: Set<string>; onC
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <label className="relative block">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
@@ -43,7 +43,7 @@ export function GenrePicker({ selected, onChange }: { selected: Set<string>; onC
           onChange={(e) => setQ(e.target.value)}
           placeholder="Поиск жанра"
           aria-label="Поиск жанра"
-          className="h-12 w-full rounded-xl border border-input bg-surface pl-10 pr-10 text-base outline-none focus:border-primary"
+          className="h-11 w-full rounded-lg border border-input bg-surface pl-10 pr-10 text-base outline-none focus:border-primary"
         />
         {q && (
           <button aria-label="Очистить поиск" onClick={() => setQ("")} className="absolute right-1 top-1/2 grid size-10 -translate-y-1/2 place-items-center text-muted-foreground">
@@ -62,9 +62,9 @@ export function GenrePicker({ selected, onChange }: { selected: Set<string>; onC
           const count = g.subgenres.filter((s) => selected.has(s.id)).length;
           return (
             <li key={g.id} className="border-b border-border/50 last:border-0">
-              <div className="flex items-center pl-4">
+              <div className="flex items-center pl-3">
                 <button
-                  className="flex min-h-14 flex-1 flex-col items-start justify-center text-left"
+                  className="flex min-h-12 flex-1 flex-col items-start justify-center text-left"
                   aria-expanded={isOpen}
                   onClick={() => setOpen((o) => ({ ...o, [g.id]: !isOpen }))}
                 >
@@ -76,7 +76,7 @@ export function GenrePicker({ selected, onChange }: { selected: Set<string>; onC
                   aria-label={isOpen ? `Свернуть ${g.name}` : `Развернуть ${g.name}`}
                   aria-expanded={isOpen}
                   onClick={() => setOpen((o) => ({ ...o, [g.id]: !isOpen }))}
-                  className="grid size-12 place-items-center text-muted-foreground"
+                  className="grid size-11 place-items-center text-muted-foreground"
                 >
                   <ChevronDown className={cn("size-5 transition-transform", isOpen && "rotate-180")} />
                 </button>
