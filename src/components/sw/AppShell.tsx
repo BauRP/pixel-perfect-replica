@@ -38,7 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     : loc.pathname.startsWith("/studio") ? "/studio" : loc.pathname.startsWith("/settings") ? "/settings" : "";
 
   return (
-    <div className="sw-shell mx-auto flex h-dvh min-h-0 w-full min-w-0 max-w-md flex-col overflow-hidden bg-background bg-page-glow md:max-w-2xl">
+    <div className="sw-shell mx-auto flex h-full min-h-0 w-full min-w-0 max-w-md flex-col overflow-hidden bg-background bg-page-glow md:max-w-2xl">
       <main className={cn("sw-main min-h-0 min-w-0 flex-1", onboarding ? "overflow-hidden" : "overflow-y-auto overscroll-contain")}>{children}</main>
       {!onboarding && (
         <nav
