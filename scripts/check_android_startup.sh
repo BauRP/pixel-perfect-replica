@@ -104,9 +104,10 @@ wait_for_ui() {
 }
 tap_ui_text() {
   local text="$1"
-  capture_ui
-  local pos
-  pos="$(python3 - "$text" <<'PY'
+  local pos=""
+  for _ in 1 2 3 4 5; do
+    capture_ui
+    pos="$(python3 - "$text" <<'PY'
 import re,sys,xml.etree.ElementTree as ET
 needle=sys.argv[1].casefold()
 root=ET.parse("/tmp/soundworld-window.xml").getroot()
@@ -119,8 +120,18 @@ for node in root.iter("node"):
             break
 PY
 )"
+    if [[ -n "$pos" ]]; then break; fi
+    sleep 2
+  done
   if [[ -z "$pos" ]]; then
-    echo "::error::Missing tap target: $text"
+    echo "::error::Missing or covered tap target: $text"
+    echo "Visible Android UI XML:"
+    head -c 12000 /tmp/soundworld-window.xml || true
+    echo
+    echo "Active Android activity:"
+    adb shell dumpsys activity activities | grep -E 'ResumedActivity|mResumedActivity|topResumedActivity' | head -n 10 || true
+    echo "Recent WebView errors:"
+    adb logcat -d -v time | grep -E 'Capacitor/Console|AndroidRuntime|System UI' | tail -n 80 || true
     return 1
   fi
   echo "Tap $text at $pos"
