@@ -141,11 +141,24 @@ if data is None or label not in data["tabs"]:
     raise SystemExit("No measured visible nav with tab "+label)
 xml=ET.parse("/tmp/soundworld-window.xml").getroot()
 top=None
-for node in xml.iter("node"):
-    if node.get("class")=="android.webkit.WebView":
-        nums=list(map(int,re.findall(r"\d+",node.get("bounds",""))))
-        if len(nums)==4:top=nums[1];break
-if top is None:raise SystemExit("No WebView viewport for tap coordinate")
+# Prefer the WebView's real window top, otherwise Android's content root.
+# Old WebViews sometimes omit all virtual accessibility children.
+for preferred in ("android.webkit.WebView", "android:id/content"):
+    for node in xml.iter("node"):
+        if node.get("class")==preferred or node.get("resource-id")==preferred:
+            nums=list(map(int,re.findall(r"\d+",node.get("bounds",""))))
+            if len(nums)==4:
+                top=nums[1]
+                break
+    if top is not None: break
+if top is None:
+    # UIAutomator may return an empty accessibility tree. Native window top
+    # is still inferable from Android's physical screen and WebView viewport.
+    physical=subprocess.check_output(["adb","shell","wm","size"],text=True)
+    m=re.search(r"(\d+)x(\d+)",physical)
+    if not m:raise SystemExit("Cannot locate Android screen")
+    viewportHeight=float(data["vh"])*float(data["dpr"])
+    top=round(max(0,int(m.group(2))-viewportHeight)*0.4)
 idx=data["tabs"].index(label)
 dpr=float(data["dpr"])
 x=round((idx+0.5)*float(data["vw"])*dpr/3)
