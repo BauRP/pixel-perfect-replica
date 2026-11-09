@@ -90,11 +90,67 @@ print("FOUND" if hits else "MISSING",sys.argv[1],hits[:3])
 sys.exit(0 if hits else 1)
 PY
 }
+# Android WebView may omit virtual DOM nodes from UIAutomator even when React
+# rendered them. Verify React's actual mounted heading in logcat as a fallback.
+visible_dom_route() {
+  local route="$1" heading="$2"
+  adb logcat -d -v brief | python3 -c '
+import sys,json
+route,heading=sys.argv[1:3]
+for line in sys.stdin:
+    marker="SW_NAV_GEOMETRY "
+    if marker not in line:continue
+    try: data=json.loads(line.split(marker,1)[1].strip())
+    except (ValueError,IndexError): continue
+    if data.get("path")==route and heading.casefold() in data.get("heading","").casefold():
+        if not data.get("root") or not data.get("shell"): continue
+        print("DOM_ROUTE_OK",route,"heading=",data.get("heading"),"nav=",data.get("nav"))
+        sys.exit(0)
+sys.exit(1)
+' "$route" "$heading"
+}
+# Tap an Android tab by its actual measured nav bounding box, not fixed pixels.
+# Used only if accessibility omits WebView virtual links on an old WebView.
+tap_measured_tab() {
+  local label="$1"
+  adb logcat -d -v brief | python3 -c '
+import sys,json,xml.etree.ElementTree as ET,re,subprocess
+label=sys.argv[1]
+data=None
+for line in sys.stdin:
+    marker="SW_NAV_GEOMETRY "
+    if marker not in line:continue
+    try: x=json.loads(line.split(marker,1)[1].strip())
+    except (ValueError,IndexError):continue
+    if x.get("path")=="/" and x.get("nav") and len(x.get("tabs",[]))==3:
+        data=x
+if data is None or label not in data["tabs"]:
+    raise SystemExit("No measured visible nav with tab "+label)
+xml=ET.parse("/tmp/soundworld-window.xml").getroot()
+top=None
+for node in xml.iter("node"):
+    if node.get("class")=="android.webkit.WebView":
+        nums=list(map(int,re.findall(r"\\d+",node.get("bounds",""))))
+        if len(nums)==4:top=nums[1];break
+if top is None:raise SystemExit("No WebView viewport for tap coordinate")
+idx=data["tabs"].index(label)
+dpr=float(data["dpr"])
+x=round((idx+0.5)*float(data["vw"])*dpr/3)
+y=round(top+(data["nav"]["top"]+data["nav"]["bottom"])*dpr/2)
+print("Measured tab tap:",label,x,y,file=sys.stderr)
+subprocess.run(["adb","shell","input","tap",str(x),str(y)],check=True)
+' "$label"
+}
 wait_for_ui() {
   local text="$1"
   for _ in 1 2 3 4 5 6 7 8; do
     capture_ui || true
     if find_ui_text "$text"; then return 0; fi
+    case "$text" in
+      "Живая музыка") visible_dom_route "/" "$text" && return 0 ;;
+      "Настроение") visible_dom_route "/studio" "Studio" && return 0 ;;
+      "Звук и микрофон") visible_dom_route "/settings" "Настройки" && return 0 ;;
+    esac
     sleep 2
   done
   echo "::error::WebView failed to expose expected screen: $text"
@@ -124,6 +180,9 @@ PY
     sleep 2
   done
   if [[ -z "$pos" ]]; then
+    if [[ "$text" == "Studio" || "$text" == "Настройки" ]]; then
+      if tap_measured_tab "$text"; then return 0; fi
+    fi
     echo "::error::Missing or covered tap target: $text"
     echo "Visible Android UI XML:"
     head -c 12000 /tmp/soundworld-window.xml || true
