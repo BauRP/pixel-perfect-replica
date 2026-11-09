@@ -184,7 +184,10 @@
    The shell is strictly contained between the real system bars. In browsers
    these CSS variables default to zero, so the web app is unaffected. */
 #root {
-  height: 100dvh;
+  /* WebView 91 on Android 12 does not understand dvh/svh. Without a
+     standard vh fallback the flex shell has no definite height and the
+     bottom tabs disappear below the visible screen. */
+  height: 100vh;
   min-height: 0;
   box-sizing: border-box;
   padding-top: var(--sw-native-inset-top, 0px);
@@ -193,14 +196,12 @@
   padding-right: var(--sw-native-inset-right, 0px);
   overflow: hidden;
 }
-@supports (height: 100svh) {
-  #root { min-height: 0; }
+@supports (height: 100dvh) {
+  #root { height: 100dvh; }
 }
 /* Safe areas and screen/window resizing for Android 12–17. */
 html { min-width: 0; min-height: 100%; }
 body { min-width: 0; min-height: 100%; overflow-x: hidden; }
-#root { min-height: 100dvh; }
-@supports (height: 100svh) { #root { min-height: 100svh; } }
 @media (max-height: 540px) and (orientation: landscape) {
   .sw-tab-link { min-height: 3.25rem; }
   .sw-tab-icon { height: 1.5rem; }
@@ -234,14 +235,23 @@ body { min-width: 0; min-height: 100%; overflow-x: hidden; }
    almost an entire phone screen on a square. Fits narrow/short Android devices. */
 .sw-player .sw-player-cover {
   aspect-ratio: auto;
-  height: clamp(132px, 25dvh, 200px);
+  height: 170px;
   max-height: 200px;
 }
+@supports (height: 100dvh) {
+  .sw-player .sw-player-cover { height: clamp(132px, 25dvh, 200px); }
+}
 @media (max-width: 360px) {
-  .sw-player .sw-player-cover { height: clamp(108px, 22dvh, 156px); }
+  .sw-player .sw-player-cover { height: 140px; }
+  @supports (height: 100dvh) {
+    .sw-player .sw-player-cover { height: clamp(108px, 22dvh, 156px); }
+  }
 }
 @media (max-height: 650px) {
-  .sw-player .sw-player-cover { height: clamp(100px, 20dvh, 138px); }
+  .sw-player .sw-player-cover { height: 125px; }
+  @supports (height: 100dvh) {
+    .sw-player .sw-player-cover { height: clamp(100px, 20dvh, 138px); }
+  }
 }
 /* Preserve center translation while the decorative ring breathes. */
 .sw-player-cover .animate-breathe {
