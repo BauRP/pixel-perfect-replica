@@ -1,54 +1,57 @@
 package kz.soundworld.ar;
 
 import android.os.Bundle;
-import android.webkit.WebView;
+import android.view.View;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 /**
- * The Android WebView is edge-to-edge, but the React shell is inset between
- * the real status/navigation bars. Insets are measured by Android, not guessed
- * from CSS env(safe-area-inset-*), which may be zero in a Capacitor WebView.
+ * Safe Android edge-to-edge layout.
  *
- * Updates also account for the software keyboard on settings/search screens.
+ * Do not evaluate JavaScript from WindowInsets callbacks. Insets can arrive
+ * during Activity creation, before the Capacitor WebView/JS context is ready.
+ * Instead, pad the native content container so the web app always lives
+ * between the system status/navigation bars and the on-screen keyboard.
+ *
+ * The framework receives a copy of the insets with already handled types
+ * zeroed, preventing the WebView from adding a second layer of padding.
  */
 public class MainActivity extends BridgeActivity {
   @Override public void onCreate(Bundle savedInstanceState) {
     registerPlugin(SoundWorldSensorsPlugin.class);
     registerPlugin(SoundWorldPlaybackPlugin.class);
     registerPlugin(SoundWorldMusicLibraryPlugin.class);
-    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+
     super.onCreate(savedInstanceState);
+    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
 
-    final WebView web = getBridge().getWebView();
-    final WindowInsetsControllerCompat controller =
-        WindowCompat.getInsetsController(getWindow(), web);
-    controller.setAppearanceLightStatusBars(false);
-    controller.setAppearanceLightNavigationBars(false);
+    final View contentRoot = findViewById(android.R.id.content);
+    if (contentRoot == null) return;
 
-    ViewCompat.setOnApplyWindowInsetsListener(web, (view, windowInsets) -> {
-      Insets bars = windowInsets.getInsets(
-          WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-      Insets keyboard = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
-      int left = bars.left;
-      int right = bars.right;
-      int top = bars.top;
-      int bottom = Math.max(bars.bottom, keyboard.bottom);
+    final int systemTypes = WindowInsetsCompat.Type.systemBars()
+        | WindowInsetsCompat.Type.displayCutout();
+    final int keyboardType = WindowInsetsCompat.Type.ime();
 
-      // Only integers from Android WindowInsets are interpolated; no app data.
-      String css = "(function(){var s=document.documentElement.style;"
-          + "s.setProperty('--sw-native-inset-top','" + top + "px');"
-          + "s.setProperty('--sw-native-inset-bottom','" + bottom + "px');"
-          + "s.setProperty('--sw-native-inset-left','" + left + "px');"
-          + "s.setProperty('--sw-native-inset-right','" + right + "px');"
-          + "})()";
-      web.evaluateJavascript(css, null);
-      return windowInsets;
+    ViewCompat.setOnApplyWindowInsetsListener(contentRoot, (view, insets) -> {
+      Insets bars = insets.getInsets(systemTypes);
+      Insets keyboard = insets.getInsets(keyboardType);
+
+      // Absolute values, not incremental padding: repeated dispatch is safe.
+      view.setPadding(
+          bars.left,
+          bars.top,
+          bars.right,
+          Math.max(bars.bottom, keyboard.bottom));
+
+      // Pass through all other insets. Do not prevent keyboard updates.
+      return new WindowInsetsCompat.Builder(insets)
+          .setInsets(systemTypes, Insets.NONE)
+          .setInsets(keyboardType, Insets.NONE)
+          .build();
     });
-    ViewCompat.requestApplyInsets(web);
+    ViewCompat.requestApplyInsets(contentRoot);
   }
 }
