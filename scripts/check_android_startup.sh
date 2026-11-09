@@ -54,6 +54,27 @@ capture_ui() {
   adb shell uiautomator dump /sdcard/window.xml >/dev/null
   adb exec-out cat /sdcard/window.xml > /tmp/soundworld-window.xml
   test -s /tmp/soundworld-window.xml
+
+  # A heavily loaded GitHub emulator may show a SYSTEM UI ANR dialog
+  # on top of a healthy app. Never confuse it with a SoundWorld crash.
+  # Select "Wait" for the operating system, not "Close app".
+  if grep -Eq 'System UI isn.t responding|System UI is not responding' /tmp/soundworld-window.xml; then
+    echo "::warning::Android emulator System UI ANR; selecting Wait to keep testing SoundWorld"
+    local coords
+    coords="$(python3 - <<'PY'
+import re,xml.etree.ElementTree as ET
+root=ET.parse("/tmp/soundworld-window.xml").getroot()
+for node in root.iter("node"):
+    if node.get("text","").casefold()=="wait":
+        b=list(map(int,re.findall(r'\d+',node.get("bounds",""))))
+        if len(b)==4: print((b[0]+b[2])//2,(b[1]+b[3])//2)
+        break
+PY
+)"
+    if [[ -n "$coords" ]]; then adb shell input tap $coords; sleep 3; fi
+    adb shell uiautomator dump /sdcard/window.xml >/dev/null
+    adb exec-out cat /sdcard/window.xml > /tmp/soundworld-window.xml
+  fi
 }
 find_ui_text() {
   local needle="$1"
@@ -71,7 +92,7 @@ PY
 }
 wait_for_ui() {
   local text="$1"
-  for _ in 1 2 3 4 5; do
+  for _ in 1 2 3 4 5 6 7 8; do
     capture_ui || true
     if find_ui_text "$text"; then return 0; fi
     sleep 2
