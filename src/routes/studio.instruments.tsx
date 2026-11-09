@@ -21,19 +21,19 @@ function Instruments() {
   return (
     <>
       <PageHeader title="Любимые инструменты" back subtitle={s.favoriteInstrumentIds.length ? `Выбрано: ${s.favoriteInstrumentIds.length}` : "По умолчанию — выбирает музыка"} />
-      <div className="space-y-5 px-4 py-4">
+      <div className="space-y-3 px-3 py-3">
         {s.favoriteInstrumentIds.length > 0 && (
           <button onClick={() => updateSettings((x) => ({ ...x, favoriteInstrumentIds: [] }))} className="min-h-12 text-sm font-semibold text-primary">Сбросить выбор</button>
         )}
         {INSTRUMENTS.map((c) => (
           <Section key={c.id} title={c.name}>
-            <div className="flex flex-wrap gap-2 p-3">
+            <div className="flex flex-wrap gap-1.5 p-2.5">
               {c.items.map((i) => {
                 const on = s.favoriteInstrumentIds.includes(i.id);
                 const excluded = s.dislikes[i.id] === "excluded";
                 return (
                   <button key={i.id} aria-pressed={on} onClick={() => toggle(i.id)}
-                    className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-full border px-4 text-sm",
+                    className={cn("inline-flex min-h-11 items-center gap-1 rounded-full border px-2.5 text-xs",
                       on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background/40",
                       excluded && "line-through opacity-50")}>
                     {on && <Check className="size-4" />} {capitalize(i.name)}
