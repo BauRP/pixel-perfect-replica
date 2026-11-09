@@ -64,7 +64,7 @@ export function Segmented<T extends string>({
   value, options, onChange, label,
 }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className="grid grid-cols-2 gap-1 rounded-xl bg-background/60 p-1 sm:grid-cols-3">
+    <div role="radiogroup" aria-label={label} className={cn("grid gap-1 rounded-xl bg-background/60 p-1", options.length === 2 ? "grid-cols-2" : "grid-cols-3")}>
       {options.map((o) => {
         const on = o.value === value;
         return (
