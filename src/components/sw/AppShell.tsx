@@ -24,19 +24,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }, [hydrated, settings.onboardingCompleted, loc.pathname, navigate]);
 
-  if (!hydrated) {
-    return (
-      <div className="grid min-h-dvh place-items-center bg-background">
-        <span className="font-display text-sm tracking-[0.3em] text-muted-foreground">SOUNDWORLD AR</span>
-      </div>
-    );
-  }
-
-  // On first-run, onboarding hides the tabs. As soon as the user completes
-  // or skips their genre selection, display tabs immediately even if the
-  // router is still committing its navigation from /onboarding to /.
-  const onboarding = loc.pathname === "/onboarding" && !settings.onboardingCompleted;
-  const showTabs = settings.onboardingCompleted;
   useEffect(() => {
     // Diagnostic only: this log lets Android CI distinguish hidden tabs from
     // a visually clipped nav, without modifying the layout.
@@ -54,6 +41,20 @@ export function AppShell({ children }: { children: ReactNode }) {
       vh: window.innerHeight,
     }));
   }, [loc.pathname, settings.onboardingCompleted]);
+
+  if (!hydrated) {
+    return (
+      <div className="grid min-h-dvh place-items-center bg-background">
+        <span className="font-display text-sm tracking-[0.3em] text-muted-foreground">SOUNDWORLD AR</span>
+      </div>
+    );
+  }
+
+  // On first-run, onboarding hides the tabs. As soon as the user completes
+  // or skips their genre selection, display tabs immediately even if the
+  // router is still committing its navigation from /onboarding to /.
+  const onboarding = loc.pathname === "/onboarding" && !settings.onboardingCompleted;
+  const showTabs = settings.onboardingCompleted;
   const activeTab = loc.pathname === "/" || loc.pathname.startsWith("/history")
     ? "/"
     : loc.pathname.startsWith("/studio") ? "/studio" : loc.pathname.startsWith("/settings") ? "/settings" : "";
