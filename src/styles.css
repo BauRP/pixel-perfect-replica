@@ -180,6 +180,22 @@
   .animate-breathe { animation: none; }
 }
 
+/* Android's native WindowInsets are forwarded by MainActivity.
+   The shell is strictly contained between the real system bars. In browsers
+   these CSS variables default to zero, so the web app is unaffected. */
+#root {
+  height: 100dvh;
+  min-height: 0;
+  box-sizing: border-box;
+  padding-top: var(--sw-native-inset-top, 0px);
+  padding-bottom: var(--sw-native-inset-bottom, 0px);
+  padding-left: var(--sw-native-inset-left, 0px);
+  padding-right: var(--sw-native-inset-right, 0px);
+  overflow: hidden;
+}
+@supports (height: 100svh) {
+  #root { min-height: 0; }
+}
 /* Safe areas and screen/window resizing for Android 12–17. */
 html { min-width: 0; min-height: 100%; }
 body { min-width: 0; min-height: 100%; overflow-x: hidden; }
