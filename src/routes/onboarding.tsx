@@ -37,8 +37,8 @@ function Onboarding() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="pt-safe px-5 pb-4">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <header className="shrink-0 px-4 pb-2 pt-safe">
         <div className="flex items-center justify-between pt-3">
           <span className="font-display text-[11px] tracking-[0.3em] text-muted-foreground">SOUNDWORLD AR</span>
           <button onClick={skip} className="min-h-12 px-2 text-sm font-semibold text-primary">Пропустить</button>
@@ -48,10 +48,10 @@ function Onboarding() {
           Отметьте, что вам нравится. «Пропустить» — значит, нравятся все жанры. Выбор можно изменить позже в Studio.
         </p>
       </header>
-      <div className="flex-1 px-4 pb-32">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
         <GenrePicker selected={sel} onChange={setSel} />
       </div>
-      <div className="fixed inset-x-0 bottom-0 mx-auto max-w-md border-t border-border/60 bg-background/95 px-4 pt-3 pb-safe backdrop-blur-md">
+      <div className="z-20 w-full shrink-0 border-t border-border/60 bg-background/95 px-3 pt-2 pb-safe backdrop-blur-md">
         <Button size="lg" className="mb-2 h-12 w-full rounded-xl text-base" disabled={sel.size === 0} onClick={next}>
           {sel.size === 0 ? "Выберите хотя бы один жанр" : `Продолжить · ${sel.size}`}
         </Button>
