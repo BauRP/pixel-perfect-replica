@@ -135,7 +135,7 @@ for line in sys.stdin:
     if marker not in line:continue
     try: x=json.loads(line.split(marker,1)[1].strip())
     except (ValueError,IndexError):continue
-    if x.get("path")=="/" and x.get("nav") and len(x.get("tabs",[]))==3:
+    if x.get("path") in ("/", "/studio", "/settings") and x.get("nav") and len(x.get("tabs",[]))==3:
         data=x
 if data is None or label not in data["tabs"]:
     raise SystemExit("No measured visible nav with tab "+label)
@@ -143,7 +143,7 @@ xml=ET.parse("/tmp/soundworld-window.xml").getroot()
 top=None
 for node in xml.iter("node"):
     if node.get("class")=="android.webkit.WebView":
-        nums=list(map(int,re.findall(r"\\d+",node.get("bounds",""))))
+        nums=list(map(int,re.findall(r"\d+",node.get("bounds",""))))
         if len(nums)==4:top=nums[1];break
 if top is None:raise SystemExit("No WebView viewport for tap coordinate")
 idx=data["tabs"].index(label)
