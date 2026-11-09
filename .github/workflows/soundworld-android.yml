@@ -25,6 +25,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Install dependencies
         run: bun install
+      - name: Validate Android test scripts before expensive emulator setup
+        run: bash -n scripts/check_android_startup.sh
       - name: Type check
         run: npx tsc --noEmit
       - name: Unit tests
