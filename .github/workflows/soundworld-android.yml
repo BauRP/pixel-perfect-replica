@@ -96,6 +96,22 @@ jobs:
           unzip -Z -1 "$apk" > /tmp/soundworld-apk-entries.txt
           grep -Fx "assets/yamnet.tflite" /tmp/soundworld-apk-entries.txt
           python3 scripts/verify_android_apk.py "$apk"
+      # An APK can compile successfully yet crash immediately when opened.
+      # Do not publish a new user-facing APK without an actual Android launch.
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify actual Android 12 startup twice (crash gate)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: bash scripts/check_android_startup.sh
       # Actions artifact storage can be exhausted. Releases use a separate
       # delivery path and provide an ordinary APK download link.
       - name: Prepare downloadable APK with checksum
