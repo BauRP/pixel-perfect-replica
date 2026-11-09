@@ -22,14 +22,14 @@ const sign = (n: number) => (n > 0 ? `+${n}` : String(n));
 
 function Item({ n, title, help, children, value }: { n: number; title: string; help: string; children: ReactNode; value?: string }) {
   return (
-    <div className="border-b border-border/50 px-4 py-3 last:border-0">
+    <div className="border-b border-border/50 px-3 py-2 last:border-0">
       <div className="flex items-center gap-2">
-        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-xs text-primary">{n}</span>
-        <h3 className="flex-1 font-sans text-[15px] font-semibold">{title}</h3>
-        {value && <span className="text-sm text-muted-foreground">{value}</span>}
+        <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-xs text-primary">{n}</span>
+        <h3 className="min-w-0 flex-1 font-sans text-[13px] font-semibold leading-snug">{title}</h3>
+        {value && <span className="max-w-[35%] truncate text-xs text-muted-foreground">{value}</span>}
         <HelpDot title={title} text={help} />
       </div>
-      <div className="pt-2">{children}</div>
+      <div className="pt-1">{children}</div>
     </div>
   );
 }
@@ -46,18 +46,18 @@ function Studio() {
   return (
     <>
       <PageHeader title="Studio" subtitle="Настройки музыки" />
-      <div className="space-y-5 px-4 py-4">
+      <div className="space-y-3 px-3 py-3">
         <Section>
           <NavRow to="/studio/tastes" title="Музыкальные вкусы" value={s.allowedAllGenres ? "Все жанры" : `${dirs} направлений`} icon={<Music4 className="size-5" />} />
         </Section>
 
         <Section>
           <Item n={1} title="Настроение" value={`${sign(s.mood)} · ${MOOD_WORD(s.mood)}`} help="Влево — грустнее, вправо — веселее. Это эмоция музыки, а не её скорость.">
-            <Slider aria-label="Настроение" min={-5} max={5} step={1} value={[s.mood]} onValueChange={([v]) => set("mood", v ?? 0)} className="py-3" />
+            <Slider aria-label="Настроение" min={-5} max={5} step={1} value={[s.mood]} onValueChange={([v]) => set("mood", v ?? 0)} className="py-2" />
             <div className="flex justify-between text-xs text-muted-foreground"><span>Грустная</span><span>Нейтральная</span><span>Весёлая</span></div>
           </Item>
           <Item n={2} title="Скорость музыки" value={`${sign(s.speed)} · ${SPEED_WORD(s.speed)}`} help="Меняет темп новой музыки, а не ускоряет готовую запись. Ваш выбор важнее, чем бег или ходьба.">
-            <Slider aria-label="Скорость музыки" min={-3} max={3} step={1} value={[s.speed]} onValueChange={([v]) => set("speed", v ?? 0)} className="py-3" />
+            <Slider aria-label="Скорость музыки" min={-3} max={3} step={1} value={[s.speed]} onValueChange={([v]) => set("speed", v ?? 0)} className="py-2" />
             <div className="flex justify-between text-xs text-muted-foreground"><span>Медленно</span><span>Средняя</span><span>Быстро</span></div>
           </Item>
           <Item n={3} title="Любимые инструменты" help="Выбери инструменты, которые хочешь слышать чаще. Без выбора инструменты подбираются сами. Редкие инструменты не гарантированы.">
