@@ -37,6 +37,23 @@ export function AppShell({ children }: { children: ReactNode }) {
   // router is still committing its navigation from /onboarding to /.
   const onboarding = loc.pathname === "/onboarding" && !settings.onboardingCompleted;
   const showTabs = settings.onboardingCompleted;
+  useEffect(() => {
+    // Diagnostic only: this log lets Android CI distinguish hidden tabs from
+    // a visually clipped nav, without modifying the layout.
+    const nav = document.querySelector(".sw-bottom-nav");
+    const shell = document.querySelector(".sw-shell");
+    const root = document.getElementById("root");
+    const rect = (el: Element | null) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) };
+    };
+    console.info("SW_NAV_GEOMETRY", JSON.stringify({
+      path: loc.pathname, completed: settings.onboardingCompleted,
+      nav: rect(nav), shell: rect(shell), root: rect(root),
+      vh: window.innerHeight,
+    }));
+  }, [loc.pathname, settings.onboardingCompleted]);
   const activeTab = loc.pathname === "/" || loc.pathname.startsWith("/history")
     ? "/"
     : loc.pathname.startsWith("/studio") ? "/studio" : loc.pathname.startsWith("/settings") ? "/settings" : "";
