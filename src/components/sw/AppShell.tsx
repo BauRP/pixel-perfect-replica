@@ -81,6 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <li key={t.to}>
                   <Link
                     to={t.to}
+                    onClick={() => console.info("SW_NAV_CLICK", t.label, "from", loc.pathname)}
                     aria-current={on ? "page" : undefined}
                     className={cn(
                       "sw-tab-link flex min-h-13 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-colors",
