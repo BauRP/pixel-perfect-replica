@@ -141,7 +141,7 @@ if data is None or label not in data["tabs"]:
     raise SystemExit("No measured visible nav with tab "+label)
 xml=ET.parse("/tmp/soundworld-window.xml").getroot()
 top=None
-# Prefer the WebView's real window top, otherwise Android's content root.
+# Prefer the WebView real window top, otherwise Android content root.
 # Old WebViews sometimes omit all virtual accessibility children.
 for preferred in ("android.webkit.WebView", "android:id/content"):
     for node in xml.iter("node"):
@@ -153,7 +153,7 @@ for preferred in ("android.webkit.WebView", "android:id/content"):
     if top is not None: break
 if top is None:
     # UIAutomator may return an empty accessibility tree. Native window top
-    # is still inferable from Android's physical screen and WebView viewport.
+    # is still inferable from Android physical screen and WebView viewport.
     physical=subprocess.check_output(["adb","shell","wm","size"],text=True)
     m=re.search(r"(\d+)x(\d+)",physical)
     if not m:raise SystemExit("Cannot locate Android screen")
