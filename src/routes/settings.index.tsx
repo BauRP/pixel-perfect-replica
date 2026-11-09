@@ -19,8 +19,8 @@ const set = <K extends keyof Settings>(k: K, v: Settings[K]) => updateSettings((
 
 function ToggleRow({ title, desc, checked, onChange }: { title: string; desc: ReactNode; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex items-center gap-3 border-b border-border/50 px-4 py-3 last:border-0">
-      <span className="flex-1"><span className="block font-medium">{title}</span><span className="block text-xs text-muted-foreground">{desc}</span></span>
+    <label className="flex min-h-12 items-center gap-2 border-b border-border/50 px-3 py-2 last:border-0">
+      <span className="min-w-0 flex-1"><span className="block text-[13px] font-medium leading-snug">{title}</span><span className="block text-[11px] leading-snug text-muted-foreground">{desc}</span></span>
       <Switch checked={checked} onCheckedChange={onChange} aria-label={title} />
     </label>
   );
@@ -37,15 +37,15 @@ function SettingsPage() {
   return (
     <>
       <PageHeader title="Настройки" />
-      <div className="space-y-5 px-4 py-4">
+      <div className="space-y-3 px-3 py-3">
         <Section title="Звук и микрофон">
           <ToggleRow title="Автоматический выбор устройства" desc="Микрофон гарнитуры, если работает, иначе телефона" checked={s.autoAudioRouting} onChange={(v) => set("autoAudioRouting", v)} />
-          <div className="space-y-2 px-4 py-3">
+          <div className="space-y-1.5 px-3 py-2">
             <Segmented label="Предпочитаемый микрофон" value={s.microphonePreference} onChange={(v) => set("microphonePreference", v)}
               options={[{value:"auto",label:"Автоматически"},{value:"headset",label:"Наушники"},{value:"phone",label:"Телефон"}]} />
             <p className="text-xs text-muted-foreground">Это предпочтение. Фактически выбранный микрофон проверяется после начала записи.</p>
           </div>
-          <div className="flex items-center gap-3 px-4 py-3">
+          <div className="flex items-center gap-2 px-3 py-2">
             <Mic className="size-5 text-muted-foreground" />
             <span className="flex-1 text-sm">Активный микрофон</span>
             <span className="text-right text-xs text-warning">{device?.recording ? device.actualInput || "Определяется" : "Микрофон не используется"}</span>
@@ -58,7 +58,7 @@ function SettingsPage() {
         </Section>
 
         <Section title="Экономия заряда">
-          <div className="space-y-2 p-4">
+          <div className="space-y-1.5 p-3">
             <Segmented label="Экономия заряда" value={s.batteryMode} onChange={(v) => set("batteryMode", v)}
               options={[{ value: "auto", label: "Автоматически" }, { value: "maxPerformance", label: "Максимальная производительность" }]} />
             <p className="text-xs text-muted-foreground">Защита от перегрева и слуха работает в обоих режимах. Сам режим начнёт действовать после подключения нативных модулей.</p>
@@ -66,14 +66,14 @@ function SettingsPage() {
         </Section>
 
         <Section title="Безопасная прогулка">
-          <div className="space-y-2 p-4 text-sm">
+          <div className="space-y-1.5 p-3 text-sm">
             <div className="flex items-center gap-2"><Shield className="size-5 text-primary" /><span className="flex-1 font-medium">Защита от резких скачков громкости</span><PendingBadge /></div>
             <p className="text-xs text-muted-foreground">Приложение не может надёжно распознавать опасность. Всегда следите за дорогой и окружением.</p>
           </div>
         </Section>
 
         <Section title="Разрешения и система">
-          <div className="space-y-1 px-4 py-3 text-sm">
+          <div className="space-y-1 px-3 py-2 text-sm">
             <p>Микрофон: <span className="text-muted-foreground">{!androidSensorsAvailable()?"В браузере недоступен":device?.microphoneGranted?"Разрешён":"Разрешение не предоставлено"}</span></p>
             <p>Уведомления и кнопки гарнитуры: <span className="text-muted-foreground">появятся с фоновым воспроизведением Android</span></p>
             <p className="text-xs text-muted-foreground">Микрофон не включается до нажатия Play. Звук не отправляется в интернет.</p>
