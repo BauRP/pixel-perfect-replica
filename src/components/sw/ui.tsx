@@ -8,18 +8,18 @@ export function PageHeader({ title, back, right, subtitle }: { title: string; ba
   const router = useRouter();
   return (
     <header className="sticky top-0 z-20 border-b border-border/60 bg-background/90 pt-safe backdrop-blur-md">
-      <div className="flex min-h-14 items-center gap-2 px-4 pb-2">
+      <div className="flex min-h-12 items-center gap-2 px-3 pb-1">
         {back && (
           <button
             aria-label="Назад"
             onClick={() => router.history.back()}
-            className="-ml-2 grid size-12 place-items-center rounded-full text-foreground hover:bg-secondary"
+            className="-ml-2 grid size-11 place-items-center rounded-full text-foreground hover:bg-secondary"
           >
             <ArrowLeft className="size-5" />
           </button>
         )}
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-semibold">{title}</h1>
+          <h1 className="truncate text-base font-semibold">{title}</h1>
           {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
         </div>
         {right}
@@ -34,9 +34,9 @@ export function HelpDot({ title, text }: { title: string; text: string }) {
       <DialogTrigger asChild>
         <button
           aria-label={`Что такое «${title}»?`}
-          className="grid size-12 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-foreground"
+          className="grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-foreground"
         >
-          <span className="grid size-6 place-items-center rounded-full border border-current text-xs font-bold">?</span>
+          <span className="grid size-5 place-items-center rounded-full border border-current text-xs font-bold">?</span>
         </button>
       </DialogTrigger>
       <DialogContent className="max-w-sm rounded-2xl">
@@ -53,9 +53,9 @@ export function HelpDot({ title, text }: { title: string; text: string }) {
 
 export function Section({ title, children, className }: { title?: string; children: ReactNode; className?: string }) {
   return (
-    <section className={cn("space-y-2", className)}>
-      {title && <h2 className="px-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">{title}</h2>}
-      <div className="overflow-hidden rounded-2xl border border-border/70 bg-surface shadow-card">{children}</div>
+    <section className={cn("space-y-1.5", className)}>
+      {title && <h2 className="px-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{title}</h2>}
+      <div className="overflow-hidden rounded-xl border border-border/70 bg-surface shadow-card">{children}</div>
     </section>
   );
 }
@@ -64,7 +64,7 @@ export function Segmented<T extends string>({
   value, options, onChange, label,
 }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1 rounded-xl bg-background/60 p-1">
+    <div role="radiogroup" aria-label={label} className="grid grid-cols-2 gap-1 rounded-xl bg-background/60 p-1 sm:grid-cols-3">
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -74,7 +74,7 @@ export function Segmented<T extends string>({
             aria-checked={on}
             onClick={() => onChange(o.value)}
             className={cn(
-              "min-h-12 flex-1 basis-[30%] rounded-lg px-2 text-sm font-medium transition-colors",
+              "min-h-11 min-w-0 rounded-lg px-1.5 py-1 text-xs font-medium leading-tight transition-colors",
               on ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground",
             )}
           >
@@ -98,11 +98,11 @@ export function TriCheck({
         e.stopPropagation();
         onToggle();
       }}
-      className="grid size-12 shrink-0 place-items-center"
+      className="grid size-11 shrink-0 place-items-center"
     >
       <span
         className={cn(
-          "grid size-7 place-items-center rounded-full border-2 transition-colors",
+          "grid size-6 place-items-center rounded-full border-2 transition-colors",
           state === "none" && "border-check-idle text-check-idle",
           state === "all" && "border-primary bg-primary text-primary-foreground",
           state === "partial" && "border-primary text-primary",
@@ -118,11 +118,11 @@ export function NavRow({ to, title, value, icon }: { to: string; title: string; 
   return (
     <Link
       to={to as "/"}
-      className="flex min-h-14 items-center gap-3 border-b border-border/50 px-4 py-3 last:border-0 hover:bg-secondary/60"
+      className="flex min-h-11 items-center gap-2 border-b border-border/50 px-3 py-1.5 last:border-0 hover:bg-secondary/60"
     >
       {icon && <span className="text-primary">{icon}</span>}
-      <span className="flex-1 font-medium">{title}</span>
-      {value && <span className="max-w-[45%] truncate text-sm text-muted-foreground">{value}</span>}
+      <span className="min-w-0 flex-1 text-[13px] font-medium leading-snug">{title}</span>
+      {value && <span className="max-w-[43%] truncate text-xs text-muted-foreground">{value}</span>}
       <span aria-hidden className="text-muted-foreground">›</span>
     </Link>
   );
