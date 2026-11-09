@@ -219,8 +219,17 @@ export function saveSettings(storage: KeyValueStorage | undefined, s: Settings) 
   }
 }
 
-const browserStorage = (): KeyValueStorage | undefined =>
-  typeof window !== "undefined" ? window.localStorage : undefined;
+const browserStorage = (): KeyValueStorage | undefined => {
+  if (typeof window === "undefined") return undefined;
+  try {
+    // WebViews with restricted storage can throw on property ACCESS itself,
+    // before loadSettings/saveSettings have a chance to catch the error.
+    return window.localStorage;
+  } catch {
+    // Continue with in-memory settings rather than crashing at first launch.
+    return undefined;
+  }
+};
 
 let state: Settings = DEFAULT_SETTINGS;
 let hydrated = false;
@@ -242,7 +251,11 @@ export function updateSettings(fn: (s: Settings) => Settings) {
 
 export function resetSettings() {
   state = freshDefaults();
-  browserStorage()?.removeItem(STORAGE_KEY);
+  try {
+    browserStorage()?.removeItem(STORAGE_KEY);
+  } catch {
+    // Reset remains functional even if a WebView denies local storage.
+  }
   emit();
 }
 
