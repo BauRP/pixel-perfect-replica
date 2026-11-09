@@ -88,8 +88,8 @@ function Player() {
       dirs.slice(0, 2).map((d) => genreNameById[d]).join(", ");
 
   return (
-    <div className="sw-player flex flex-col px-3 pt-safe">
-      <div className="flex items-center justify-between gap-2 pt-1">
+    <div className="sw-player flex flex-col px-3">
+      <div className="sticky top-0 z-20 -mx-3 flex items-center justify-between gap-2 border-b border-border/40 bg-background/95 px-3 pb-1.5 pt-safe backdrop-blur-md">
         <span className="font-display text-[10px] tracking-[0.22em] text-muted-foreground">SOUNDWORLD AR</span>
         <Link to="/history" className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[11px] font-semibold hover:bg-secondary">
           <History className="size-4 text-primary" /> История и избранное
