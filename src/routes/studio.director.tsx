@@ -13,8 +13,8 @@ function Director() {
   return (
     <>
       <PageHeader title="Музыкальный режиссёр" back />
-      <div className="space-y-4 px-4 py-4">
-        <div className="rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm">
+      <div className="space-y-3 px-3 py-3">
+        <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs">
           <PendingBadge />
           <p className="mt-2 text-foreground/90">Правила сохраняются, но начнут влиять на музыку только после подключения движка и анализа окружения.</p>
         </div>
@@ -22,8 +22,8 @@ function Director() {
           {DIRECTOR_RULES.map((r) => {
             const on = s.directorRules.find((x) => x.id === r.id)?.enabled ?? false;
             return (
-              <label key={r.id} className="flex min-h-14 items-center gap-3 border-b border-border/50 px-4 last:border-0">
-                <span className="flex-1 text-sm"><b>{r.trigger}</b> → {r.effect}</span>
+              <label key={r.id} className="flex min-h-12 items-center gap-2 border-b border-border/50 px-3 py-1.5 last:border-0">
+                <span className="min-w-0 flex-1 text-xs leading-snug"><b>{r.trigger}</b> → {r.effect}</span>
                 <Switch checked={on} aria-label={`${r.trigger} — ${r.effect}`}
                   onCheckedChange={(v) => updateSettings((x) => ({ ...x, directorRules: x.directorRules.map((y) => (y.id === r.id ? { ...y, enabled: v } : y)) }))} />
               </label>
