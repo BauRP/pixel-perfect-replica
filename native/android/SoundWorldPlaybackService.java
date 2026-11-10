@@ -71,8 +71,9 @@ public final class SoundWorldPlaybackService extends Service {
       }
     };
     IntentFilter filter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
-    if (Build.VERSION.SDK_INT >= 33) registerReceiver(unplug, filter, Context.RECEIVER_NOT_EXPORTED);
-    else registerReceiver(unplug, filter);
+    // Only receives the system ACTION_AUDIO_BECOMING_NOISY broadcast.
+    // Android exempts system-only broadcasts from dynamic export flags.
+    registerReceiver(unplug, filter);
   }
 
   private Notification notification(String message) {
