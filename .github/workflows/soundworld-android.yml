@@ -27,6 +27,8 @@ jobs:
         run: bun install
       - name: Validate Android test scripts before expensive emulator setup
         run: bash -n scripts/check_android_startup.sh
+      - name: Validate Android CSS compatibility transform
+        run: node --test scripts/legacy-css.test.mjs
       - name: Type check
         run: npx tsc --noEmit
       - name: Unit tests
