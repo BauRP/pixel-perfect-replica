@@ -227,9 +227,14 @@ check_start 1
 wait_for_ui "Музыкальные вкусы"
 tap_ui_text "Пропустить"
 wait_for_ui "Живая музыка"
-tap_ui_text "Studio"
+# Tabs must be tapped from the measured bottom navigation, never by
+# matching arbitrary accessibility text: the Studio header contains the
+# phrase "Настройки музыки", which used to be mistaken for the Settings tab.
+capture_ui || true
+tap_measured_tab "Studio"
 wait_for_ui "Настроение"
-tap_ui_text "Настройки"
+capture_ui || true
+tap_measured_tab "Настройки"
 wait_for_ui "Звук и микрофон"
 check_start 2
 wait_for_ui "Живая музыка"
