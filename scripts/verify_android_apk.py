@@ -23,6 +23,20 @@ def verify(path):
         name="assets/yamnet.tflite"
         assert name in z.namelist(), "YAMNet model missing from final APK"
         assert z.getinfo(name).file_size >= 1000000, "YAMNet asset abnormally small"
+        # Emulator testing uses x86_64. Actual Android phones typically use
+        # arm64-v8a. Ensure MediaPipe native libraries are packaged for both.
+        native_entries = [n for n in z.namelist() if n.startswith("lib/") and n.endswith(".so")]
+        assert native_entries, "APK contains no native libraries: MediaPipe runtime not packaged"
+        libs_by_abi = {}
+        for name in native_entries:
+            parts = name.split("/")
+            if len(parts) == 3:
+                libs_by_abi.setdefault(parts[1], set()).add(parts[2])
+        for abi in ("arm64-v8a", "x86_64"):
+            assert abi in libs_by_abi, f"No native libraries for {abi} in APK"
+        missing_arm64 = sorted(libs_by_abi["x86_64"] - libs_by_abi["arm64-v8a"])
+        assert not missing_arm64, f"Native libraries absent for physical arm64 phones: {missing_arm64}"
+        print(f"VERIFIED: {len(libs_by_abi['arm64-v8a'])} arm64 phone libraries and {len(libs_by_abi['x86_64'])} x86_64 emulator libraries")
         data=z.read("AndroidManifest.xml")
     assert u16(data,0)==3, "Not an Android binary manifest"
     strings=[]
