@@ -46,21 +46,28 @@ public class MainActivity extends BridgeActivity {
     final int keyboardType = WindowInsetsCompat.Type.ime();
 
     ViewCompat.setOnApplyWindowInsetsListener(contentRoot, (view, insets) -> {
-      Insets bars = insets.getInsets(systemTypes);
-      Insets keyboard = insets.getInsets(keyboardType);
+      try {
+        Insets bars = insets.getInsets(systemTypes);
+        Insets keyboard = insets.getInsets(keyboardType);
 
-      // Absolute values, not incremental padding: repeated dispatch is safe.
-      view.setPadding(
-          bars.left,
-          bars.top,
-          bars.right,
-          Math.max(bars.bottom, keyboard.bottom));
+        // Absolute values, not incremental padding: repeated dispatch is safe.
+        view.setPadding(
+            bars.left,
+            bars.top,
+            bars.right,
+            Math.max(bars.bottom, keyboard.bottom));
 
-      // Pass through all other insets. Do not prevent keyboard updates.
-      return new WindowInsetsCompat.Builder(insets)
-          .setInsets(systemTypes, Insets.NONE)
-          .setInsets(keyboardType, Insets.NONE)
-          .build();
+        // Pass through all other insets. Do not prevent keyboard updates.
+        return new WindowInsetsCompat.Builder(insets)
+            .setInsets(systemTypes, Insets.NONE)
+            .setInsets(keyboardType, Insets.NONE)
+            .build();
+      } catch (RuntimeException vendorInsetsFailure) {
+        // A vendor-specific WindowInsets implementation must never terminate
+        // the entire Activity. Keep the native system insets as a safe fallback.
+        android.util.Log.e("SoundWorldInsets", "Native window insets fallback", vendorInsetsFailure);
+        return insets;
+      }
     });
     ViewCompat.requestApplyInsets(contentRoot);
   }
