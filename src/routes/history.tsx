@@ -42,7 +42,7 @@ function HistoryPage(){
     let mounted=true;
     void withTimeout(library.recoverLocalMetadata()).then(r=>{if(mounted){if(!r.ok)setError(r.message);void reload();}});
     void currentStoredPlayback().then(x=>{if(mounted&&x)setPlayback(x)});
-    const unsubscribe=library.observeStoredPlayback(state=>{if(mounted)setPlayback(state)});
+    const unsubscribe=library.observeStoredPlayback(state=>{if(mounted){setPlayback(state);if(state.error){setError(state.error);notify.error(state.error)}}});
     return ()=>{mounted=false;unsubscribe();};
   },[library,reload]);
   const execute=async<T,>(action:()=>Promise<import("@/lib/sw/engine").Result<T>>,message:string)=>{

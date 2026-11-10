@@ -19,7 +19,7 @@ interface LibraryPlugin {
   pauseClip():Promise<{state:string}>;
   stopClip():Promise<{state:string}>;
   playbackStatus():Promise<{state:"playing"|"paused"|"stopped"|"preparing";clipId:string;lastError?:string}>;
-  addListener(event:"clipPlayback",callback:(data:{state:"playing"|"paused"|"stopped"|"preparing";clipId:string})=>void):Promise<PluginListenerHandle>;
+  addListener(event:"clipPlayback",callback:(data:{state:"playing"|"paused"|"stopped"|"preparing";clipId:string;error?:string})=>void):Promise<PluginListenerHandle>;
 }
 const native=registerPlugin<LibraryPlugin>("SoundWorldMusicLibrary");
 const error=(e:unknown):{ok:false;code:"ERROR";message:string}=>({ok:false,code:"ERROR",message:e instanceof Error?e.message:String(e)});

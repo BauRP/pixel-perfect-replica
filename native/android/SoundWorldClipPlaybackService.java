@@ -43,14 +43,14 @@ public final class SoundWorldClipPlaybackService extends Service {
   private static volatile SoundWorldClipPlaybackService active;
 
   public interface PlaybackListener {
-    void onPlayback(String state, String clipId);
+    void onPlayback(String state, String clipId, String error);
   }
   private static volatile PlaybackListener listener;
   public static SoundWorldClipPlaybackService current() { return active; }
   public static void setListener(PlaybackListener observer) {
     listener = observer;
     SoundWorldClipPlaybackService service = active;
-    if (observer != null && service != null) observer.onPlayback(service.state, service.clipId);
+    if (observer != null && service != null) observer.onPlayback(service.state, service.clipId, service.lastError);
   }
 
   private final Handler main = new Handler(Looper.getMainLooper());
@@ -138,7 +138,9 @@ public final class SoundWorldClipPlaybackService extends Service {
     state = next;
     updateMediaState();
     PlaybackListener l = listener;
-    if (l != null) l.onPlayback(next, clipId);
+    if (l != null) l.onPlayback(next, clipId, lastError);
+    // Error is delivered once; stop/destroy must not repeat a stale failure.
+    if ("stopped".equals(next)) lastError = "";
     if (!"stopped".equals(next) && notifications != null) {
       try { notifications.notify(NOTIFICATION_ID, notification()); }
       catch (RuntimeException ex) { Log.w("SoundWorldSaved", "Notification update failed", ex); }

@@ -84,7 +84,7 @@ export interface MusicLibrary {
   playStoredClip(clipId: string): Promise<Result>;
   pauseStoredClip(): Promise<Result>;
   stopStoredClip(): Promise<Result>;
-  observeStoredPlayback(cb:(state:{state:"playing"|"paused"|"stopped"|"preparing";clipId:string})=>void):Unsubscribe;
+  observeStoredPlayback(cb:(state:{state:"playing"|"paused"|"stopped"|"preparing";clipId:string;error?:string})=>void):Unsubscribe;
 }
 
 export interface BackgroundAudioBridge {

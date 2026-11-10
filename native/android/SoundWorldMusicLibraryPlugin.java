@@ -403,10 +403,11 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   /** Listen to the actual persistent playback service, not a WebView-owned player. */
   @Override public void load() {
     super.load();
-    SoundWorldClipPlaybackService.setListener((state, id) -> {
+    SoundWorldClipPlaybackService.setListener((state, id, error) -> {
       JSObject result = new JSObject();
       result.put("state", state);
       result.put("clipId", id);
+      if (error != null && !error.isEmpty()) result.put("error", error);
       notifyListeners("clipPlayback", result);
     });
   }

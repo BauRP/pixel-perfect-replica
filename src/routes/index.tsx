@@ -55,7 +55,7 @@ function Player() {
       if(mounted&&r.ok)setRecentClips(r.value);
     })();
     void currentStoredPlayback().then(x=>{if(mounted&&x)setStoredPlayback(x)});
-    const off=lib.observeStoredPlayback(v=>{if(mounted)setStoredPlayback(v)});
+    const off=lib.observeStoredPlayback(v=>{if(mounted){setStoredPlayback(v);if(v.error)notify.error(v.error)}});
     return ()=>{mounted=false;off()};
   },[]);
   useEffect(()=>{
