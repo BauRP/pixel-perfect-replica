@@ -13,6 +13,8 @@ export const PCM_TRANSFER_BYTES = 48000; // quarter-second chunks (bridge size b
 
 export type AudioSink = {
   append(chunk: Uint8Array): Promise<Result<"queued">>;
+  /** Stop the real output, not just WAV persistence, on failure or user stop. */
+  stop?(): Promise<void>;
 };
 export type ClipStore = {
   begin(settings: Settings, genres: string[]): Promise<Result<string>>;
@@ -131,13 +133,26 @@ export class GeneratedPcmSession {
     }
   }
 
+  private async bestEffortCleanup(op: () => Promise<unknown>): Promise<void> {
+    // A second broken native callback must not make failure handling hang forever.
+    const result = Promise.resolve().then(op).then(
+      ():Result => ({ok:true,value:undefined}),
+      ():Result => ({ok:false,code:"ERROR",message:"Ошибка очистки аудиопотока"}),
+    );
+    await this.bounded(result);
+  }
+
   private async fail(message:string):Promise<Result<number>> {
     this.state = "error";
     this.lastFailure = message;
     const current = this.id;
     this.id = null;
     this.bytes = 0;
-    if(current !== null) await this.store.abort(current).catch(()=>{});
+    // Stop queued real audio even if writing its WAV has failed.
+    await Promise.all([
+      ...(this.sink.stop ? [this.bestEffortCleanup(()=>this.sink.stop!())] : []),
+      ...(current !== null ? [this.bestEffortCleanup(()=>this.store.abort(current))] : []),
+    ]);
     return {ok:false,code:"ERROR",message};
   }
 
@@ -149,7 +164,27 @@ export class GeneratedPcmSession {
       if(this.state === "error") return {ok:false,code:"ERROR",message:this.lastFailure??"Ошибка"};
       try {
         const result = await this.finishIfOpen();
-        if(!result.ok) {this.state="error";this.lastFailure=result.message;return result;}
+        if(!result.ok) {
+          this.state="error";this.lastFailure=result.message;
+          const unfinished = this.id;
+          this.id = null;
+          this.bytes = 0;
+          await Promise.all([
+            ...(this.sink.stop ? [this.bestEffortCleanup(()=>this.sink.stop!())] : []),
+            ...(unfinished !== null ? [this.bestEffortCleanup(()=>this.store.abort(unfinished))] : []),
+          ]);
+          return result;
+        }
+        if (this.sink.stop) {
+          const stopResult = await this.bounded(Promise.resolve().then(()=>this.sink.stop!()).then(
+            ():Result => ({ok:true,value:undefined}),
+            (e):Result => ({ok:false,code:"ERROR",message:e instanceof Error?e.message:"Ошибка остановки звука"}),
+          ));
+          if (!stopResult.ok) {
+            this.state="error";this.lastFailure=stopResult.message;
+            return stopResult;
+          }
+        }
         this.state = "stopped";
         return {ok:true,value:undefined};
       }catch(e){
@@ -173,6 +208,7 @@ export function createNativeGeneratedPcmSession(settings:Settings,genres:string[
       const x=await outputPromise;
       return x.appendRealPcm(bytes);
     },
+    stop:async()=> (await outputPromise).stopNativeAudioSink(),
   };
   const store:ClipStore={
     begin:async(s,g)=> (await libraryPromise).beginGenuineClip(s,g),

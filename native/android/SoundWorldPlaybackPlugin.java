@@ -44,10 +44,23 @@ public class SoundWorldPlaybackPlugin extends Plugin {
   }
 
   @PluginMethod public void stop(PluginCall call) {
-    Intent intent = new Intent(getContext(), SoundWorldPlaybackService.class)
-      .setAction(SoundWorldPlaybackService.ACTION_STOP);
-    try { getContext().startService(intent); } catch(Exception ignored) {}
-    JSObject r=new JSObject();r.put("requested",true);call.resolve(r);
+    // Stopping a service must not attempt to START it (Android background-start limits).
+    Intent intent = new Intent(getContext(), SoundWorldPlaybackService.class);
+    SoundWorldPlaybackService service = SoundWorldPlaybackService.current();
+    try {
+      if (service != null) service.pauseAudio(); // clear the queue immediately
+      boolean stopped = getContext().stopService(intent);
+      if (service != null && !stopped) {
+        call.reject("Android не подтвердил остановку музыкальной службы");
+        return;
+      }
+      JSObject r = new JSObject();
+      r.put("requested", true); // the service's onDestroy is asynchronous
+      r.put("alreadyStopped", !stopped && service == null);
+      call.resolve(r);
+    } catch (Exception ex) {
+      call.reject("Не удалось остановить музыкальную службу: " + ex.getMessage());
+    }
   }
 
   @PluginMethod public void status(PluginCall call) {

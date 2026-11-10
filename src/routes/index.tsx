@@ -10,7 +10,9 @@ import { genreNameById } from "@/lib/sw/catalog";
 import { PendingBadge } from "@/components/sw/ui";
 import { cn } from "@/lib/utils";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
-import { latestRealClip } from "@/lib/sw/stored-clips";
+import { latestRealClip, previousRealClip } from "@/lib/sw/stored-clips";
+import { observeRawSound, observeRawSteps, observeMicrophoneLevel, sensorStatus } from "@/lib/sw/native-sensors";
+import { AmbientStabilizer, StepPaceEstimator, type Atmosphere } from "@/lib/sw/environment-smoothing";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -36,28 +38,55 @@ function Player() {
   const [recentClips,setRecentClips]=useState<ClipMeta[]>([]);
   const [storedPlayback,setStoredPlayback]=useState<{state:"playing"|"paused"|"stopped";clipId:string}>({state:"stopped",clipId:""});
   const busyRef = useRef(false);
+  const [lastEnvironment,setLastEnvironment] = useState<{kind:Atmosphere;at:number}|null>(null);
+  const [lastActivity,setLastActivity] = useState<{kind:"walking"|"running";at:number}|null>(null);
+  const [microphone,setMicrophone] = useState<{active:boolean;input:string;at:number}>({active:false,input:"",at:0});
 
   useEffect(() => getAdapters().engine.observeEngineState(setState), []);
   useEffect(()=>{
     const lib=getAdapters().library;
     let mounted=true;
-    void lib.listLastThreeCompleted().then(r=>{if(mounted&&r.ok)setRecentClips(r.value)});
+    void withTimeout(lib.listLastThreeCompleted()).then(r=>{if(mounted&&r.ok)setRecentClips(r.value)});
     void currentStoredPlayback().then(x=>{if(mounted&&x)setStoredPlayback(x)});
     const off=lib.observeStoredPlayback(v=>{if(mounted)setStoredPlayback(v)});
     return ()=>{mounted=false;off()};
+  },[]);
+  useEffect(()=>{
+    const stabilizer=new AmbientStabilizer();
+    const pace=new StepPaceEstimator();
+    let mounted=true;
+    void sensorStatus().then(s=>{if(mounted&&s?.recording)setMicrophone({active:true,input:s.actualInput,at:Date.now()})});
+    const offSound=observeRawSound(event=>{
+      const stable=stabilizer.update(event);
+      if(stable)setLastEnvironment({kind:stable.atmosphere,at:Date.now()});
+    });
+    const offSteps=observeRawSteps(event=>{
+      const next=pace.ingest(event.timestamp);
+      if(next.activity!=="unknown")setLastActivity({kind:next.activity,at:Date.now()});
+    });
+    const offMicrophone=observeMicrophoneLevel(event=>setMicrophone({active:true,input:event.input,at:Date.now()}));
+    // Never show old sensor readings as if detection was still active.
+    const interval=window.setInterval(()=>{
+      const now=Date.now();
+      setLastEnvironment(x=>x&&now-x.at>7000?null:x);
+      setLastActivity(x=>x&&now-x.at>5000?null:x);
+      setMicrophone(x=>x.active&&now-x.at>5000?{active:false,input:"",at:0}:x);
+    },3000);
+    return ()=>{mounted=false;offSound();offSteps();offMicrophone();window.clearInterval(interval)};
   },[]);
 
   const run = async (fn: () => Promise<unknown>) => {
     if (busyRef.current) return; // debounce rapid taps
     busyRef.current = true;
     setBusy(true);
-    try { await fn(); } finally { busyRef.current = false; setBusy(false); }
+    try { await fn(); } catch(e) { notify.error(e instanceof Error?e.message:"Ошибка команды"); } finally { busyRef.current = false; setBusy(false); }
   };
 
   const { engine, library } = getAdapters();
   const playing = state === "LIVE" || state === "HISTORY" || state === "RESERVE";
   const live = state === "LIVE";
   const latestClip = latestRealClip(recentClips);
+  const previousClip = previousRealClip(recentClips,storedPlayback.clipId);
   const hasClip = !!latestClip; // only real, verified and completed files
 
   const onPlay = () => run(async () => {
@@ -118,16 +147,16 @@ function Player() {
       <div className="mt-2 flex min-h-9 items-center gap-2 rounded-lg border border-dashed border-border px-3 text-xs text-muted-foreground">
         <Activity className="size-4" />
         <div className="h-px flex-1 bg-border" />
-        <span>Микрофон не подключён — нет сигнала</span>
+        <span>{microphone.active ? `Микрофон: ${microphone.input || "активен"}` : "Микрофон выключен — нет сигнала"}</span>
       </div>
 
       <div className="mt-2 flex items-center justify-between">
         <button aria-label="В избранное (сердце)" aria-pressed={latestClip?.favorite??false} disabled={busy || !hasClip} onClick={onHeart} className="grid size-11 place-items-center rounded-full text-muted-foreground hover:text-heart">
           <Heart className={cn("size-5",latestClip?.favorite&&"fill-current text-rose-500")} />
         </button>
-        <button aria-label="Предыдущий фрагмент" disabled={busy || !hasClip} onClick={() => void run(async()=>{
-          if(!latestClip)return;
-          notify.result(await withTimeout(library.playStoredClip(latestClip.id)),"Воспроизведение сохранённого фрагмента");
+        <button aria-label="Предыдущий фрагмент" disabled={busy || !previousClip} onClick={() => void run(async()=>{
+          if(!previousClip)return;
+          notify.result(await withTimeout(library.playStoredClip(previousClip.id)),"Воспроизведение предыдущего фрагмента");
         })} className="grid size-11 place-items-center rounded-full text-foreground disabled:opacity-35">
           <SkipBack className="size-5" fill="currentColor" />
         </button>
@@ -168,9 +197,9 @@ function Player() {
         </div>
         <ul className="mt-2 grid grid-cols-2 gap-1.5 text-[11px]">
           {[
-            { icon: CloudRain, label: "Дождь", v: "нет данных" },
-            { icon: Footprints, label: "Ходьба", v: "нет данных" },
-            { icon: Bus, label: "Транспорт", v: "нет данных" },
+            { icon: CloudRain, label: "Дождь", v: lastEnvironment?.kind==="rain"?"Обнаружен":"нет данных" },
+            { icon: Footprints, label: "Ходьба", v: lastActivity?.kind==="walking"?"Обнаружена":lastActivity?.kind==="running"?"Бег":"нет данных" },
+            { icon: Bus, label: "Транспорт", v: lastEnvironment?.kind==="traffic"?"Обнаружен":"нет данных" },
             { icon: Music2, label: "Жанр", v: genreSummary || "—" },
           ].map((f) => (
             <li key={f.label} className="flex min-w-0 items-center gap-1.5 rounded-lg bg-background/50 px-2 py-1.5">

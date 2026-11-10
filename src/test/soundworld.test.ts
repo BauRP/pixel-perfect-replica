@@ -95,7 +95,7 @@ describe("engine contracts", () => {
 });
 
 describe("navigation", () => {
-  it("exactly three tabs in order", () => expect(TABS.map((t) => t.label)).toEqual(["Player", "Studio", "Настройки"]));
+  it("exactly three tabs in order", () => expect(TABS.map((t) => t.label)).toEqual(["Плеер", "Студия", "Настройки"]));
   it("routes resolve", () => {
     const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
     for (const p of ["/", "/studio", "/settings", "/onboarding", "/history", "/studio/tastes", "/studio/director", "/settings/diagnostics"]) {

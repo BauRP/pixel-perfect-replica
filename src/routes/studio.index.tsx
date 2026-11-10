@@ -45,7 +45,7 @@ function Studio() {
 
   return (
     <>
-      <PageHeader title="Studio" subtitle="Настройки музыки" />
+      <PageHeader title="Студия" subtitle="Настройки музыки" />
       <div className="space-y-3 px-3 py-3">
         <Section>
           <NavRow to="/studio/tastes" title="Музыкальные вкусы" value={s.allowedAllGenres ? "Все жанры" : `${dirs} направлений`} icon={<Music4 className="size-5" />} />

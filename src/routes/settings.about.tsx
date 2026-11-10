@@ -17,8 +17,9 @@ export const Route = createFileRoute("/settings/about")({
         </Section>
         <Section title="Компоненты">
           <ul className="space-y-2 px-4 py-3 text-foreground/90">
-            <li>Google Magenta RealTime 2 Small — планируется, ещё не встроен</li>
-            <li>Google YAMNet — планируется, ещё не встроен</li>
+            <li>Музыкальный генератор Fermata — планируется, пока не подключён</li>
+            <li>Google YAMNet — включена в Android APK для локального распознавания окружения; в браузере недоступна</li>
+            <li>Android MediaPipe — используется для распознавания звуков; условия коммерческого использования требуют отдельного окончательного аудита</li>
             <li>React, TanStack, Radix UI, Lucide — MIT</li>
             <li>Шрифты Unbounded, Manrope — SIL OFL</li>
           </ul>

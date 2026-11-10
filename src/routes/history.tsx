@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Clock, Heart, FolderDown, Route as RouteIcon, Play, Pause, Download, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/sw/ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getAdapters, type ClipMeta } from "@/lib/sw/engine";
+import { getAdapters, withTimeout, type ClipMeta } from "@/lib/sw/engine";
 import { genreNameById } from "@/lib/sw/catalog";
 import { notify } from "@/lib/sw/notify";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
@@ -30,7 +30,7 @@ function HistoryPage(){
   const [playback,setPlayback]=useState<Playback>({state:"stopped",clipId:""});
   const library=getAdapters().library;
   const reload=useCallback(async()=>{
-    const results=await Promise.all([library.listLastThreeCompleted(),library.listFavorites(),library.listExports()]);
+    const results=await Promise.all([withTimeout(library.listLastThreeCompleted()),withTimeout(library.listFavorites()),withTimeout(library.listExports())]);
     const errorResult=results.find(r=>!r.ok);
     if(errorResult && !errorResult.ok){setError(errorResult.message);return;}
     const [a,b,c]=results;
@@ -39,7 +39,7 @@ function HistoryPage(){
   },[library]);
   useEffect(()=>{
     let mounted=true;
-    void library.recoverLocalMetadata().then(()=>{if(mounted)void reload();});
+    void withTimeout(library.recoverLocalMetadata()).then(r=>{if(mounted){if(!r.ok)setError(r.message);void reload();}});
     void currentStoredPlayback().then(x=>{if(mounted&&x)setPlayback(x)});
     const unsubscribe=library.observeStoredPlayback(state=>{if(mounted)setPlayback(state)});
     return ()=>{mounted=false;unsubscribe();};
@@ -48,7 +48,7 @@ function HistoryPage(){
     if(busy)return;
     setBusy(true);
     try{
-      const result=await action();
+      const result=await withTimeout(action());
       if(!result.ok){notify.result(result,"");setError(result.message);}
       else{if(message)notify.saved(message);await reload();}
     }catch(e){const m=e instanceof Error?e.message:"Неизвестная ошибка";setError(m);notify.error(m);}

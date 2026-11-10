@@ -79,6 +79,23 @@ describe("real PCM stream without fabricated audio",()=>{
     expect(a.ok&&b.ok).toBe(true);
     expect(finishes).toBe(1);
   });
+  it("a disk failure stops audible output as well as aborting the incomplete WAV",async()=>{
+    const r=rig();let stops=0;
+    const sink={...r.sink,stop:async()=>{stops++;}};
+    const p=new GeneratedPcmSession(sink,r.store,DEFAULT_SETTINGS,[]);
+    r.failNext();
+    expect((await p.submit(new Uint8Array(16))).ok).toBe(false);
+    expect(stops).toBe(1);
+    expect(r.recorded[0]!.aborted).toBe(true);
+  });
+  it("stopping a session closes the native audio output exactly once",async()=>{
+    const r=rig();let stops=0;
+    const p=new GeneratedPcmSession({...r.sink,stop:async()=>{stops++;}},r.store,DEFAULT_SETTINGS,[]);
+    await p.submit(new Uint8Array(16));
+    const [a,b]=await Promise.all([p.stop(),p.stop()]);
+    expect(a.ok&&b.ok).toBe(true);
+    expect(stops).toBe(1);
+  });
   it("a blocked output times out and aborts only its incomplete WAV",async()=>{
     vi.useFakeTimers();
     try{

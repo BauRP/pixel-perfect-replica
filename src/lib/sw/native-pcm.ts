@@ -47,5 +47,5 @@ export async function pauseNativeAudioSink():Promise<void>{
   if(Capacitor.getPlatform()==="android")await native.pause().catch(()=>{});
 }
 export async function stopNativeAudioSink():Promise<void>{
-  if(Capacitor.getPlatform()==="android")await native.stop().catch(()=>{});
+  if(Capacitor.getPlatform()==="android")await native.stop();
 }

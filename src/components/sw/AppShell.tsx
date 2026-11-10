@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 
 /** EXACTLY three destinations, fixed order and labels. */
 export const TABS = [
-  { to: "/", label: "Player", icon: Disc3 },
-  { to: "/studio", label: "Studio", icon: SlidersHorizontal },
+  { to: "/", label: "Плеер", icon: Disc3 },
+  { to: "/studio", label: "Студия", icon: SlidersHorizontal },
   { to: "/settings", label: "Настройки", icon: Settings2 },
 ] as const;
 

@@ -59,6 +59,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private final Object captureLock = new Object();
   private final AtomicBoolean capturing = new AtomicBoolean(false);
   private final AtomicLong captureEpoch = new AtomicLong();
+  private volatile long lastStopEpoch = 0;
+  private volatile long activeCaptureEpoch = -1;
   private final AtomicBoolean inferenceHealthy = new AtomicBoolean(true);
   private AudioRecord recorder;
   private volatile AudioClassifier analyzer;
@@ -160,10 +162,16 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     synchronized (captureLock) {
       if(epoch!=captureEpoch.get()) {call.reject("Запуск микрофона отменён");return;}
       if (capturing.get()) {
-        if (analysisActive != classify) {
-          call.reject("Сначала остановите предыдущую проверку микрофона"); return;
+        // A rapid Stop -> Start must not reuse the OLD recorder and then
+        // report success just before the queued stop closes it.
+        if (activeCaptureEpoch < lastStopEpoch) {
+          stopProbeInternal(); // captureLock is reentrant; not Android UI thread
+        } else {
+          if (analysisActive != classify) {
+            call.reject("Сначала остановите предыдущую проверку микрофона"); return;
+          }
+          JSObject r = new JSObject(); r.put("started", true); call.resolve(r); return;
         }
-        JSObject r = new JSObject(); r.put("started", true); call.resolve(r); return;
       }
       int min = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
       if (min <= 0) { call.reject("Устройство не поддерживает захват 16 кГц"); return; }
@@ -216,6 +224,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         skippedInferenceWindows = 0;
         inferenceHealthy.set(true);
         if (epoch != captureEpoch.get()) throw new IllegalStateException("Запуск отменён");
+        activeCaptureEpoch = epoch;
         capturing.set(true);
         final AudioRecord active = rec;
         captureThread = new Thread(() -> readMic(active), "SoundWorld-Microphone-Probe");
@@ -227,6 +236,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         if (rec != null) { try { rec.release(); } catch (Exception ignored) {} }
         if (preparedClassifier != null) try { preparedClassifier.close(); } catch (Exception ignored) {}
         recorder = null; analyzer = null; inferenceWorker = null; analysisActive = false;
+        activeCaptureEpoch = -1;
         actualInput = ""; actualKind = "";
         call.reject("Не удалось открыть микрофон: " + ex.getMessage());
       }
@@ -240,7 +250,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     final float[] soundWindow = new float[15600];
     int soundFilled = 0;
     try {
-      while (capturing.get()) {
+      while (capturing.get() && recorder == rec) {
         int n = rec.read(samples, 0, samples.length);
         if (n <= 0) {
           if (n < 0) sendError("Ошибка чтения микрофона: " + n);
@@ -334,6 +344,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private void stopProbeInternal() {
     synchronized (captureLock) {
       capturing.set(false);
+      activeCaptureEpoch = -1;
       AudioRecord rec = recorder; recorder = null;
       AudioClassifier cls = analyzer; analyzer = null;
       analysisActive = false;
@@ -351,11 +362,17 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
           final ExecutorService closingWorker = worker;
           Thread closing = new Thread(() -> {
             boolean interrupted = false;
-            while (true) {
-              try { if (closingWorker.awaitTermination(1, TimeUnit.SECONDS)) break; }
+            boolean finished = false;
+            long deadline = SystemClock.elapsedRealtime() + 6000;
+            while (SystemClock.elapsedRealtime() < deadline) {
+              try { if (closingWorker.awaitTermination(1, TimeUnit.SECONDS)) { finished = true; break; } }
               catch (InterruptedException ex) { interrupted = true; }
             }
-            try { cls.close(); } catch (Exception ignored) {}
+            // Never close a MediaPipe classifier while native inference still
+            // uses it. Bound the cleanup wait instead of leaking a waiting thread.
+            if (finished) {
+              try { cls.close(); } catch (Exception ignored) {}
+            } else sendError("YAMNet не завершила фоновую обработку за 6 секунд");
             if (interrupted) Thread.currentThread().interrupt();
           }, "SoundWorld-Yamnet-Close");
           closing.setDaemon(true);
@@ -370,8 +387,13 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   // Never run the blocking release on the Android/Capacitor UI thread.
   private void stopAsync(PluginCall call) {
     long requestedEpoch = captureEpoch.incrementAndGet(); // cancel a pending startup
+    lastStopEpoch = requestedEpoch;
     new Thread(() -> {
-      if (requestedEpoch == captureEpoch.get()) stopProbeInternal();
+      synchronized (captureLock) {
+        // An old stop cannot close a newer recording, but it must close the
+        // recording that existed when Stop was requested.
+        if (activeCaptureEpoch < requestedEpoch) stopProbeInternal();
+      }
       JSObject result = new JSObject(); result.put("stopped", true); call.resolve(result);
     }, "SoundWorld-Mic-Stop").start();
   }
@@ -452,19 +474,25 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
 
   @Override public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
+  private void stopForLifecycle(String threadName) {
+    long epoch = captureEpoch.incrementAndGet();
+    lastStopEpoch = epoch;
+    new Thread(() -> {
+      synchronized (captureLock) {
+        if (activeCaptureEpoch < epoch) stopProbeInternal();
+      }
+    }, threadName).start();
+  }
+
   @Override protected void handleOnPause() {
-    captureEpoch.incrementAndGet();
     // Offload blocking recorder release to a worker. Background media service is separate.
-    long epoch = captureEpoch.get();
-    new Thread(() -> { if (epoch == captureEpoch.get()) stopProbeInternal(); }, "SoundWorld-Lifecycle-Stop").start();
+    stopForLifecycle("SoundWorld-Lifecycle-Stop");
     stopStepsInternal();
     super.handleOnPause();
   }
 
   @Override protected void handleOnDestroy() {
-    captureEpoch.incrementAndGet();
-    long epoch = captureEpoch.get();
-    new Thread(() -> { if (epoch == captureEpoch.get()) stopProbeInternal(); }, "SoundWorld-Destroy-Stop").start();
+    stopForLifecycle("SoundWorld-Destroy-Stop");
     stopStepsInternal();
     super.handleOnDestroy();
   }

@@ -229,7 +229,9 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
           throw new IllegalArgumentException("Неизвестный список файлов");
         for(int i=source.length()-1;i>=0;i--) {
           JSONObject item=source.getJSONObject(i);
-          if(!clipFile(item.getString("id")).isFile()) continue;
+          // A file with a matching name may be truncated/corrupt after a crash.
+          try { verifyWavFile(clipFile(item.getString("id"))); }
+          catch (Exception invalidFile) { continue; }
           if("favorites".equals(filter) && !item.optBoolean("favorite")) continue;
           if("exports".equals(filter) && !item.has("exportedUri")) continue;
           output.put(item);
@@ -383,12 +385,17 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
          !"fmt ".equals(new String(header,12,4,java.nio.charset.StandardCharsets.US_ASCII)) ||
          !"data".equals(new String(header,36,4,java.nio.charset.StandardCharsets.US_ASCII)))
         throw new IOException("Некорректный WAV");
+      long riffSize=(header[4]&255L)|((header[5]&255L)<<8)|((header[6]&255L)<<16)|((header[7]&255L)<<24);
+      long fmtSize=(header[16]&255L)|((header[17]&255L)<<8)|((header[18]&255L)<<16)|((header[19]&255L)<<24);
       int format=(header[20]&255)|((header[21]&255)<<8);
       int channels=(header[22]&255)|((header[23]&255)<<8);
       long rate=(header[24]&255L)|((header[25]&255L)<<8)|((header[26]&255L)<<16)|((header[27]&255L)<<24);
+      long byteRate=(header[28]&255L)|((header[29]&255L)<<8)|((header[30]&255L)<<16)|((header[31]&255L)<<24);
+      int blockAlign=(header[32]&255)|((header[33]&255)<<8);
       int bits=(header[34]&255)|((header[35]&255)<<8);
-      if(format!=1||channels!=2||rate!=SAMPLE_RATE||bits!=16)
-        throw new IOException("Неподдерживаемый формат WAV");
+      if(riffSize!=file.length()-8 || fmtSize!=16 || format!=1 || channels!=2 ||
+         rate!=SAMPLE_RATE || byteRate!=SAMPLE_RATE*FRAME_BYTES || blockAlign!=FRAME_BYTES || bits!=16)
+        throw new IOException("Неподдерживаемый или повреждённый формат WAV");
       long size=(header[40]&255L)|((header[41]&255L)<<8)|((header[42]&255L)<<16)|((header[43]&255L)<<24);
       if(size!=file.length()-44 || size%FRAME_BYTES!=0)
         throw new IOException("Повреждён размер WAV");

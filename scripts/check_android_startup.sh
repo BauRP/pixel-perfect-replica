@@ -197,7 +197,7 @@ wait_for_ui() {
     if find_ui_text "$text" 2>/dev/null; then return 0; fi
     case "$text" in
       "Живая музыка") visible_dom_route "/" "$text" && return 0 ;;
-      "Настроение") visible_dom_route "/studio" "Studio" && return 0 ;;
+      "Настроение") visible_dom_route "/studio" "Студия" && return 0 ;;
       "Звук и микрофон") visible_dom_route "/settings" "Настройки" && return 0 ;;
     esac
     sleep 2
@@ -229,7 +229,7 @@ PY
     sleep 2
   done
   if [[ -z "$pos" ]]; then
-    if [[ "$text" == "Studio" || "$text" == "Настройки" ]]; then
+    if [[ "$text" == "Студия" || "$text" == "Настройки" ]]; then
       if tap_measured_tab "$text"; then return 0; fi
     fi
     echo "::error::Missing or covered tap target: $text"
@@ -254,7 +254,7 @@ wait_for_ui "Живая музыка"
 # matching arbitrary accessibility text: the Studio header contains the
 # phrase "Настройки музыки", which used to be mistaken for the Settings tab.
 capture_ui || true
-tap_measured_tab "Studio"
+tap_measured_tab "Студия"
 wait_for_ui "Настроение"
 capture_ui || true
 tap_measured_tab "Настройки"
