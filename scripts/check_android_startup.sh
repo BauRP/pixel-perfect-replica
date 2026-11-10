@@ -6,6 +6,29 @@ package="kz.soundworld.ar"
 apk="android/app/build/outputs/apk/debug/app-debug.apk"
 test -s "$apk"
 adb wait-for-device
+
+# Pixel 4 virtual devices have no physical camera cutout. On Android 15+,
+# emulate a punch-hole cutout before app launch so the new Activity/splash
+# behavior is exercised instead of relying only on a flat test display.
+sdk="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
+if [[ "$sdk" =~ ^[0-9]+$ ]] && (( sdk >= 35 )); then
+  overlays="$(adb shell cmd overlay list 2>/dev/null || true)"
+  cutout=""
+  for candidate in com.android.internal.display.cutout.emulation.hole com.android.internal.display.cutout.emulation.corner; do
+    if grep -Fq "$candidate" <<< "$overlays"; then cutout="$candidate"; break; fi
+  done
+  if [[ -n "$cutout" ]]; then
+    if adb shell cmd overlay enable --user 0 "$cutout" >/dev/null 2>&1; then
+      echo "Android 15+ simulated camera cutout enabled: $cutout"
+      sleep 2
+    else
+      echo "::warning::Android cutout emulation available but system denied enabling $cutout"
+    fi
+  else
+    echo "::warning::Android emulator offers no camera-cutout overlay; physical-device cutout still untested"
+  fi
+fi
+
 adb install -r "$apk"
 adb shell pm clear "$package" >/dev/null
 
