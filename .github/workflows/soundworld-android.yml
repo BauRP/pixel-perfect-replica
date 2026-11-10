@@ -298,7 +298,21 @@ jobs:
         run: |
           set -euo pipefail
           tag="soundworld-ar-build-${{ github.run_id }}-${{ github.run_attempt }}"
-          gh release edit "$tag" \
-            --title "SoundWorld AR — APK #${{ github.run_number }} (пройдены проверки Android 12 и 16)" \
-            --notes "Автоматические тесты, компиляция и проверка запуска Android 12 и Android 16 пройдены. APK отладочная, не Play Store; поведение на других телефонах не гарантируется. Музыкальная нейросеть Fermata пока не подключена. Коммит: ${GITHUB_SHA}."
+          # Metadata publication is best-effort AFTER both real emulator gates.
+          # Do not turn a verified APK into a red Android job because GitHub's
+          # Releases API temporarily returns HTTP 500 for release edits.
+          marked=0
+          for attempt in 1 2 3; do
+            if gh release edit "$tag" \
+              --title "SoundWorld AR — APK #${{ github.run_number }} (пройдены проверки Android 12 и 16)" \
+              --notes "Автоматические тесты, компиляция и проверка запуска Android 12 и Android 16 пройдены. APK отладочная, не Play Store; поведение на других телефонах не гарантируется. Музыкальная нейросеть Fermata пока не подключена. Коммит: ${GITHUB_SHA}."; then
+              marked=1
+              break
+            fi
+            echo "::warning::Release metadata update attempt $attempt failed"
+            if (( attempt < 3 )); then sleep $((attempt * 8)); fi
+          done
+          if (( marked == 0 )); then
+            echo "::warning::Android tests passed, but GitHub did not update the diagnostic release label; inspect the workflow run before using the APK."
+          fi
           echo "### ✅ Проверка запуска Android 12 и Android 16 пройдена" >> "$GITHUB_STEP_SUMMARY"
