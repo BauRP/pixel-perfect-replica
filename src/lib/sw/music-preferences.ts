@@ -13,8 +13,11 @@ export interface MusicRequest {
   genreCandidates: string[];
   emphasizedGenres: string[];
   excludedGenres: string[];
+  /** Soft negative preferences are not a ban: reduce frequency in future music. */
+  deemphasizedGenres: string[];
   preferredInstruments: string[];
   excludedInstruments: string[];
+  deemphasizedInstruments: string[];
   mood: number;
   compositionBpm: number;
   stepAccentBpm: number | null;
@@ -37,6 +40,12 @@ export function buildMusicRequest(settings:Settings, plan:ControlPlan, favorites
   const allowedGenres=[...new Set(allowed.filter(id=>
     !excluded.has(id) && (!id.includes("-") || !disallowedParents.has(id.split("-")[0]!))
   ))];
+  const notPreferred = new Set(Object.entries(settings.dislikes)
+    .filter(([,level])=>level==="notPreferred").map(([id])=>id));
+  const deemphasizedGenres=allowedGenres.filter(id => notPreferred.has(id) ||
+    (id.includes("-") && notPreferred.has(id.split("-")[0]!)));
+  const deemphasizedInstruments=Object.keys(settings.dislikes).filter(id=>
+    settings.dislikes[id]==="notPreferred" && instrumentNameById[id]!==undefined);
   // A heart is positive guidance only. No heart is NOT negative feedback.
   const score=new Map<string,number>();
   for(const clip of favorites) {
@@ -51,9 +60,11 @@ export function buildMusicRequest(settings:Settings, plan:ControlPlan, favorites
     lengthSeconds:120, instrumental:true, genreCandidates:allowedGenres,
     emphasizedGenres,
     excludedGenres:[...excluded].filter(id=>genreNameById[id]!==undefined),
+    deemphasizedGenres,
     preferredInstruments:[...new Set(settings.favoriteInstrumentIds.filter(id=>
       instrumentNameById[id]!==undefined && !excluded.has(id) && settings.dislikes[id]!=="notPreferred"))],
     excludedInstruments:[...excluded].filter(id=>instrumentNameById[id]!==undefined),
+    deemphasizedInstruments,
     mood:settings.mood, compositionBpm:plan.tempoBpm,
     stepAccentBpm:plan.stepPulseBpm,atmosphere:plan.atmosphere,
     transitionMs:plan.transitionMs,directorEffects:plan.directorEffects,

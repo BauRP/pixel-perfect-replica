@@ -34,6 +34,18 @@ describe("future Magenta request must reflect actual user preferences",()=>{
     expect(r.emphasizedGenres).toEqual([]);
     expect(r.genreCandidates).toContain("g01-s01");
   });
+  it("passes weak dislikes without falsely excluding them",()=>{
+    const s={...DEFAULT_SETTINGS,chosenGenreIds:["g01-s01","g01-s02","g02-s01"],
+      dislikes:{"g01":"notPreferred" as const,"i1-02":"notPreferred" as const}};
+    const r=buildMusicRequest(s,plan,[]);
+    expect(r.genreCandidates).toContain("g01-s01");
+    expect(r.excludedGenres).toEqual([]);
+    expect(r.deemphasizedGenres).toContain("g01-s01");
+    expect(r.deemphasizedGenres).toContain("g01-s02");
+    expect(r.deemphasizedGenres).not.toContain("g02-s01");
+    expect(r.deemphasizedInstruments).toContain("i1-02");
+    expect(r.excludedInstruments).toEqual([]);
+  });
   it("passes all 11 Studio control intentions without claiming generated audio",()=>{
     const s={...DEFAULT_SETTINGS,diversity:"experimental" as const,
       environmentReaction:"strong" as const,useOfEnvironmentSounds:"mixProcessed" as const,
