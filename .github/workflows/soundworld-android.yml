@@ -93,6 +93,30 @@ jobs:
           ET.fromstring(text)
           path.write_text(text)
           PY
+          # Set display-cutout mode in both Android splash and app themes.
+          # On some physical Android 15+ phones the splash is created before
+          # MainActivity.onCreate, so a Java-only fix can be too late.
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          path = Path("android/app/src/main/res/values/styles.xml")
+          tree = ET.parse(path)
+          root = tree.getroot()
+          changed = []
+          for style in root.findall("style"):
+              if style.get("name") not in ("AppTheme.NoActionBarLaunch", "AppTheme.NoActionBar"):
+                  continue
+              item = next((x for x in style.findall("item")
+                           if x.get("name") == "android:windowLayoutInDisplayCutoutMode"), None)
+              if item is None:
+                  item = ET.SubElement(style, "item", {"name": "android:windowLayoutInDisplayCutoutMode"})
+              item.text = "always"
+              changed.append(style.get("name"))
+          assert len(changed) == 2, f"Missing expected Capacitor splash/activity themes: {changed}"
+          tree.write(path, encoding="unicode", xml_declaration=True)
+          ET.parse(path)
+          print("Android splash and Activity cutout mode:", ", ".join(changed))
+          PY
       - name: Build shell-only debug APK
         working-directory: android
         run: bash ./gradlew assembleDebug
