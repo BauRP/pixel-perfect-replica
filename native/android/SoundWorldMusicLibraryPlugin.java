@@ -6,15 +6,6 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
-import android.media.AudioManager;
-import android.media.AudioFocusRequest;
-import android.media.AudioAttributes;
-import android.media.MediaPlayer;
-import android.content.BroadcastReceiver;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.Base64;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -56,12 +47,6 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   private String recordingId;
   private JSONObject recordingMetadata;
   private long written;
-  private MediaPlayer player;
-  private AudioManager playbackAudioManager;
-  private AudioFocusRequest playbackFocus;
-  private String playingId;
-  private String playbackState = "stopped";
-  private BroadcastReceiver noisyReceiver;
 
   private File directory() {
     File dir = new File(getContext().getFilesDir(), "generated_music");
@@ -311,7 +296,8 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
               call.reject("Избранные и сохранённые записи не удаляются автоматически");return;
             }
             // Persist index before deleting file to avoid creating a broken entry.
-            if(id.equals(playingId)) releasePlayer();
+            SoundWorldClipPlaybackService active = SoundWorldClipPlaybackService.current();
+            if (active != null) active.stopIfClip(id);
             index.remove(i);saveIndex(index);clipFile(id).delete();removed=true;break;
           }
         }
@@ -414,129 +400,84 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     verifyWavFile(file);
   }
 
+  /** Listen to the actual persistent playback service, not a WebView-owned player. */
   @Override public void load() {
     super.load();
-    // When wired/Bluetooth headphones vanish, do not surprise the listener with speaker audio.
-    noisyReceiver=new BroadcastReceiver() {
-      @Override public void onReceive(Context context,Intent intent) {
-        if(AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) {
-          writer.execute(()->pausePlayer());
-        }
-      }
-    };
-    IntentFilter filter=new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
-    // ACTION_AUDIO_BECOMING_NOISY is exclusively a system broadcast.
-    // Android 14+ explicitly permits registration without export flags for
-    // system-only actions; this also avoids OEM-specific receiver flag errors
-    // during Capacitor plugin initialization.
-    try {
-      getContext().registerReceiver(noisyReceiver, filter);
-    } catch (SecurityException ex) {
-      // Some OEM Android builds demand explicit flags even for this system
-      // broadcast. Retry without sacrificing headphone-disconnect protection.
-      if (Build.VERSION.SDK_INT >= 33)
-        getContext().registerReceiver(noisyReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-      else throw ex;
-    }
+    SoundWorldClipPlaybackService.setListener((state, id) -> {
+      JSObject result = new JSObject();
+      result.put("state", state);
+      result.put("clipId", id);
+      notifyListeners("clipPlayback", result);
+    });
   }
 
-  private void publishPlayback(String state) {
-    playbackState=state;
-    JSObject data=new JSObject();
-    data.put("state",state);
-    data.put("clipId",playingId == null ? "" : playingId);
-    notifyListeners("clipPlayback",data);
+  private void respondPlayback(PluginCall call, String state, String id) {
+    JSObject result = new JSObject();
+    result.put("state", state);
+    result.put("clipId", id);
+    call.resolve(result);
   }
 
-  private void releasePlayer() {
-    MediaPlayer old=player;
-    player=null;
-    if(old!=null) {
-      try {old.setOnCompletionListener(null);}catch(Exception ignored){}
-      try {old.stop();}catch(Exception ignored){}
-      try {old.release();}catch(Exception ignored){}
-    }
-    if(playbackAudioManager!=null && playbackFocus!=null) {
-      try {playbackAudioManager.abandonAudioFocusRequest(playbackFocus);}catch(Exception ignored){}
-    }
-    playbackFocus=null;
-    playingId=null;
-    publishPlayback("stopped");
-  }
-
-  private void pausePlayer() {
-    if(player!=null && "playing".equals(playbackState)) {
-      try {player.pause();publishPlayback("paused");}
-      catch(Exception ignored) {releasePlayer();}
-    }
-  }
-
+  /**
+   * Verify the WAV is in the app's real protected catalog BEFORE starting the
+   * foreground service. Android performs async MediaPlayer.prepare, never
+   * blocks the calling UI thread waiting for a complete WAV decode.
+   */
   @PluginMethod public void playClip(PluginCall call) {
-    String id=call.getString("id");
-    writer.execute(()->{
+    String id = call.getString("id");
+    writer.execute(() -> {
       try {
         verifyPlayableClip(id);
-        if(id.equals(playingId) && player!=null) {
-          player.start();publishPlayback("playing");
-        } else {
-          releasePlayer();
-          playbackAudioManager=(AudioManager)getContext().getSystemService(Context.AUDIO_SERVICE);
-          if(playbackAudioManager==null)throw new IOException("Звуковая система недоступна");
-          AudioAttributes attrs=new AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build();
-          playbackFocus=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-            .setAudioAttributes(attrs).setOnAudioFocusChangeListener(change->{
-              if(change<=0) writer.execute(this::pausePlayer);
-            },new Handler(Looper.getMainLooper())).build();
-          if(playbackAudioManager.requestAudioFocus(playbackFocus)!=AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
-            throw new IOException("Нет разрешения на воспроизведение звука");
-          MediaPlayer created=new MediaPlayer();
-          player=created;
-          created.setAudioAttributes(attrs);
-          created.setDataSource(clipFile(id).getAbsolutePath());
-          created.setOnCompletionListener(p->writer.execute(this::releasePlayer));
-          created.prepare();
-          created.start();
-          playingId=id;
-          publishPlayback("playing");
-        }
-        JSObject result=new JSObject();result.put("playing",true);result.put("id",id);call.resolve(result);
-      }catch(Exception ex) {
-        releasePlayer();call.reject("Не удалось воспроизвести WAV: "+ex.getMessage());
+        android.content.Intent intent = new android.content.Intent(
+          getContext(), SoundWorldClipPlaybackService.class)
+          .setAction(SoundWorldClipPlaybackService.ACTION_PLAY)
+          .putExtra(SoundWorldClipPlaybackService.EXTRA_CLIP_ID, id);
+        boolean allowed = Boolean.TRUE.equals(call.getBoolean("resumeAfterCall", true));
+        intent.putExtra(SoundWorldClipPlaybackService.EXTRA_AUTO_RESUME, allowed);
+        androidx.core.content.ContextCompat.startForegroundService(getContext(), intent);
+        // This only acknowledges the request. Actual "playing" comes from
+        // MediaPlayer.onPrepared via clipPlayback, never from an invented state.
+        JSObject result = new JSObject();
+        result.put("requested", true);
+        result.put("id", id);
+        call.resolve(result);
+      } catch (Exception ex) {
+        call.reject("Не удалось включить WAV: " + ex.getMessage());
       }
     });
   }
 
   @PluginMethod public void pauseClip(PluginCall call) {
-    writer.execute(()->{
-      pausePlayer();
-      JSObject result=new JSObject();result.put("state",playbackState);call.resolve(result);
-    });
+    SoundWorldClipPlaybackService service = SoundWorldClipPlaybackService.current();
+    if (service == null) {
+      respondPlayback(call, "stopped", "");
+      return;
+    }
+    service.requestPause();
+    // Acknowledgment is a request; listener/status report the actual state.
+    respondPlayback(call, "requested", service.playbackClipId());
   }
 
   @PluginMethod public void stopClip(PluginCall call) {
-    writer.execute(()->{
-      releasePlayer();
-      JSObject result=new JSObject();result.put("state","stopped");call.resolve(result);
-    });
+    SoundWorldClipPlaybackService service = SoundWorldClipPlaybackService.current();
+    if (service != null) service.requestStop();
+    respondPlayback(call, "requested", "");
   }
 
   @PluginMethod public void playbackStatus(PluginCall call) {
-    writer.execute(()->{
-      JSObject result=new JSObject();
-      result.put("state",playbackState);
-      result.put("clipId",playingId == null ? "" : playingId);
-      call.resolve(result);
-    });
+    SoundWorldClipPlaybackService service = SoundWorldClipPlaybackService.current();
+    JSObject result = new JSObject();
+    result.put("state", service == null ? "stopped" : service.playbackState());
+    result.put("clipId", service == null ? "" : service.playbackClipId());
+    result.put("lastError", service == null ? "" : service.playbackError());
+    call.resolve(result);
   }
 
   @Override protected void handleOnDestroy() {
-    if(noisyReceiver!=null) {
-      try {getContext().unregisterReceiver(noisyReceiver);}catch(Exception ignored){}
-      noisyReceiver=null;
-    }
-    writer.execute(()->{releasePlayer();abortRecording();});
+    // The saved music belongs to a foreground SERVICE, not this WebView.
+    // Do not stop it when Android destroys/recreates the Activity.
+    SoundWorldClipPlaybackService.setListener(null);
+    writer.execute(this::abortRecording);
     writer.shutdown();
     super.handleOnDestroy();
   }

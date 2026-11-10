@@ -14,7 +14,7 @@ export const Route = createFileRoute("/history")({
 });
 
 type LibraryData={last:ClipMeta[];fav:ClipMeta[];exp:ClipMeta[]};
-type Playback={state:"playing"|"paused"|"stopped";clipId:string};
+type Playback={state:"playing"|"paused"|"stopped"|"preparing";clipId:string};
 function Empty({ icon:I,title,text }: {icon:typeof Clock;title:string;text:string}) {
   return <div className="flex flex-col items-center rounded-2xl border border-dashed border-border px-6 py-12 text-center">
     <I className="size-8 text-muted-foreground"/>
@@ -66,7 +66,7 @@ function HistoryPage(){
           {c.recoveredProtected?" · Восстановленная запись":""}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
-          <button disabled={busy} aria-label={playing?"Пауза":"Прослушать"} className="flex min-h-11 items-center gap-1 rounded-lg bg-primary px-3 text-primary-foreground disabled:opacity-50"
+          <button disabled={busy||playback.state==="preparing"} aria-label={playing?"Пауза":"Прослушать"} className="flex min-h-11 items-center gap-1 rounded-lg bg-primary px-3 text-primary-foreground disabled:opacity-50"
             onClick={()=>void execute(playing?()=>library.pauseStoredClip():()=>library.playStoredClip(c.id),"")}>
             {playing?<Pause className="size-4"/>:<Play className="size-4"/>}{playing?"Пауза":"Слушать"}
           </button>

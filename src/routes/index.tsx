@@ -36,7 +36,7 @@ function Player() {
   const [state, setState] = useState<SessionState>("IDLE");
   const [busy, setBusy] = useState(false);
   const [recentClips,setRecentClips]=useState<ClipMeta[]>([]);
-  const [storedPlayback,setStoredPlayback]=useState<{state:"playing"|"paused"|"stopped";clipId:string}>({state:"stopped",clipId:""});
+  const [storedPlayback,setStoredPlayback]=useState<{state:"playing"|"paused"|"stopped"|"preparing";clipId:string}>({state:"stopped",clipId:""});
   const busyRef = useRef(false);
   const [lastEnvironment,setLastEnvironment] = useState<{kind:Atmosphere;at:number}|null>(null);
   const [lastActivity,setLastActivity] = useState<{kind:"walking"|"running";at:number}|null>(null);
@@ -146,7 +146,7 @@ function Player() {
           <p className="truncate text-xs text-muted-foreground">{genreSummary} · настроение {s.mood > 0 ? `+${s.mood}` : s.mood}</p>
         </div>
         <span aria-live="polite" className={cn("mt-0.5 max-w-[50%] shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold", state === "UNAVAILABLE" ? "bg-warning/15 text-warning" : "bg-primary/15 text-primary")}>
-          {storedPlayback.state==="playing"?"Воспроизведение WAV":storedPlayback.state==="paused"?"Пауза WAV":STATE_LABEL[state]}
+          {storedPlayback.state==="playing"?"Воспроизведение WAV":storedPlayback.state==="paused"?"Пауза WAV":storedPlayback.state==="preparing"?"Подготовка WAV…":STATE_LABEL[state]}
         </span>
       </div>
 
@@ -167,7 +167,7 @@ function Player() {
         })} className="grid size-11 place-items-center rounded-full text-foreground disabled:opacity-35">
           <SkipBack className="size-5" fill="currentColor" />
         </button>
-        <button aria-label={playing || storedPlayback.state==="playing" ? "Пауза" : "Играть"} disabled={busy} onClick={onPlay} className="grid size-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-play transition-transform active:scale-95 disabled:opacity-70">
+        <button aria-label={playing || storedPlayback.state==="playing" ? "Пауза" : "Играть"} disabled={busy||storedPlayback.state==="preparing"} onClick={onPlay} className="grid size-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-play transition-transform active:scale-95 disabled:opacity-70">
           {playing || storedPlayback.state==="playing" ? <Pause className="size-6" fill="currentColor" /> : <Play className="ml-1 size-6" fill="currentColor" />}
         </button>
         <button aria-label="Следующая вариация" disabled={busy} onClick={onNext} className="grid size-11 place-items-center rounded-full text-foreground">

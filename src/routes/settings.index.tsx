@@ -53,7 +53,7 @@ function SettingsPage() {
         </Section>
 
         <Section title="Воспроизведение">
-          <ToggleRow title="Продолжать после звонка" desc="Настройка сохранится, но начнёт действовать после подключения музыкального движка" checked={s.afterCallAutoResume} onChange={(v) => set("afterCallAutoResume", v)} />
+          <ToggleRow title="Продолжать после звонка" desc="Для сохранённых WAV применяется при кратковременном прерывании звонком. Для генерации новой музыки заработает после подключения движка" checked={s.afterCallAutoResume} onChange={(v) => set("afterCallAutoResume", v)} />
           <ToggleRow title="Без анализа окружения" desc="Только музыка по настройкам Studio, без микрофона и шагов" checked={s.musicOnlyMode} onChange={(v) => set("musicOnlyMode", v)} />
         </Section>
 
@@ -75,7 +75,7 @@ function SettingsPage() {
         <Section title="Разрешения и система">
           <div className="space-y-1 px-3 py-2 text-sm">
             <p>Микрофон: <span className="text-muted-foreground">{!androidSensorsAvailable()?"В браузере недоступен":device?.microphoneGranted?"Разрешён":"Разрешение не предоставлено"}</span></p>
-            <p>Уведомления и кнопки гарнитуры: <span className="text-muted-foreground">появятся с фоновым воспроизведением Android</span></p>
+            <p>Уведомления и кнопки гарнитуры: <span className="text-muted-foreground">для сохранённых WAV доступны при воспроизведении в Android APK; для живой генерации пока не подключены</span></p>
             <p className="text-xs text-muted-foreground">Микрофон не включается до нажатия Play. Звук не отправляется в интернет.</p>
           </div>
           <NavRow to="/settings/about" title="Лицензии и приватность" icon={<FileText className="size-5" />} />

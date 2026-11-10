@@ -2,7 +2,7 @@
  * Native integration contracts for SoundWorld AR.
  * Phase 1 ships ONLY "unavailable" adapters: every call returns an explicit
  * UNAVAILABLE / NOT_IMPLEMENTED result. The next developer replaces these with
- * real adapters (Magenta RealTime 2 Small, YAMNet, Android services) via
+ * real adapters (the approved Fermata model, YAMNet, Android services) via
  * `registerAdapters()`. UI never calls microphone/AI directly.
  */
 import type { Settings } from "./settings";
@@ -84,7 +84,7 @@ export interface MusicLibrary {
   playStoredClip(clipId: string): Promise<Result>;
   pauseStoredClip(): Promise<Result>;
   stopStoredClip(): Promise<Result>;
-  observeStoredPlayback(cb:(state:{state:"playing"|"paused"|"stopped";clipId:string})=>void):Unsubscribe;
+  observeStoredPlayback(cb:(state:{state:"playing"|"paused"|"stopped"|"preparing";clipId:string})=>void):Unsubscribe;
 }
 
 export interface BackgroundAudioBridge {
