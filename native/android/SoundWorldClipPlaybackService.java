@@ -62,6 +62,7 @@ public final class SoundWorldClipPlaybackService extends Service {
   private boolean unplugged = false;
   private int generation = 0;
   private boolean playerPrepared = false;
+  private Runnable prepareDeadline;
   private AudioManager audioManager;
   private AudioFocusRequest focusRequest;
   private MediaPlayer player;
@@ -282,8 +283,15 @@ public final class SoundWorldClipPlaybackService extends Service {
       next.setAudioAttributes(attrs);
       next.setWakeMode(this, PowerManager.PARTIAL_WAKE_LOCK);
       next.setDataSource(file.getAbsolutePath());
+      prepareDeadline = () -> {
+        if (next == player && !playerPrepared)
+          failPlayback("Android не подготовил WAV за 15 секунд");
+      };
+      main.postDelayed(prepareDeadline, 15000);
       next.setOnPreparedListener(mp -> {
         if (mp != player) return;
+        if (prepareDeadline != null) main.removeCallbacks(prepareDeadline);
+        prepareDeadline = null;
         playerPrepared = true;
         if (!"preparing".equals(state)) return; // pause requested while preparing
         if (!acquireFocus()) { failPlayback(lastError); return; }
@@ -336,6 +344,8 @@ public final class SoundWorldClipPlaybackService extends Service {
   }
 
   private void releasePlayer() {
+    if (prepareDeadline != null) main.removeCallbacks(prepareDeadline);
+    prepareDeadline = null;
     MediaPlayer previous = player;
     player = null;
     playerPrepared = false;
