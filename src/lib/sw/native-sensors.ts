@@ -7,7 +7,7 @@ import {
   registerAdapters, type Adapters, type EnvironmentEvent, type Result, type Unsubscribe,
 } from "./engine";
 import { AmbientStabilizer, StepPaceEstimator, type Atmosphere } from "./environment-smoothing";
-import { getSettingsSnapshot } from "./settings";
+import { getSettingsSnapshot, type Settings } from "./settings";
 
 type NativeResult = { started?: boolean; stopped?: boolean; granted?: boolean; active?: boolean; name?: string; kind?: string; input?: string; output?: string };
 export interface SensorsStatus {
@@ -41,6 +41,13 @@ interface SensorsPlugin {
   addListener(event: "yamnet" | "step" | "analysisError" | "micLevel", callback: (value: any) => void): Promise<PluginListenerHandle>;
 }
 const native = registerPlugin<SensorsPlugin>("SoundWorldSensors");
+
+/** Disabling automatic routing means no automatic headset preference. */
+export function effectiveMicrophonePreference(
+  s: Pick<Settings,"autoAudioRouting"|"microphonePreference">,
+): Settings["microphonePreference"] {
+  return !s.autoAudioRouting && s.microphonePreference==="auto" ? "phone" : s.microphonePreference;
+}
 export const androidSensorsAvailable = () => Capacitor.getPlatform() === "android";
 const unavailable = (message: string): {ok:false;code:"UNAVAILABLE";message:string} => ({ ok: false, code: "UNAVAILABLE", message });
 const safeError = (e: unknown): {ok:false;code:"ERROR";message:string} => ({
@@ -71,7 +78,7 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
         if (activity.granted) await native.startSteps();
       } catch { /* microphone still works without the motion sensor */ }
     }
-    await native.setInputPreference({preference:getSettingsSnapshot().microphonePreference});
+    await native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())});
     const r = availability.yamnetIncluded
       ? await native.startAnalysis()
       : await native.startMicrophoneProbe();
@@ -129,7 +136,7 @@ export function installNativeSensorAdapters(): void {
         try {
           const s=await native.status();
           if(!s.microphoneGranted) return {ok:false,code:"PERMISSION_DENIED",message:"Разрешите микрофон при запуске музыки"};
-          await native.setInputPreference({preference:getSettingsSnapshot().microphonePreference});
+          await native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())});
           const r = await native.startAnalysis();
           return r.started ? {ok:true,value:undefined} : unavailable("Модель YAMNet недоступна");
         }catch(e){return safeError(e);}
@@ -168,7 +175,7 @@ export function installNativeSensorAdapters(): void {
         catch(e){return safeError(e);}
       },
       chooseBestSupportedRoute:async()=>{
-        try { await native.setInputPreference({preference:getSettingsSnapshot().microphonePreference});return {ok:true,value:undefined}; }
+        try { await native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())});return {ok:true,value:undefined}; }
         catch(e){return safeError(e);}
       },
       observeInputOutputChanges:()=>()=>{},

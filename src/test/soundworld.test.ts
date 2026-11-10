@@ -9,6 +9,7 @@ import {
 } from "@/lib/sw/settings";
 import { addCompletedClip, unavailableAdapters, type ClipMeta } from "@/lib/sw/engine";
 import { TABS } from "@/components/sw/AppShell";
+import { effectiveMicrophonePreference } from "@/lib/sw/native-sensors";
 
 const mem = (): KeyValueStorage => { const m = new Map<string, string>(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v), removeItem: (k) => void m.delete(k) }; };
 
@@ -91,6 +92,14 @@ describe("engine contracts", () => {
     const { kept, evicted } = addCompletedClip([c("a", 1, true), c("b", 2), c("c", 3), c("d", 4)], c("e", 5));
     expect(evicted.map((x) => x.id)).toEqual(["b"]);
     expect(kept.map((x) => x.id)).toContain("a");
+  });
+});
+
+describe("Android microphone routing settings", () => {
+  it("manual mode does not silently prefer a headset", () => {
+    expect(effectiveMicrophonePreference({...DEFAULT_SETTINGS,autoAudioRouting:false,microphonePreference:"auto"})).toBe("phone");
+    expect(effectiveMicrophonePreference({...DEFAULT_SETTINGS,autoAudioRouting:false,microphonePreference:"headset"})).toBe("headset");
+    expect(effectiveMicrophonePreference({...DEFAULT_SETTINGS,autoAudioRouting:true,microphonePreference:"auto"})).toBe("auto");
   });
 });
 

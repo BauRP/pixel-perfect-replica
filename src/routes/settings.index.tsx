@@ -39,7 +39,7 @@ function SettingsPage() {
       <PageHeader title="Настройки" />
       <div className="space-y-3 px-3 py-3">
         <Section title="Звук и микрофон">
-          <ToggleRow title="Автоматический выбор устройства" desc="Микрофон гарнитуры, если работает, иначе телефона" checked={s.autoAudioRouting} onChange={(v) => set("autoAudioRouting", v)} />
+          <ToggleRow title="Автоматический выбор устройства" desc="При включении используется предпочтительный доступный микрофон. При выключении и выборе «Автоматически» используется микрофон телефона" checked={s.autoAudioRouting} onChange={(v) => set("autoAudioRouting", v)} />
           <div className="space-y-1.5 px-3 py-2">
             <Segmented label="Предпочитаемый микрофон" value={s.microphonePreference} onChange={(v) => set("microphonePreference", v)}
               options={[{value:"auto",label:"Автоматически"},{value:"headset",label:"Наушники"},{value:"phone",label:"Телефон"}]} />
@@ -53,7 +53,7 @@ function SettingsPage() {
         </Section>
 
         <Section title="Воспроизведение">
-          <ToggleRow title="Продолжать после звонка" desc="Если до звонка была пауза, музыка сама не включится" checked={s.afterCallAutoResume} onChange={(v) => set("afterCallAutoResume", v)} />
+          <ToggleRow title="Продолжать после звонка" desc="Настройка сохранится, но начнёт действовать после подключения музыкального движка" checked={s.afterCallAutoResume} onChange={(v) => set("afterCallAutoResume", v)} />
           <ToggleRow title="Без анализа окружения" desc="Только музыка по настройкам Studio, без микрофона и шагов" checked={s.musicOnlyMode} onChange={(v) => set("musicOnlyMode", v)} />
         </Section>
 
