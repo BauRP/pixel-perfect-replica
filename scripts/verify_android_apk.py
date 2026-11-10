@@ -80,7 +80,7 @@ def verify(path):
         pos+=size
     # The persistent saved-WAV service must be in the COMPILED APK, not just
     # declared in source: Capacitor dynamically regenerates AndroidManifest.
-    assert ".SoundWorldClipPlaybackService" in strings, "Persistent WAV service not registered in APK"
+    assert any(value.endswith("SoundWorldClipPlaybackService") for value in strings), "Persistent WAV service not registered in APK"
     assert "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" in strings, "Foreground media permission missing"
     assert "android.permission.WAKE_LOCK" in strings, "MediaPlayer wake lock permission missing"
     assert sdk.get("minSdkVersion")==31, f"Expected minSdk 31, actual: {sdk}"

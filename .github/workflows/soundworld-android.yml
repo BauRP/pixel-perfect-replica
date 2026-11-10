@@ -29,6 +29,12 @@ jobs:
         run: bash -n scripts/check_android_startup.sh
       - name: Validate Android CSS compatibility transform
         run: node --test scripts/legacy-css.test.mjs
+      - name: Validate native thermal and battery policy (real Java)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/soundworld-power-tests
+          javac -d /tmp/soundworld-power-tests native/android/SoundWorldPowerPolicy.java scripts/SoundWorldPowerPolicyTest.java
+          java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldPowerPolicyTest
       - name: Type check
         run: npx tsc --noEmit
       - name: Unit tests
@@ -61,6 +67,7 @@ jobs:
           target=android/app/src/main/java/kz/soundworld/ar
           mkdir -p "$target"
           cp native/android/SoundWorldSensorsPlugin.java "$target/SoundWorldSensorsPlugin.java"
+          cp native/android/SoundWorldPowerPolicy.java "$target/SoundWorldPowerPolicy.java"
           cp native/android/MainActivity.java "$target/MainActivity.java"
           cp native/android/SoundWorldPlaybackService.java "$target/SoundWorldPlaybackService.java"
           cp native/android/SoundWorldPlaybackPlugin.java "$target/SoundWorldPlaybackPlugin.java"

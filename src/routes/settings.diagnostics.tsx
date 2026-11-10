@@ -34,7 +34,7 @@ function Diagnostics() {
   const [micInput,setMicInput] = useState("");
   const [micRms,setMicRms] = useState<number | null>(null);
   const [output,setOutput] = useState<Awaited<ReturnType<typeof currentAudioSinkStatus>>>(null);
-  const [hardware,setHardware] = useState<{ramMb?:number;battery?:number;thermalStatus?:number;inferenceSkipped:number;lowMemory?:boolean}|null>(null);
+  const [hardware,setHardware] = useState<{ramMb?:number;battery?:number;thermalStatus?:number;inferenceSkipped:number;inferenceThrottled?:number;analysisStride?:number;batteryMode?:string;lowMemory?:boolean}|null>(null);
   useEffect(()=>{
     const estimator = new StepPaceEstimator();
     const stabilizer = new AmbientStabilizer();
@@ -105,7 +105,9 @@ function Diagnostics() {
             <p>Доступная оперативная память: {hardware?.ramMb === undefined?"Нет данных":hardware.ramMb+" МБ"}</p>
             <p>Заряд батареи: {hardware?.battery === undefined?"Нет данных":hardware.battery+"%"}</p>
             <p>Тепловой статус Android: {hardware?.thermalStatus === undefined?"Нет данных":hardware.thermalStatus}</p>
-            <p>Пропущенные окна анализа: {hardware?.inferenceSkipped ?? "Нет данных"}</p>
+            <p>Пропущенные окна из-за занятости YAMNet: {hardware?.inferenceSkipped ?? "Нет данных"}</p>
+            <p>Окна экономии заряда/нагрева: {hardware?.inferenceThrottled ?? "Нет данных"}</p>
+            <p>Анализ окружения: {hardware?.analysisStride===1?"Каждое окно":hardware?.analysisStride?`Каждое ${hardware.analysisStride}-е окно`:"Нет данных"}</p>
             <p>Фоновая аудиослужба: {output?.serviceActive?"Работает":"Не запущена"}</p>
             <p>Буфер звука: {output?.serviceActive?output.queuedChunks+" фрагментов":"Не используется"}</p>
             <p>Пропуски AudioTrack: {output?.underruns !== undefined && output.underruns >= 0?output.underruns:"Не измерены"}</p>

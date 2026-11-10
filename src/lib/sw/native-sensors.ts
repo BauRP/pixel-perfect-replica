@@ -31,13 +31,14 @@ interface SensorsPlugin {
   requestActivity(): Promise<{ granted: boolean }>;
   setInputPreference(options:{preference:"auto"|"headset"|"phone"}): Promise<{selected:string}>;
   startAnalysis(): Promise<NativeResult>;
+  setBatteryMode(options:{mode:Settings["batteryMode"]}): Promise<{configured:boolean;mode:string}>;
   startMicrophoneProbe(): Promise<NativeResult>;
   stopMicrophoneProbe(): Promise<NativeResult>;
   stopAnalysis(): Promise<NativeResult>;
   startSteps(): Promise<NativeResult>;
   stopSteps(): Promise<NativeResult>;
   actualMicrophone(): Promise<{ name: string; kind: string; active: boolean; output: string }>;
-  performanceSnapshot(): Promise<{ramMb?:number;battery?:number;elapsedSec:number;thermalStatus?:number;lowMemory?:boolean;inferenceSkipped:number;recording:boolean}>;
+  performanceSnapshot(): Promise<{ramMb?:number;battery?:number;elapsedSec:number;thermalStatus?:number;lowMemory?:boolean;inferenceSkipped:number;inferenceThrottled:number;analysisStride:number;batteryMode:string;recording:boolean}>;
   addListener(event: "yamnet" | "step" | "analysisError" | "micLevel", callback: (value: any) => void): Promise<PluginListenerHandle>;
 }
 const native = registerPlugin<SensorsPlugin>("SoundWorldSensors");
@@ -176,7 +177,12 @@ export function installNativeSensorAdapters(): void {
         try {const r=await native.performanceSnapshot();return {ok:true,value:{...(r.ramMb === undefined?{}:{ramMb:r.ramMb}),...(r.battery===undefined?{}:{battery:r.battery}),elapsedSec:r.elapsedSec}};}
         catch(e){return safeError(e);}
       },
-      applyBatteryMode:async()=>unavailable("Нейросеть пока не поддерживает управление нагрузкой"),
+      applyBatteryMode:async(mode)=>{
+        try{
+          const configured=await native.setBatteryMode({mode});
+          return configured.configured?{ok:true,value:undefined}:unavailable("Режим нагрузки не подтверждён Android");
+        }catch(e){return safeError(e);}
+      },
     },
     router: {
       currentActualMicrophone:async()=>{

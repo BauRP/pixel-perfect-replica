@@ -77,6 +77,41 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private volatile String actualInput = "";
   private volatile String actualKind = "";
   private volatile String inputPreference = "auto";
+  private volatile String batteryMode = "auto";
+  private volatile int analysisStride = 1;
+  private volatile int scheduledWindows = 0;
+  private volatile int batteryThrottledWindows = 0;
+
+  // Capture worker only: never query Android power services from the UI thread.
+  private void refreshAnalysisStride() {
+    PowerManager power = (PowerManager)getContext().getSystemService(Context.POWER_SERVICE);
+    BatteryManager battery = (BatteryManager)getContext().getSystemService(Context.BATTERY_SERVICE);
+    ActivityManager memory = (ActivityManager)getContext().getSystemService(Context.ACTIVITY_SERVICE);
+    int thermal = power == null ? -1 : power.getCurrentThermalStatus();
+    int batteryPercent = battery == null ? -1 :
+      battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+    boolean lowRam = false;
+    if (memory != null) {
+      ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
+      memory.getMemoryInfo(info);
+      lowRam = info.lowMemory;
+    }
+    analysisStride = SoundWorldPowerPolicy.analysisStride(
+      batteryMode, thermal, batteryPercent, lowRam);
+  }
+
+  @PluginMethod
+  public void setBatteryMode(PluginCall call) {
+    String requested = call.getString("mode", "auto");
+    if (!"auto".equals(requested) && !"maxPerformance".equals(requested)) {
+      call.reject("Неизвестный режим нагрузки"); return;
+    }
+    batteryMode = requested;
+    JSObject out = new JSObject();
+    out.put("mode", requested);
+    out.put("configured", true);
+    call.resolve(out);
+  }
 
   private boolean hasYamnetAsset() {
     try (java.io.InputStream in = getContext().getAssets().open("yamnet.tflite")) { return in.read() != -1; }
@@ -98,6 +133,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     o.put("recording", capturing.get());
     o.put("actualInput", actualInput);
     o.put("skippedInferenceWindows", skippedInferenceWindows);
+    o.put("inferenceThrottled", batteryThrottledWindows);
+    o.put("analysisStride", analysisStride);
     call.resolve(o);
   }
 
@@ -223,6 +260,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         actualInputType = routed != null ? routed.getType() : -1;
         skippedInferenceWindows = 0;
         inferenceHealthy.set(true);
+        scheduledWindows = 0;
+        batteryThrottledWindows = 0;
+        refreshAnalysisStride();
         if (epoch != captureEpoch.get()) throw new IllegalStateException("Запуск отменён");
         activeCaptureEpoch = epoch;
         capturing.set(true);
@@ -264,6 +304,15 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
             soundWindow[soundFilled++] = samples[i] / 32768f;
             if (soundFilled == soundWindow.length) {
               soundFilled = 0;
+              // Refresh thermal/battery conditions roughly every six windows.
+              int windowNumber = ++scheduledWindows;
+              if (windowNumber % 6 == 0) refreshAnalysisStride();
+              // Real capture continues; only duplicate heavy inference is
+              // throttled. Even under severe heat process every third window.
+              if (windowNumber % analysisStride != 0) {
+                batteryThrottledWindows++;
+                continue;
+              }
               // Never block the recorder thread on neural-network inference.
               ExecutorService worker = inferenceWorker;
               if (worker != null && inferenceBusy.compareAndSet(false, true)) {
@@ -425,6 +474,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     }
     result.put("elapsedSec", (SystemClock.elapsedRealtime() - appStartedAt) / 1000L);
     result.put("inferenceSkipped", skippedInferenceWindows);
+    result.put("inferenceThrottled", batteryThrottledWindows);
+    result.put("analysisStride", analysisStride);
+    result.put("batteryMode", batteryMode);
     result.put("recording", capturing.get());
     // Never invent CPU temperature or audio glitches: they are not measured here.
     call.resolve(result);

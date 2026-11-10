@@ -61,7 +61,7 @@ function SettingsPage() {
           <div className="space-y-1.5 p-3">
             <Segmented label="Экономия заряда" value={s.batteryMode} onChange={(v) => set("batteryMode", v)}
               options={[{ value: "auto", label: "Автоматически" }, { value: "maxPerformance", label: "Максимальная производительность" }]} />
-            <p className="text-xs text-muted-foreground">Защита от перегрева и слуха работает в обоих режимах. Сам режим начнёт действовать после подключения нативных модулей.</p>
+            <p className="text-xs text-muted-foreground">Режим уже управляет частотой распознавания окружения YAMNet с учётом нагрева и заряда. Для будущей генерации Fermata управление нагрузкой ещё не подключено.</p>
           </div>
         </Section>
 

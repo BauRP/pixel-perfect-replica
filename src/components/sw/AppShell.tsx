@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { Disc3, SlidersHorizontal, Settings2 } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { hydrateSettings, useSettings, useSettingsHydrated } from "@/lib/sw/settings";
+import { getAdapters } from "@/lib/sw/engine";
 import { cn } from "@/lib/utils";
 
 /** EXACTLY three destinations, fixed order and labels. */
@@ -18,6 +19,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
   useEffect(() => hydrateSettings(), []);
+  useEffect(() => {
+    if (hydrated) void getAdapters().performance.applyBatteryMode(settings.batteryMode);
+  }, [hydrated, settings.batteryMode]);
   useEffect(() => {
     if (hydrated && !settings.onboardingCompleted && loc.pathname !== "/onboarding") {
       navigate({ to: "/onboarding", replace: true });
