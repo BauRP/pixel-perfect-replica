@@ -2,6 +2,7 @@ package kz.soundworld.ar;
 
 import android.os.Bundle;
 import android.view.View;
+import android.view.WindowManager;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -24,6 +25,15 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(SoundWorldSensorsPlugin.class);
     registerPlugin(SoundWorldPlaybackPlugin.class);
     registerPlugin(SoundWorldMusicLibraryPlugin.class);
+
+    // Android 15+ enforces edge-to-edge. Some cutout/splash configurations
+    // throw on a real phone before the WebView exists (Pixel 4 emulator has
+    // no display cutout). Set ALWAYS before Capacitor creates its splash.
+    // This changes no app feature or visual theme.
+    WindowManager.LayoutParams params = getWindow().getAttributes();
+    params.layoutInDisplayCutoutMode =
+        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+    getWindow().setAttributes(params);
 
     super.onCreate(savedInstanceState);
     WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
