@@ -63,25 +63,34 @@ export async function sensorStatus(): Promise<SensorsStatus | null> {
   if (!androidSensorsAvailable()) return null;
   try { return await native.status(); } catch { return null; }
 }
+let diagnosticEpoch = 0;
 export async function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
   if (!androidSensorsAvailable()) return unavailable("Только в Android APK");
+  const epoch = ++diagnosticEpoch;
+  const cancelled = () => epoch !== diagnosticEpoch;
   let started=false;
   try {
     const permission = await native.requestMicrophone();
+    if(cancelled()) return unavailable("Проверка микрофона отменена");
     if (!permission.granted) return {ok:false,code:"PERMISSION_DENIED",message:"Микрофон не разрешён"};
     const availability = await native.status();
+    if(cancelled()) return unavailable("Проверка микрофона отменена");
     // Request all permissions BEFORE starting audio: Android may pause the
     // Activity while showing a permission dialog, which stops diagnostic capture.
     if (includeSteps && availability.stepsSupported) {
       try {
         const activity = await native.requestActivity();
+        if(cancelled()) return unavailable("Проверка микрофона отменена");
         if (activity.granted) await native.startSteps();
       } catch { /* microphone still works without the motion sensor */ }
     }
+    if(cancelled()) return unavailable("Проверка микрофона отменена");
     await native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())});
+    if(cancelled()) return unavailable("Проверка микрофона отменена");
     const r = availability.yamnetIncluded
       ? await native.startAnalysis()
       : await native.startMicrophoneProbe();
+    if(cancelled()) return unavailable("Проверка микрофона отменена");
     if (!r.started) {
       await native.stopSteps().catch(()=>{});
       return unavailable("Проверка микрофона не запущена");
@@ -89,12 +98,16 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
     started=true;
     return {ok:true,value:undefined};
   } catch(e) {
-    await native.stopSteps().catch(()=>{});
-    if(started)await stopSensorDiagnostics();
+    // A late failure from a cancelled run must never stop a newer recording.
+    if(!cancelled()) {
+      await native.stopSteps().catch(()=>{});
+      if(started)await stopSensorDiagnostics();
+    }
     return safeError(e);
   }
 }
 export async function stopSensorDiagnostics(): Promise<void> {
+  ++diagnosticEpoch; // invalidate suspended permission dialogs / native starts
   if (!androidSensorsAvailable()) return;
   await Promise.allSettled([native.stopMicrophoneProbe(),native.stopSteps()]);
 }

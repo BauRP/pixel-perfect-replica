@@ -25,6 +25,8 @@ function Diagnostics() {
   const request=plan?buildMusicRequest(settings,plan,[]):null;
   const [status,setStatus] = useState<SensorsStatus | null>(null);
   const [active,setActive] = useState(false);
+  const [pending,setPending] = useState(false);
+  const pendingRef = useRef(false);
   const [steps,setSteps] = useState("Нет подтверждённых шагов");
   const [error,setError] = useState("");
   const [environment,setEnvironment] = useState("Обстановка не определена");
@@ -64,13 +66,24 @@ function Diagnostics() {
     return ()=>{mounted=false;clearInterval(interval);removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
   },[]);
   const start=async()=>{
-    const result=await startSensorDiagnostics(true);
-    if(!result.ok) {notify.result(result,"");setError(result.message);}
-    else {setActive(true);setError("");setEnvironment("Ожидание достоверного результата");}
-    setStatus(await sensorStatus());
-    setHardware(await getNativePerformanceSnapshot());
+    if(pendingRef.current) return;
+    pendingRef.current=true;setPending(true);
+    try {
+      const result=await startSensorDiagnostics(true);
+      if(!result.ok) {notify.result(result,"");setError(result.message);}
+      else {setActive(true);setError("");setEnvironment("Ожидание достоверного результата");}
+      setStatus(await sensorStatus());
+      setHardware(await getNativePerformanceSnapshot());
+    } finally {pendingRef.current=false;setPending(false);}
   };
-  const stop=async()=>{await stopSensorDiagnostics();setActive(false);setMicRms(null);setPlan(null);setStatus(await sensorStatus());setHardware(await getNativePerformanceSnapshot());};
+  const stop=async()=>{
+    if(pendingRef.current) return;
+    pendingRef.current=true;setPending(true);
+    try {
+      await stopSensorDiagnostics();setActive(false);setMicRms(null);setPlan(null);
+      setStatus(await sensorStatus());setHardware(await getNativePerformanceSnapshot());
+    } finally {pendingRef.current=false;setPending(false);}
+  };
   return (
     <>
       <PageHeader title="Диагностика" back subtitle="Проверка настоящих датчиков Android" />
@@ -79,7 +92,7 @@ function Diagnostics() {
           <div className="space-y-3 p-4 text-sm">
             <p>Платформа: {androidSensorsAvailable()?"Android":"Веб-версия (датчики недоступны)"}</p>
             <p>YAMNet: {status?.yamnetIncluded?"Модель найдена":"Модель не подключена"}</p>
-            <p>Magenta RealTime 2 Small: не подключена</p>
+            <p>Fermata (музыкальная нейросеть): не подключена</p>
             <p>Микрофон: {status?.microphoneGranted?"Разрешение есть":"Разрешение не получено"}</p>
             <p>Источник микрофона: {active?(micInput||status?.actualInput||"Определяется"):"Не используется"}</p>
             <p>Живой уровень микрофона: {active&&micRms!==null?Math.round(micRms*1000)/10+"%":"Нет сигнала"}</p>
@@ -105,11 +118,11 @@ function Diagnostics() {
         </Section>
         <div className="flex flex-wrap gap-3">
           <button className="min-h-12 rounded-xl bg-primary px-5 text-primary-foreground disabled:opacity-50"
-            disabled={!androidSensorsAvailable()||active} onClick={()=>void start()}>
+            disabled={!androidSensorsAvailable()||active||pending} onClick={()=>void start()}>
             Проверить микрофон и шаги
           </button>
           <button className="min-h-12 rounded-xl border border-border px-5 disabled:opacity-50"
-            disabled={!active} onClick={()=>void stop()}>
+            disabled={!active||pending} onClick={()=>void stop()}>
             Остановить проверку
           </button>
         </div>
