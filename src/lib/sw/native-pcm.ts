@@ -1,7 +1,8 @@
 /**
  * Android AudioTrack sink for GENUINE locally generated PCM buffers.
  * NOT a music generator; callers must provide actual 48kHz, stereo 16-bit PCM.
- * The existing MusicEngine remains UNAVAILABLE until Magenta streams real samples.
+ * The existing MusicEngine remains UNAVAILABLE until the approved Fermata
+ * model and a genuine licensed synthesizer stream real samples.
  */
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import type { Result } from "./engine";
@@ -11,7 +12,7 @@ interface PCMPlugin {
   appendPcm(args:{base64:string}): Promise<{queued:boolean}>;
   pause(): Promise<{audible:boolean}>;
   stop(): Promise<{requested:boolean}>;
-  status(): Promise<{audible:boolean;queuedChunks:number;serviceActive:boolean}>;
+  status(): Promise<{audible:boolean;queuedChunks:number;serviceActive:boolean;underruns:number;lastAudioError:string}>;
 }
 const native = registerPlugin<PCMPlugin>("SoundWorldPlayback");
 const unavailable = (msg:string):{ok:false;code:"UNAVAILABLE";message:string} => ({ok:false,code:"UNAVAILABLE",message:msg});

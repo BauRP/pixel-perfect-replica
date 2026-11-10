@@ -39,7 +39,9 @@ public final class SoundWorldPlaybackService extends Service {
   private final AtomicBoolean writerActive = new AtomicBoolean(false);
   private final AtomicBoolean paused = new AtomicBoolean(false);
   private volatile boolean actualPlayback = false;
-  private AudioTrack audioTrack;
+  private volatile AudioTrack audioTrack;
+  private volatile int lastUnderruns = -1; // -1 means not measured
+  private volatile String lastAudioError = "";
   private AudioManager audioManager;
   private AudioFocusRequest focusRequest;
   private MediaSession session;
@@ -107,6 +109,8 @@ public final class SoundWorldPlaybackService extends Service {
     if (ACTION_PAUSE.equals(action)) { pauseAudio(); return START_NOT_STICKY; }
     if (!ACTION_START.equals(action)) { stopSelf(); return START_NOT_STICKY; }
     paused.set(false);
+    lastAudioError = "";
+    lastUnderruns = -1;
     startForeground(NOTIFICATION_ID, notification("Ожидание настоящего аудио"));
     return START_NOT_STICKY; // Android must never auto-restart mic or audio by itself
   }
@@ -132,7 +136,7 @@ public final class SoundWorldPlaybackService extends Service {
 
   private void writeAudio() {
     try {
-      if (audioManager == null) return;
+      if (audioManager == null) { lastAudioError = "Аудиосистема Android недоступна"; return; }
       focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
         .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
           .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
@@ -140,22 +144,27 @@ public final class SoundWorldPlaybackService extends Service {
           if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
               change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) pauseAudio();
         }).build();
-      if (audioManager.requestAudioFocus(focusRequest) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) return;
+      if (audioManager.requestAudioFocus(focusRequest) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+        lastAudioError = "Android не предоставил аудиофокус";return;
+      }
       int min = AudioTrack.getMinBufferSize(48000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT);
-      if (min <= 0) return;
+      if (min <= 0) { lastAudioError = "Устройство не поддерживает PCM 48 кГц"; return; }
       audioTrack = new AudioTrack.Builder().setAudioAttributes(new AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
         .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
           .setSampleRate(48000).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
         .setBufferSizeInBytes(Math.max(min * 4, 38400))
         .setTransferMode(AudioTrack.MODE_STREAM).build();
-      if (audioTrack.getState() != AudioTrack.STATE_INITIALIZED) return;
+      if (audioTrack.getState() != AudioTrack.STATE_INITIALIZED) {
+        lastAudioError = "AudioTrack не инициализирован";return;
+      }
       while (running.get() && !paused.get()) {
         byte[] pcm = chunks.poll(500, TimeUnit.MILLISECONDS);
         if (pcm == null) {
           // Do not claim real music when no generated samples exist.
           if (actualPlayback) {
             actualPlayback = false; publishState(false);
+            lastUnderruns = audioTrack.getUnderrunCount();
             audioTrack.pause();
           }
           continue;
@@ -164,14 +173,19 @@ public final class SoundWorldPlaybackService extends Service {
         int at = 0;
         while (at < pcm.length && running.get() && !paused.get()) {
           int written = audioTrack.write(pcm, at, pcm.length - at, AudioTrack.WRITE_BLOCKING);
-          if (written <= 0) { running.set(false); break; }
+          if (written <= 0) {
+            lastAudioError = "AudioTrack не принял PCM: код " + written;
+            running.set(false); break;
+          }
           at += written;
         }
+        lastUnderruns = audioTrack.getUnderrunCount();
         if (at == pcm.length && !actualPlayback) {
           actualPlayback = true; publishState(true);
         }
       }
-    } catch (Exception ignored) {
+    } catch (Exception ex) {
+      lastAudioError = ex.getClass().getSimpleName() + ": " + String.valueOf(ex.getMessage());
       actualPlayback = false;
       publishState(false);
     } finally {
@@ -202,6 +216,8 @@ public final class SoundWorldPlaybackService extends Service {
 
   public boolean isAudible() { return actualPlayback && running.get() && !paused.get(); }
   public int bufferedChunks() { return chunks.size(); }
+  public int measuredUnderruns() { return lastUnderruns; }
+  public String audioError() { return lastAudioError; }
 
   private void releaseAudio() {
     AudioTrack track = audioTrack;

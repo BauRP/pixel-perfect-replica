@@ -11,6 +11,7 @@ import { MusicControlPlanner, type ControlPlan } from "@/lib/sw/music-control";
 import { useSettings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
 import { buildMusicRequest } from "@/lib/sw/music-preferences";
+import { currentAudioSinkStatus } from "@/lib/sw/native-pcm";
 
 export const Route = createFileRoute("/settings/diagnostics")({
   head: () => ({ meta: [{ title: "Диагностика — SoundWorld AR" }] }),
@@ -32,6 +33,7 @@ function Diagnostics() {
   const [environment,setEnvironment] = useState("Обстановка не определена");
   const [micInput,setMicInput] = useState("");
   const [micRms,setMicRms] = useState<number | null>(null);
+  const [output,setOutput] = useState<Awaited<ReturnType<typeof currentAudioSinkStatus>>>(null);
   const [hardware,setHardware] = useState<{ramMb?:number;battery?:number;thermalStatus?:number;inferenceSkipped:number;lowMemory?:boolean}|null>(null);
   useEffect(()=>{
     const estimator = new StepPaceEstimator();
@@ -41,6 +43,7 @@ function Diagnostics() {
     let mounted=true;
     void sensorStatus().then(s=>{if(mounted)setStatus(s)});
     void getNativePerformanceSnapshot().then(s=>{if(mounted)setHardware(s)});
+    void currentAudioSinkStatus().then(s=>{if(mounted)setOutput(s)});
     const removeSteps=observeRawSteps(e=>{
       const pace=estimator.ingest(e.timestamp);
       if (pace.activity!=="unknown"){
@@ -61,6 +64,7 @@ function Diagnostics() {
     const interval=setInterval(()=>{
       if (!mounted) return;
       void getNativePerformanceSnapshot().then(x=>{if(mounted)setHardware(x)});
+      void currentAudioSinkStatus().then(x=>{if(mounted)setOutput(x)});
       updatePlan();
     },3000);
     return ()=>{mounted=false;clearInterval(interval);removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
@@ -102,6 +106,10 @@ function Diagnostics() {
             <p>Заряд батареи: {hardware?.battery === undefined?"Нет данных":hardware.battery+"%"}</p>
             <p>Тепловой статус Android: {hardware?.thermalStatus === undefined?"Нет данных":hardware.thermalStatus}</p>
             <p>Пропущенные окна анализа: {hardware?.inferenceSkipped ?? "Нет данных"}</p>
+            <p>Фоновая аудиослужба: {output?.serviceActive?"Работает":"Не запущена"}</p>
+            <p>Буфер звука: {output?.serviceActive?output.queuedChunks+" фрагментов":"Не используется"}</p>
+            <p>Пропуски AudioTrack: {output?.underruns !== undefined && output.underruns >= 0?output.underruns:"Не измерены"}</p>
+            {output?.lastAudioError&&<p role="alert" className="text-destructive">Последняя ошибка звука: {output.lastAudioError}</p>}
             <p>Обстановка: {status?.yamnetIncluded ? environment : ATMOSPHERE_RU.unknown}</p>
             <p>Запрошенный темп будущей музыки: {plan?.tempoBpm ?? "Нет плана"} BPM</p>
             <p>Ритм шагов для отдельной перкуссии: {plan?.stepPulseBpm ?? "Не определён"}</p>
