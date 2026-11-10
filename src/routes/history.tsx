@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Clock, Heart, FolderDown, Route as RouteIcon, Play, Pause, Download, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/sw/ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,6 +26,7 @@ function Empty({ icon:I,title,text }: {icon:typeof Clock;title:string;text:strin
 function HistoryPage(){
   const [data,setData]=useState<LibraryData>({last:[],fav:[],exp:[]});
   const [busy,setBusy]=useState(false);
+  const busyRef=useRef(false);
   const [error,setError]=useState("");
   const [playback,setPlayback]=useState<Playback>({state:"stopped",clipId:""});
   const library=getAdapters().library;
@@ -45,14 +46,15 @@ function HistoryPage(){
     return ()=>{mounted=false;unsubscribe();};
   },[library,reload]);
   const execute=async<T,>(action:()=>Promise<import("@/lib/sw/engine").Result<T>>,message:string)=>{
-    if(busy)return;
+    if(busyRef.current)return;
+    busyRef.current=true;
     setBusy(true);
     try{
       const result=await withTimeout(action());
       if(!result.ok){notify.result(result,"");setError(result.message);}
       else{if(message)notify.saved(message);await reload();}
     }catch(e){const m=e instanceof Error?e.message:"Неизвестная ошибка";setError(m);notify.error(m);}
-    finally{setBusy(false);}
+    finally{busyRef.current=false;setBusy(false);}
   };
   const clipList=(items:ClipMeta[])=><ul className="space-y-2">
     {items.map(c=>{

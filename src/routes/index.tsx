@@ -46,7 +46,14 @@ function Player() {
   useEffect(()=>{
     const lib=getAdapters().library;
     let mounted=true;
-    void withTimeout(lib.listLastThreeCompleted()).then(r=>{if(mounted&&r.ok)setRecentClips(r.value)});
+    // Recover completed WAVs whose catalog update was interrupted by a crash.
+    // Native recovery runs on the disk worker, never on the Android UI thread.
+    void (async()=>{
+      await withTimeout(lib.recoverLocalMetadata());
+      if(!mounted)return;
+      const r=await withTimeout(lib.listLastThreeCompleted());
+      if(mounted&&r.ok)setRecentClips(r.value);
+    })();
     void currentStoredPlayback().then(x=>{if(mounted&&x)setStoredPlayback(x)});
     const off=lib.observeStoredPlayback(v=>{if(mounted)setStoredPlayback(v)});
     return ()=>{mounted=false;off()};
