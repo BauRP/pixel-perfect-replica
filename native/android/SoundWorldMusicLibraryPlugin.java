@@ -422,7 +422,15 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     // Android 14+ explicitly permits registration without export flags for
     // system-only actions; this also avoids OEM-specific receiver flag errors
     // during Capacitor plugin initialization.
-    getContext().registerReceiver(noisyReceiver, filter);
+    try {
+      getContext().registerReceiver(noisyReceiver, filter);
+    } catch (SecurityException ex) {
+      // Some OEM Android builds demand explicit flags even for this system
+      // broadcast. Retry without sacrificing headphone-disconnect protection.
+      if (Build.VERSION.SDK_INT >= 33)
+        getContext().registerReceiver(noisyReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+      else throw ex;
+    }
   }
 
   private void publishPlayback(String state) {
