@@ -165,19 +165,37 @@ jobs:
           обновление поверх уже установленной версии не гарантируется.
           Репозиторий закрыт, скачивание доступно только с доступом к нему.
           Коммит: ${GITHUB_SHA}."
-          gh release create "$tag" \
-            output/soundworld-ar-debug.apk \
-            output/soundworld-ar-debug.apk.sha256 \
-            --target "$GITHUB_SHA" \
-            --title "$title" \
-            --notes "$notes" \
-            --prerelease \
-            --latest=false
-
-          # Do not publish a success link unless GitHub confirms both assets.
-          asset_names="$(gh release view "$tag" --json assets --jq '.assets[].name')"
-          grep -Fxq 'soundworld-ar-debug.apk' <<< "$asset_names"
-          grep -Fxq 'soundworld-ar-debug.apk.sha256' <<< "$asset_names"
+          # Avoid losing a compiled APK when GitHub Releases intermittently
+          # returns HTTP 500. Handle a partially-created tag idempotently.
+          published=0
+          for attempt in 1 2 3 4; do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release upload "$tag" \
+                output/soundworld-ar-debug.apk \
+                output/soundworld-ar-debug.apk.sha256 --clobber || true
+            else
+              gh release create "$tag" \
+                output/soundworld-ar-debug.apk \
+                output/soundworld-ar-debug.apk.sha256 \
+                --target "$GITHUB_SHA" \
+                --title "$title" \
+                --notes "$notes" \
+                --prerelease \
+                --latest=false || true
+            fi
+            if asset_names="$(gh release view "$tag" --json assets --jq '.assets[].name' 2>/dev/null)" \
+              && grep -Fxq 'soundworld-ar-debug.apk' <<< "$asset_names" \
+              && grep -Fxq 'soundworld-ar-debug.apk.sha256' <<< "$asset_names"; then
+              published=1
+              break
+            fi
+            echo "::warning::GitHub Releases attempt $attempt failed"
+            if (( attempt < 4 )); then sleep $((attempt * 8)); fi
+          done
+          if (( published != 1 )); then
+            echo "::warning::GitHub Releases unavailable after retries; trying Actions backup"
+            exit 1
+          fi
 
           download_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/soundworld-ar-debug.apk"
           release_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
@@ -195,6 +213,21 @@ jobs:
             echo "- **ВНИМАНИЕ:** APK может аварийно закрываться. Не считать проверенной до завершения эмулятора."\n            echo "- У debug-сборок может отличаться подпись; это не Play Store-релиз."
             echo "- Музыкальная нейросеть Fermata пока не подключена."
           } >> "$GITHUB_STEP_SUMMARY"
+      # If Releases is unavailable, keep a short-lived APK artifact as a
+      # verified download fallback when Actions artifact capacity permits.
+      - name: Backup APK to Actions artifacts if Releases API is unavailable
+        id: fallback_apk
+        if: steps.publish_diagnostic_apk.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: soundworld-ar-debug-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            output/soundworld-ar-debug.apk
+            output/soundworld-ar-debug.apk.sha256
+          retention-days: 2
+          if-no-files-found: error
+
       # An APK can compile successfully yet crash immediately when opened.
       # Do not publish a new user-facing APK without an actual Android launch.
       - name: Reclaim GitHub runner disk space for Android emulator
@@ -244,12 +277,17 @@ jobs:
           emulator-boot-timeout: 360
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: bash scripts/check_android_startup.sh
-      - name: Confirm APK is downloadable from GitHub Releases
-        if: always() && steps.publish_diagnostic_apk.outcome == 'failure'
+      - name: Confirm at least one APK download path succeeded
+        if: always() && steps.publish_diagnostic_apk.outcome == 'failure' && steps.fallback_apk.outcome != 'success'
         shell: bash
         run: |
-          echo "::error::APK built, but GitHub denied Release publication. Inspect workflow permissions (contents: write) and repository Actions policies."
+          echo "::error::APK compiled, but GitHub Releases and Actions artifacts were both unavailable. This is a delivery failure, not an Android startup failure."
           exit 1
+      - name: Explain fallback APK download after Android verification
+        if: steps.publish_diagnostic_apk.outcome == 'failure' && steps.fallback_apk.outcome == 'success'
+        run: |
+          echo "### APK passed Android checks; GitHub Releases had an API outage" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download the APK and SHA-256 from the Artifacts section of this workflow run (repository access required; retained 2 days)." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Mark APK verified after Android 12 and 16 launch tests
         if: steps.publish_diagnostic_apk.outcome == 'success'
