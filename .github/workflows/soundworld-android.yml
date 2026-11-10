@@ -83,10 +83,14 @@ jobs:
           text=path.read_text()
           for name in ('android.permission.RECORD_AUDIO','android.permission.ACTIVITY_RECOGNITION'):
               if name not in text:
-                  text=text.replace('<application',f'<uses-permission android:name="{name}" />\\n    <application',1)
+                  text=text.replace('<application',f'<uses-permission android:name="{name}" />\n    <application',1)
           # Actual output only after user Play and genuine PCM; never auto-start on boot.
-          text=text.replace('<application', '<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />\\n    <application', 1)
-          text=text.replace('</application>', '<service android:name=".SoundWorldPlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback" />\\n    </application>', 1)
+          text=text.replace('<application', '<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />\n    <application', 1)
+          text=text.replace('</application>', '<service android:name=".SoundWorldPlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback" />\n    </application>', 1)
+          # Literal backslash-n must never leak into AndroidManifest.xml.
+          assert r'\n' not in text, "AndroidManifest contains escaped newline text"
+          from xml.etree import ElementTree as ET
+          ET.fromstring(text)
           path.write_text(text)
           PY
       - name: Build shell-only debug APK
