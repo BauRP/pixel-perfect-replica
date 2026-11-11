@@ -116,7 +116,7 @@ function Diagnostics() {
             <p>Сохранённый WAV: {wavOutput?.state==="playing"?"Играет":wavOutput?.state==="paused"?"Пауза":wavOutput?.state==="preparing"?"Подготовка":"Не воспроизводится"}</p>
             <p>Фактический аудиовыход WAV: {wavOutput?.actualOutput || "Не определён / WAV не запущен"}</p>
             <p>Тип выхода Android: {wavOutput?.actualOutputType || "Нет данных"}</p>
-            {wavOutput?.lastError && <p role="alert" className="text-destructive">Ошибка WAV: {wavOutput.lastError}</p>
+            {wavOutput?.lastError && <p role="alert" className="text-destructive">Ошибка WAV: {wavOutput.lastError}</p>}
             <p>Буфер звука: {output?.serviceActive?output.queuedChunks+" фрагментов":"Не используется"}</p>
             <p>Пропуски AudioTrack: {output?.underruns !== undefined && output.underruns >= 0?output.underruns:"Не измерены"}</p>
             {output?.lastAudioError&&<p role="alert" className="text-destructive">Последняя ошибка звука: {output.lastAudioError}</p>}
