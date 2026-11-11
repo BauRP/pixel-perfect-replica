@@ -277,6 +277,30 @@ jobs:
           emulator-boot-timeout: 360
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: bash scripts/check_android_startup.sh
+      - name: Verify Android 13 startup and screens (API 33)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          disk-size: 2048M
+          ram-size: 2048M
+          emulator-boot-timeout: 360
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: bash scripts/check_android_startup.sh
+      - name: Verify Android 15 edge-to-edge and screen cutout (API 35)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          disk-size: 2048M
+          ram-size: 2048M
+          emulator-boot-timeout: 360
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: bash scripts/check_android_startup.sh
       - name: Verify actual Android 16 startup and screens (API 36)
         uses: reactivecircus/android-emulator-runner@v2
         with:
