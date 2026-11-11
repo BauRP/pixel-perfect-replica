@@ -51,7 +51,7 @@ function Player() {
     void (async()=>{
       await withTimeout(lib.recoverLocalMetadata());
       if(!mounted)return;
-      const r=await withTimeout(lib.listLastThreeCompleted());
+      const r=await withTimeout(lib.listJourney());
       if(mounted&&r.ok)setRecentClips(r.value);
     })();
     void currentStoredPlayback().then(x=>{if(mounted&&x)setStoredPlayback(x)});
@@ -93,27 +93,32 @@ function Player() {
   const playing = state === "LIVE" || state === "HISTORY" || state === "RESERVE";
   const live = state === "LIVE";
   const latestClip = latestRealClip(recentClips);
+  const currentClip = recentClips.find(c=>c.id===storedPlayback.clipId) ?? latestClip;
   const previousClip = previousRealClip(recentClips,storedPlayback.clipId);
-  const hasClip = !!latestClip; // only real, verified and completed files
+  const hasClip = !!currentClip; // only real, verified and completed files
 
   const onPlay = () => run(async () => {
+    const playSaved = !playing && storedPlayback.state==="stopped" &&
+      state==="UNAVAILABLE" && latestClip;
     const r = storedPlayback.state==="playing"
       ? await withTimeout(library.pauseStoredClip())
       : storedPlayback.state==="paused" && storedPlayback.clipId
         ? await withTimeout(library.playStoredClip(storedPlayback.clipId))
-        : await withTimeout(playing ? engine.pauseSession() : engine.startLiveSession(s));
-    notify.result(r, playing ? "Пауза" : "Запуск сессии");
+        : playSaved
+          ? await withTimeout(library.playStoredClip(latestClip.id))
+          : await withTimeout(playing ? engine.pauseSession() : engine.startLiveSession(s));
+    notify.result(r, playSaved?"Воспроизведение сохранённого WAV":playing?"Пауза":"Запуск сессии");
   });
   const onNext = () => run(async () => notify.result(await withTimeout(engine.requestNextVariation(s)), "Запрошена новая вариация"));
   const onHeart = () => run(async () => {
-    if(!latestClip)return;
-    const r=await withTimeout(library.markFavorite(latestClip.id,!latestClip.favorite));
-    if(r.ok)setRecentClips(prev=>prev.map(c=>c.id===latestClip.id?{...c,favorite:!c.favorite}:c));
+    if(!currentClip)return;
+    const r=await withTimeout(library.markFavorite(currentClip.id,!currentClip.favorite));
+    if(r.ok)setRecentClips(prev=>prev.map(c=>c.id===currentClip.id?{...c,favorite:!c.favorite}:c));
     if(r.ok)notify.saved("Избранное обновлено");else notify.result(r,"");
   });
   const onExport = () => run(async () => {
-    if(!latestClip)return;
-    const r = await withTimeout(library.exportRealAudio(latestClip.id));
+    if(!currentClip)return;
+    const r = await withTimeout(library.exportRealAudio(currentClip.id));
     if (r.ok) notify.saved("Файл сохранён на телефон"); else notify.result(r, "");
   });
 
@@ -158,8 +163,8 @@ function Player() {
       </div>
 
       <div className="mt-2 flex items-center justify-between">
-        <button aria-label="В избранное (сердце)" aria-pressed={latestClip?.favorite??false} disabled={busy || !hasClip} onClick={onHeart} className="grid size-11 place-items-center rounded-full text-muted-foreground hover:text-heart">
-          <Heart className={cn("size-5",latestClip?.favorite&&"fill-current text-rose-500")} />
+        <button aria-label="В избранное (сердце)" aria-pressed={currentClip?.favorite??false} disabled={busy || !hasClip} onClick={onHeart} className="grid size-11 place-items-center rounded-full text-muted-foreground hover:text-heart">
+          <Heart className={cn("size-5",currentClip?.favorite&&"fill-current text-rose-500")} />
         </button>
         <button aria-label="Предыдущий фрагмент" disabled={busy || !previousClip} onClick={() => void run(async()=>{
           if(!previousClip)return;
@@ -178,6 +183,8 @@ function Player() {
         </button>
       </div>
       {!hasClip && <p className="mt-1 text-center text-xs text-muted-foreground">Предыдущих фрагментов пока нет</p>}
+      {state==="UNAVAILABLE" && hasClip &&
+        <p className="mt-1 text-center text-xs text-muted-foreground">Нейросеть пока не подключена. Кнопка Play воспроизводит последний настоящий WAV.</p>}
 
       <div className="mt-2 grid grid-cols-3 gap-1.5">
         {[
