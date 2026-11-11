@@ -12,6 +12,7 @@ import { useSettings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
 import { buildMusicRequest } from "@/lib/sw/music-preferences";
 import { currentAudioSinkStatus } from "@/lib/sw/native-pcm";
+import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 
 export const Route = createFileRoute("/settings/diagnostics")({
   head: () => ({ meta: [{ title: "Диагностика — SoundWorld AR" }] }),
@@ -34,6 +35,7 @@ function Diagnostics() {
   const [micInput,setMicInput] = useState("");
   const [micRms,setMicRms] = useState<number | null>(null);
   const [output,setOutput] = useState<Awaited<ReturnType<typeof currentAudioSinkStatus>>>(null);
+  const [wavOutput,setWavOutput] = useState<Awaited<ReturnType<typeof currentStoredPlayback>>>(null);
   const [hardware,setHardware] = useState<{ramMb?:number;battery?:number;thermalStatus?:number;inferenceSkipped:number;inferenceThrottled?:number;analysisStride?:number;batteryMode?:string;lowMemory?:boolean}|null>(null);
   useEffect(()=>{
     const estimator = new StepPaceEstimator();
@@ -44,6 +46,7 @@ function Diagnostics() {
     void sensorStatus().then(s=>{if(mounted)setStatus(s)});
     void getNativePerformanceSnapshot().then(s=>{if(mounted)setHardware(s)});
     void currentAudioSinkStatus().then(s=>{if(mounted)setOutput(s)});
+    void currentStoredPlayback().then(s=>{if(mounted)setWavOutput(s)});
     const removeSteps=observeRawSteps(e=>{
       const pace=estimator.ingest(e.timestamp);
       if (pace.activity!=="unknown"){
@@ -65,6 +68,7 @@ function Diagnostics() {
       if (!mounted) return;
       void getNativePerformanceSnapshot().then(x=>{if(mounted)setHardware(x)});
       void currentAudioSinkStatus().then(x=>{if(mounted)setOutput(x)});
+      void currentStoredPlayback().then(x=>{if(mounted)setWavOutput(x)});
       updatePlan();
     },3000);
     return ()=>{mounted=false;clearInterval(interval);removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
@@ -108,7 +112,11 @@ function Diagnostics() {
             <p>Пропущенные окна из-за занятости YAMNet: {hardware?.inferenceSkipped ?? "Нет данных"}</p>
             <p>Окна экономии заряда/нагрева: {hardware?.inferenceThrottled ?? "Нет данных"}</p>
             <p>Анализ окружения: {hardware?.analysisStride===1?"Каждое окно":hardware?.analysisStride?`Каждое ${hardware.analysisStride}-е окно`:"Нет данных"}</p>
-            <p>Фоновая аудиослужба: {output?.serviceActive?"Работает":"Не запущена"}</p>
+            <p>Фоновая аудиослужба PCM: {output?.serviceActive?"Работает":"Не запущена"}</p>
+            <p>Сохранённый WAV: {wavOutput?.state==="playing"?"Играет":wavOutput?.state==="paused"?"Пауза":wavOutput?.state==="preparing"?"Подготовка":"Не воспроизводится"}</p>
+            <p>Фактический аудиовыход WAV: {wavOutput?.actualOutput || "Не определён / WAV не запущен"}</p>
+            <p>Тип выхода Android: {wavOutput?.actualOutputType || "Нет данных"}</p>
+            {wavOutput?.lastError && <p role="alert" className="text-destructive">Ошибка WAV: {wavOutput.lastError}</p>
             <p>Буфер звука: {output?.serviceActive?output.queuedChunks+" фрагментов":"Не используется"}</p>
             <p>Пропуски AudioTrack: {output?.underruns !== undefined && output.underruns >= 0?output.underruns:"Не измерены"}</p>
             {output?.lastAudioError&&<p role="alert" className="text-destructive">Последняя ошибка звука: {output.lastAudioError}</p>}

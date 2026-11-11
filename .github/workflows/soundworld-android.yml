@@ -33,8 +33,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/soundworld-power-tests
-          javac -d /tmp/soundworld-power-tests native/android/SoundWorldPowerPolicy.java scripts/SoundWorldPowerPolicyTest.java
+          javac -d /tmp/soundworld-power-tests \
+            native/android/SoundWorldPowerPolicy.java scripts/SoundWorldPowerPolicyTest.java \
+            native/android/SoundWorldCapturePolicy.java scripts/SoundWorldCapturePolicyTest.java
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldPowerPolicyTest
+          java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldCapturePolicyTest
       - name: Type check
         run: npx tsc --noEmit
       - name: Unit tests
@@ -67,6 +70,7 @@ jobs:
           target=android/app/src/main/java/kz/soundworld/ar
           mkdir -p "$target"
           cp native/android/SoundWorldSensorsPlugin.java "$target/SoundWorldSensorsPlugin.java"
+          cp native/android/SoundWorldCapturePolicy.java "$target/SoundWorldCapturePolicy.java"
           cp native/android/SoundWorldPowerPolicy.java "$target/SoundWorldPowerPolicy.java"
           cp native/android/MainActivity.java "$target/MainActivity.java"
           cp native/android/SoundWorldPlaybackService.java "$target/SoundWorldPlaybackService.java"

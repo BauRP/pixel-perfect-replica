@@ -12,6 +12,7 @@ import android.content.IntentFilter;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
+import android.media.AudioDeviceInfo;
 import android.media.MediaPlayer;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
@@ -78,6 +79,22 @@ public final class SoundWorldClipPlaybackService extends Service {
   public String playbackState() { return state; }
   public String playbackClipId() { return clipId; }
   public String playbackError() { return lastError; }
+  public String routedOutput() {
+    MediaPlayer current = player;
+    if (current == null || !playerPrepared) return "";
+    try {
+      AudioDeviceInfo device = current.getRoutedDevice();
+      return device == null ? "" : String.valueOf(device.getProductName());
+    } catch (RuntimeException ex) { return ""; }
+  }
+  public String routedOutputType() {
+    MediaPlayer current = player;
+    if (current == null || !playerPrepared) return "";
+    try {
+      AudioDeviceInfo device = current.getRoutedDevice();
+      return device == null ? "" : String.valueOf(device.getType());
+    } catch (RuntimeException ex) { return ""; }
+  }
 
   @Override public void onCreate() {
     super.onCreate();

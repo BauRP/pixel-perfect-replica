@@ -61,12 +61,13 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private final AtomicLong captureEpoch = new AtomicLong();
   private volatile long lastStopEpoch = 0;
   private volatile long activeCaptureEpoch = -1;
-  private final AtomicBoolean inferenceHealthy = new AtomicBoolean(true);
+  // A new microphone session gets NEW inference flags, isolating old workers.
+  private volatile AtomicBoolean inferenceHealthy = new AtomicBoolean(true);
   private AudioRecord recorder;
   private volatile AudioClassifier analyzer;
   private volatile boolean analysisActive = false;
   private ExecutorService inferenceWorker;
-  private final AtomicBoolean inferenceBusy = new AtomicBoolean(false);
+  private volatile AtomicBoolean inferenceBusy = new AtomicBoolean(false);
   private volatile int skippedInferenceWindows = 0;
   private final long appStartedAt = SystemClock.elapsedRealtime();
   private volatile int actualInputType = -1;
@@ -259,7 +260,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         actualKind = routed != null ? String.valueOf(routed.getType()) : "unknown";
         actualInputType = routed != null ? routed.getType() : -1;
         skippedInferenceWindows = 0;
-        inferenceHealthy.set(true);
+        inferenceHealthy = new AtomicBoolean(true);
+        inferenceBusy = new AtomicBoolean(false);
         scheduledWindows = 0;
         batteryThrottledWindows = 0;
         refreshAnalysisStride();
@@ -267,7 +269,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         activeCaptureEpoch = epoch;
         capturing.set(true);
         final AudioRecord active = rec;
-        captureThread = new Thread(() -> readMic(active), "SoundWorld-Microphone-Probe");
+        final AtomicBoolean sessionBusy = inferenceBusy;
+        final AtomicBoolean sessionHealthy = inferenceHealthy;
+        captureThread = new Thread(() -> readMic(active, epoch, sessionBusy, sessionHealthy), "SoundWorld-Microphone-Probe");
         captureThread.setDaemon(true);
         captureThread.start();
         JSObject r = new JSObject(); r.put("started", true); call.resolve(r);
@@ -283,15 +287,20 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     }
   }
 
-  private void readMic(AudioRecord rec) {
+  private boolean currentCapture(AudioRecord rec, long epoch) {
+    return SoundWorldCapturePolicy.canEmit(rec, recorder, epoch, activeCaptureEpoch, capturing.get());
+  }
+
+  private void readMic(AudioRecord rec, long epoch, AtomicBoolean busy, AtomicBoolean healthy) {
     short[] samples = new short[1600];
     long lastReport = 0;
     // 15600 samples = 975 ms, the input window required by YAMNet.
     final float[] soundWindow = new float[15600];
     int soundFilled = 0;
     try {
-      while (capturing.get() && recorder == rec) {
+      while (currentCapture(rec, epoch)) {
         int n = rec.read(samples, 0, samples.length);
+        if (!currentCapture(rec, epoch)) break;
         if (n <= 0) {
           if (n < 0) sendError("Ошибка чтения микрофона: " + n);
           if (n < 0) break;
@@ -299,7 +308,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         }
         long now = SystemClock.elapsedRealtime();
         AudioClassifier cls = analyzer;
-        if (cls != null && inferenceHealthy.get()) {
+        if (cls != null && healthy.get()) {
           for (int i = 0; i < n; i++) {
             soundWindow[soundFilled++] = samples[i] / 32768f;
             if (soundFilled == soundWindow.length) {
@@ -315,18 +324,21 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
               }
               // Never block the recorder thread on neural-network inference.
               ExecutorService worker = inferenceWorker;
-              if (worker != null && inferenceBusy.compareAndSet(false, true)) {
+              if (worker != null && busy.compareAndSet(false, true)) {
                 float[] windowCopy = soundWindow.clone();
                 try { worker.execute(() -> {
-                  try { classifyWindow(cls, windowCopy); }
-                  finally { inferenceBusy.set(false); }
+                  try {
+                    if (currentCapture(rec, epoch))
+                      classifyWindow(cls, windowCopy, rec, epoch, healthy);
+                  } finally { busy.set(false); }
                 }); }
-                catch (java.util.concurrent.RejectedExecutionException ex) { inferenceBusy.set(false); }
+                catch (java.util.concurrent.RejectedExecutionException ex) { busy.set(false); }
               } else skippedInferenceWindows++;
             }
           }
         }
         if (now - lastReport < 250) continue;
+        if (!currentCapture(rec, epoch)) break;
         lastReport = now;
         double squares = 0;
         for (int i = 0; i < n; i++) squares += (double)samples[i] * samples[i];
@@ -352,16 +364,20 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     }
   }
 
-  private void classifyWindow(AudioClassifier cls, float[] samples) {
+  private void classifyWindow(AudioClassifier cls, float[] samples,
+                              AudioRecord rec, long epoch, AtomicBoolean healthy) {
     try {
+      if (!currentCapture(rec, epoch)) return;
       AudioDataFormat format = AudioDataFormat.builder().setSampleRate(16000f).build();
       AudioData audioData = AudioData.create(format, samples.length);
       audioData.load(samples);
       AudioClassifierResult result = cls.classify(audioData);
+      if (!currentCapture(rec, epoch)) return;
       int sent = 0;
       for (ClassificationResult window : result.classificationResults()) {
         for (Classifications head : window.classifications()) {
           for (Category category : head.categories()) {
+            if (!currentCapture(rec, epoch)) return;
             if (sent >= 3 || category.score() < 0.18f) return;
             String label = category.categoryName();
             if (label == null || label.isEmpty()) continue;
@@ -380,7 +396,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         }
       }
     } catch (Exception ex) {
-      if(inferenceHealthy.getAndSet(false))sendError("Ошибка YAMNet: " + ex.getMessage());
+      if (currentCapture(rec, epoch) && healthy.getAndSet(false))
+        sendError("Ошибка YAMNet: " + ex.getMessage());
       // Keep microphone probe alive; classification errors do not block the UI.
     }
   }

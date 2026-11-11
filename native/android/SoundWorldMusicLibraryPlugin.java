@@ -473,6 +473,8 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     result.put("state", service == null ? "stopped" : service.playbackState());
     result.put("clipId", service == null ? "" : service.playbackClipId());
     result.put("lastError", service == null ? "" : service.playbackError());
+    result.put("actualOutput", service == null ? "" : service.routedOutput());
+    result.put("actualOutputType", service == null ? "" : service.routedOutputType());
     call.resolve(result);
   }
 
