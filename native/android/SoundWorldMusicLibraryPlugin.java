@@ -169,6 +169,10 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
 
   private ArrayList<String> prune(JSONArray index) throws Exception {
     ArrayList<String> evicted = new ArrayList<>();
+    // Never delete the WAV being prepared, played, or paused in the foreground
+    // music service. The temporary-history cap still applies to other files.
+    SoundWorldClipPlaybackService playback = SoundWorldClipPlaybackService.current();
+    final String protectedId = playback == null ? "" : playback.playbackClipId();
     int temporaryCount=0;
     for(int i=0;i<index.length();i++) {
       JSONObject clip=index.getJSONObject(i);
@@ -178,6 +182,7 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
       JSONObject clip=index.getJSONObject(i);
       if (!clip.optBoolean("favorite") && !clip.has("exportedUri") && !clip.optBoolean("recoveredProtected")) {
         String id=clip.getString("id");
+        if (id.equals(protectedId)) { i++; continue; }
         // Persist catalog before deleting older data to avoid loss on a write failure.
         evicted.add(id);
         index.remove(i);temporaryCount--;
@@ -296,9 +301,12 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
             if(entry.optBoolean("favorite") || entry.has("exportedUri") || entry.optBoolean("recoveredProtected")) {
               call.reject("Избранные и сохранённые записи не удаляются автоматически");return;
             }
-            // Persist index before deleting file to avoid creating a broken entry.
+            // Do not race asynchronous MediaPlayer.stop with unlinking a file.
+            // The caller may retry once playback is explicitly stopped.
             SoundWorldClipPlaybackService active = SoundWorldClipPlaybackService.current();
-            if (active != null) active.stopIfClip(id);
+            if (active != null && id.equals(active.playbackClipId())) {
+              call.reject("Сначала остановите воспроизведение этого файла");return;
+            }
             index.remove(i);saveIndex(index);clipFile(id).delete();removed=true;break;
           }
         }

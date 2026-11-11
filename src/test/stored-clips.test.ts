@@ -28,5 +28,7 @@ describe("real saved recording selection",()=>{
     expect(mayEvictClip(mk(a,100,{exportedUri:"content://media/audio/1"}))).toBe(false);
     expect(mayEvictClip(mk(a,100,{recoveredProtected:true}))).toBe(false);
     expect(mayEvictClip(mk(a,100))).toBe(true);
+    expect(mayEvictClip(mk(a,100),a)).toBe(false);
+    expect(mayEvictClip(mk(b,200),a)).toBe(true);
   });
 });

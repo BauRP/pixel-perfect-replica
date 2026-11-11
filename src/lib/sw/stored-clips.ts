@@ -23,6 +23,8 @@ export function previousRealClip(clips: readonly ClipMeta[], currentClipId?: str
 }
 
 /** Protected clips are never evicted while limiting recent temporary history. */
-export function mayEvictClip(clip: ClipMeta): boolean {
-  return !clip.favorite && !clip.exportedUri && !clip.recoveredProtected;
+export function mayEvictClip(clip: ClipMeta, currentlyPlayingId?: string): boolean {
+  // The active native MediaPlayer owns its WAV until explicit Stop or completion.
+  return clip.id !== currentlyPlayingId &&
+    !clip.favorite && !clip.exportedUri && !clip.recoveredProtected;
 }
