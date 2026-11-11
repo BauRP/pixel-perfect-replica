@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { resetSettings, updateSettings, useSettings, type Settings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
-import { androidSensorsAvailable, sensorStatus, type SensorsStatus } from "@/lib/sw/native-sensors";
+import { androidSensorsAvailable, sensorStatus, observeActualRouteChanges, type SensorsStatus } from "@/lib/sw/native-sensors";
 
 export const Route = createFileRoute("/settings/")({
   head: () => ({ meta: [{ title: "Настройки — SoundWorld AR" }, { name: "description", content: "Общие настройки приложения SoundWorld AR." }, { property: "og:title", content: "Настройки — SoundWorld AR" }, { property: "og:description", content: "Общие настройки приложения." }] }),
@@ -31,8 +31,10 @@ function SettingsPage() {
   const [device,setDevice] = useState<SensorsStatus | null>(null);
   useEffect(() => {
     let live=true;
-    void sensorStatus().then(x=>{if(live)setDevice(x)});
-    return ()=>{live=false};
+    const refresh=()=>{void sensorStatus().then(x=>{if(live)setDevice(x)})};
+    refresh();
+    const off=observeActualRouteChanges(refresh);
+    return ()=>{live=false;off()};
   },[]);
   return (
     <>

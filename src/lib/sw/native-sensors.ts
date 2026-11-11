@@ -39,7 +39,7 @@ interface SensorsPlugin {
   stopSteps(): Promise<NativeResult>;
   actualMicrophone(): Promise<{ name: string; kind: string; active: boolean; output: string }>;
   performanceSnapshot(): Promise<{ramMb?:number;battery?:number;elapsedSec:number;thermalStatus?:number;lowMemory?:boolean;inferenceSkipped:number;inferenceThrottled:number;analysisStride:number;batteryMode:string;recording:boolean}>;
-  addListener(event: "yamnet" | "step" | "analysisError" | "micLevel", callback: (value: any) => void): Promise<PluginListenerHandle>;
+  addListener(event: "yamnet" | "step" | "analysisError" | "micLevel" | "audioRouteChanged", callback: (value: any) => void): Promise<PluginListenerHandle>;
 }
 const native = registerPlugin<SensorsPlugin>("SoundWorldSensors");
 
@@ -112,7 +112,7 @@ export async function stopSensorDiagnostics(): Promise<void> {
   if (!androidSensorsAvailable()) return;
   await Promise.allSettled([native.stopMicrophoneProbe(),native.stopSteps()]);
 }
-function subscribe<T>(event: "yamnet"|"step"|"analysisError"|"micLevel", cb: (data:T)=>void):Unsubscribe {
+function subscribe<T>(event: "yamnet"|"step"|"analysisError"|"micLevel"|"audioRouteChanged", cb: (data:T)=>void):Unsubscribe {
   if (!androidSensorsAvailable()) return () => {};
   let closed = false;
   const handle = native.addListener(event, data=>{if(!closed) cb(data as T);});
@@ -121,6 +121,7 @@ function subscribe<T>(event: "yamnet"|"step"|"analysisError"|"micLevel", cb: (da
 export function observeRawSound(cb:(sound:RawSound)=>void):Unsubscribe { return subscribe("yamnet",cb); }
 export function observeMicrophoneLevel(cb:(level:{rms:number;timestamp:number;input:string})=>void):Unsubscribe {return subscribe("micLevel",cb);}
 export function observeRawSteps(cb:(step:RawStep)=>void):Unsubscribe { return subscribe("step",cb); }
+export function observeActualRouteChanges(cb:()=>void):Unsubscribe { return subscribe("audioRouteChanged",()=>cb()); }
 export function observeSensorErrors(cb:(message:string)=>void):Unsubscribe {
   return subscribe<{message:string}>("analysisError",e=>cb(e.message));
 }
@@ -197,7 +198,7 @@ export function installNativeSensorAdapters(): void {
         try { await native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())});return {ok:true,value:undefined}; }
         catch(e){return safeError(e);}
       },
-      observeInputOutputChanges:()=>()=>{},
+      observeInputOutputChanges:cb=>observeActualRouteChanges(cb),
     }
   };
   registerAdapters(adapters);

@@ -8,12 +8,15 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.media.AudioDeviceInfo;
+import android.media.AudioDeviceCallback;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.SystemClock;
+import android.os.Handler;
+import android.os.Looper;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -82,6 +85,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private volatile int analysisStride = 1;
   private volatile int scheduledWindows = 0;
   private volatile int batteryThrottledWindows = 0;
+  private AudioManager routingManager;
+  private AudioDeviceCallback audioDeviceObserver;
 
   // Capture worker only: never query Android power services from the UI thread.
   private void refreshAnalysisStride() {
@@ -112,6 +117,24 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     out.put("mode", requested);
     out.put("configured", true);
     call.resolve(out);
+  }
+
+  @Override public void load() {
+    super.load();
+    routingManager = (AudioManager)getContext().getSystemService(Context.AUDIO_SERVICE);
+    if (routingManager != null) {
+      audioDeviceObserver = new AudioDeviceCallback() {
+        private void changed() {
+          JSObject event = new JSObject();
+          event.put("changed", true);
+          notifyListeners("audioRouteChanged", event);
+        }
+        @Override public void onAudioDevicesAdded(AudioDeviceInfo[] devices) { changed(); }
+        @Override public void onAudioDevicesRemoved(AudioDeviceInfo[] devices) { changed(); }
+      };
+      routingManager.registerAudioDeviceCallback(audioDeviceObserver,
+        new Handler(Looper.getMainLooper()));
+    }
   }
 
   private boolean hasYamnetAsset() {
@@ -561,6 +584,10 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   }
 
   @Override protected void handleOnDestroy() {
+    if (routingManager != null && audioDeviceObserver != null) {
+      routingManager.unregisterAudioDeviceCallback(audioDeviceObserver);
+      audioDeviceObserver = null;
+    }
     stopForLifecycle("SoundWorld-Destroy-Stop");
     stopStepsInternal();
     super.handleOnDestroy();

@@ -212,19 +212,7 @@ tap_ui_text() {
   local pos=""
   for _ in 1 2 3 4 5; do
     capture_ui
-    pos="$(python3 - "$text" <<'PY'
-import re,sys,xml.etree.ElementTree as ET
-needle=sys.argv[1].casefold()
-root=ET.parse("/tmp/soundworld-window.xml").getroot()
-for node in root.iter("node"):
-    value=(node.get("text","")+" "+node.get("content-desc","")).casefold()
-    if needle in value:
-        a=list(map(int,re.findall(r'\d+',node.get("bounds",""))))
-        if len(a)==4:
-            print((a[0]+a[2])//2,(a[1]+a[3])//2)
-            break
-PY
-)"
+    pos="$(python3 scripts/ui_accessibility_target.py /tmp/soundworld-window.xml "$text" || true)"
     if [[ -n "$pos" ]]; then break; fi
     sleep 2
   done

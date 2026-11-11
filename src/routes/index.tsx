@@ -11,6 +11,7 @@ import { PendingBadge } from "@/components/sw/ui";
 import { cn } from "@/lib/utils";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 import { latestRealClip, previousRealClip } from "@/lib/sw/stored-clips";
+import { verifiedWavProgress, wavTimestamp, type WavProgress } from "@/lib/sw/wav-progress";
 import { observeRawSound, observeRawSteps, observeMicrophoneLevel, sensorStatus } from "@/lib/sw/native-sensors";
 import { AmbientStabilizer, StepPaceEstimator, type Atmosphere } from "@/lib/sw/environment-smoothing";
 
@@ -38,6 +39,7 @@ function Player() {
   const [recentClips,setRecentClips]=useState<ClipMeta[]>([]);
   const [storedPlayback,setStoredPlayback]=useState<{state:"playing"|"paused"|"stopped"|"preparing";clipId:string}>({state:"stopped",clipId:""});
   const busyRef = useRef(false);
+  const [wavProgress,setWavProgress]=useState<WavProgress|null>(null);
   const [lastEnvironment,setLastEnvironment] = useState<{kind:Atmosphere;at:number}|null>(null);
   const [lastActivity,setLastActivity] = useState<{kind:"walking"|"running";at:number}|null>(null);
   const [microphone,setMicrophone] = useState<{active:boolean;input:string;at:number}>({active:false,input:"",at:0});
@@ -58,6 +60,30 @@ function Player() {
     const off=lib.observeStoredPlayback(v=>{if(mounted){setStoredPlayback(v);if(v.error)notify.error(v.error)}});
     return ()=>{mounted=false;off()};
   },[]);
+  useEffect(()=>{
+    if(storedPlayback.state==="stopped"){
+      setWavProgress(null);
+      return;
+    }
+    let active=true,reading=false;
+    const refresh=async()=>{
+      if(reading)return;
+      reading=true;
+      try {
+        const status=await currentStoredPlayback();
+        if(!active||!status)return;
+        if(status.state==="stopped"){
+          setWavProgress(null);
+          setStoredPlayback(status);
+        } else if(status.clipId===storedPlayback.clipId) {
+          setWavProgress(verifiedWavProgress(status.positionMs,status.durationMs));
+        }
+      } finally {reading=false;}
+    };
+    void refresh();
+    const interval=window.setInterval(()=>void refresh(),1000);
+    return ()=>{active=false;window.clearInterval(interval)};
+  },[storedPlayback.state,storedPlayback.clipId]);
   useEffect(()=>{
     const stabilizer=new AmbientStabilizer();
     const pace=new StepPaceEstimator();
@@ -182,6 +208,16 @@ function Player() {
           <Download className="size-5" />
         </button>
       </div>
+      {wavProgress && storedPlayback.state!=="stopped" &&
+        <div className="mt-1.5 space-y-1" aria-label="Фактическая длительность сохранённого WAV">
+          <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
+            <div className="h-full bg-primary" style={{width:`${wavProgress.percent}%`}} />
+          </div>
+          <div className="flex justify-between text-[11px] text-muted-foreground">
+            <span>{wavTimestamp(wavProgress.positionMs)}</span>
+            <span>{wavTimestamp(wavProgress.durationMs)}</span>
+          </div>
+        </div>}
       {!hasClip && <p className="mt-1 text-center text-xs text-muted-foreground">Предыдущих фрагментов пока нет</p>}
       {state==="UNAVAILABLE" && hasClip &&
         <p className="mt-1 text-center text-xs text-muted-foreground">Нейросеть пока не подключена. Кнопка Play воспроизводит последний настоящий WAV.</p>}

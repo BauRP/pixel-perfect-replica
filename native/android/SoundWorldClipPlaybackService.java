@@ -79,6 +79,18 @@ public final class SoundWorldClipPlaybackService extends Service {
   public String playbackState() { return state; }
   public String playbackClipId() { return clipId; }
   public String playbackError() { return lastError; }
+  public int playbackPositionMs() {
+    MediaPlayer current = player;
+    if (current == null || !playerPrepared) return 0;
+    try { return Math.max(0, current.getCurrentPosition()); }
+    catch (RuntimeException ex) { return 0; }
+  }
+  public int playbackDurationMs() {
+    MediaPlayer current = player;
+    if (current == null || !playerPrepared) return 0;
+    try { return Math.max(0, current.getDuration()); }
+    catch (RuntimeException ex) { return 0; }
+  }
   public String routedOutput() {
     MediaPlayer current = player;
     if (current == null || !playerPrepared) return "";
@@ -199,8 +211,10 @@ public final class SoundWorldClipPlaybackService extends Service {
       resumeAfterCall = intent.getBooleanExtra(EXTRA_AUTO_RESUME, false);
       playInternal(requested);
     } else if (ACTION_RESUME.equals(action)) {
+      if (player == null) { stopSelf(startId); return START_NOT_STICKY; }
       resumeInternal();
     } else if (ACTION_PAUSE.equals(action)) {
+      if (player == null) { stopSelf(startId); return START_NOT_STICKY; }
       pauseInternal(false);
     } else {
       stopInternal();
