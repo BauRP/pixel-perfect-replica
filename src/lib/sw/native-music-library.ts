@@ -10,7 +10,7 @@ interface LibraryPlugin {
   appendPcm(args:{id:string;base64:string}):Promise<{bytesWritten:number}>;
   finishClip(args:{id:string}):Promise<{clip:ClipMeta}>;
   abortClip(args:{id:string}):Promise<{aborted:boolean}>;
-  list(args:{filter:"recent"|"favorites"|"exports"}):Promise<{items:ClipMeta[]}>;
+  list(args:{filter:"recent"|"favorites"|"exports"|"journey"}):Promise<{items:ClipMeta[]}>;
   favorite(args:{id:string;value:boolean}):Promise<{updated:boolean}>;
   export(args:{id:string}):Promise<{uri:string}>;
   deleteTemporary(args:{id:string}):Promise<{deleted:boolean}>;
@@ -58,6 +58,7 @@ export function installNativeMusicLibraryAdapter():void {
     listLastThreeCompleted:async()=>{try {const x=await native.list({filter:"recent"});return {ok:true,value:x.items};}catch(e){return error(e);}},
     listFavorites:async()=>{try {const x=await native.list({filter:"favorites"});return {ok:true,value:x.items};}catch(e){return error(e);}},
     listExports:async()=>{try {const x=await native.list({filter:"exports"});return {ok:true,value:x.items};}catch(e){return error(e);}},
+    listJourney:async()=>{try {const x=await native.list({filter:"journey"});return {ok:true,value:x.items};}catch(e){return error(e);}},
     markFavorite:async(id,value)=>{try {await native.favorite({id,value});return {ok:true,value:undefined};}catch(e){return error(e);}},
     exportRealAudio:async(id)=>{try {const x=await native.export({id});return {ok:true,value:{uri:x.uri}};}catch(e){return error(e);}},
     deleteTemporary:async(id)=>{try {await native.deleteTemporary({id});return {ok:true,value:undefined};}catch(e){return error(e);}},

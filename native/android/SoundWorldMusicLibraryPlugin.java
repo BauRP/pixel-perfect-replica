@@ -37,6 +37,7 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   private static final int FRAME_BYTES = 4;
   private static final long MAX_PCM = 120L * SAMPLE_RATE * FRAME_BYTES;
   private static final String PREFS = "soundworld_real_clips";
+  private SoundWorldClipPlaybackService.PlaybackListener playbackObserver;
   private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
     Thread t = new Thread(r, "SoundWorld-Music-Library");
     t.setDaemon(true);
@@ -403,13 +404,14 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   /** Listen to the actual persistent playback service, not a WebView-owned player. */
   @Override public void load() {
     super.load();
-    SoundWorldClipPlaybackService.setListener((state, id, error) -> {
+    playbackObserver = (state, id, error) -> {
       JSObject result = new JSObject();
       result.put("state", state);
       result.put("clipId", id);
       if (error != null && !error.isEmpty()) result.put("error", error);
       notifyListeners("clipPlayback", result);
-    });
+    };
+    SoundWorldClipPlaybackService.setListener(playbackObserver);
   }
 
   private void respondPlayback(PluginCall call, String state, String id) {
@@ -477,7 +479,8 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   @Override protected void handleOnDestroy() {
     // The saved music belongs to a foreground SERVICE, not this WebView.
     // Do not stop it when Android destroys/recreates the Activity.
-    SoundWorldClipPlaybackService.setListener(null);
+    SoundWorldClipPlaybackService.clearListener(playbackObserver);
+    playbackObserver = null;
     writer.execute(this::abortRecording);
     writer.shutdown();
     super.handleOnDestroy();

@@ -7,13 +7,14 @@ import { getAdapters, withTimeout, type ClipMeta } from "@/lib/sw/engine";
 import { genreNameById } from "@/lib/sw/catalog";
 import { notify } from "@/lib/sw/notify";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
+import { groupRealJourney } from "@/lib/sw/journey";
 
 export const Route = createFileRoute("/history")({
   head: () => ({ meta: [{ title: "История и избранное — SoundWorld AR" }, { name: "description", content: "Настоящие сохранённые фрагменты SoundWorld AR" }] }),
   component: HistoryPage,
 });
 
-type LibraryData={last:ClipMeta[];fav:ClipMeta[];exp:ClipMeta[]};
+type LibraryData={last:ClipMeta[];fav:ClipMeta[];exp:ClipMeta[];journey:ClipMeta[]};
 type Playback={state:"playing"|"paused"|"stopped"|"preparing";clipId:string};
 function Empty({ icon:I,title,text }: {icon:typeof Clock;title:string;text:string}) {
   return <div className="flex flex-col items-center rounded-2xl border border-dashed border-border px-6 py-12 text-center">
@@ -24,18 +25,21 @@ function Empty({ icon:I,title,text }: {icon:typeof Clock;title:string;text:strin
 }
 
 function HistoryPage(){
-  const [data,setData]=useState<LibraryData>({last:[],fav:[],exp:[]});
+  const [data,setData]=useState<LibraryData>({last:[],fav:[],exp:[],journey:[]});
   const [busy,setBusy]=useState(false);
   const busyRef=useRef(false);
   const [error,setError]=useState("");
   const [playback,setPlayback]=useState<Playback>({state:"stopped",clipId:""});
   const library=getAdapters().library;
   const reload=useCallback(async()=>{
-    const results=await Promise.all([withTimeout(library.listLastThreeCompleted()),withTimeout(library.listFavorites()),withTimeout(library.listExports())]);
+    const results=await Promise.all([
+      withTimeout(library.listLastThreeCompleted()),withTimeout(library.listFavorites()),
+      withTimeout(library.listExports()),withTimeout(library.listJourney()),
+    ]);
     const errorResult=results.find(r=>!r.ok);
     if(errorResult && !errorResult.ok){setError(errorResult.message);return;}
-    const [a,b,c]=results;
-    setData({last:a.ok?a.value:[],fav:b.ok?b.value:[],exp:c.ok?c.value:[]});
+    const [a,b,c,d]=results;
+    setData({last:a.ok?a.value:[],fav:b.ok?b.value:[],exp:c.ok?c.value:[],journey:d.ok?d.value:[]});
     setError("");
   },[library]);
   useEffect(()=>{
@@ -106,7 +110,17 @@ function HistoryPage(){
           {data.exp.length?clipList(data.exp):<Empty icon={FolderDown} title="Нет сохранённых файлов" text="После настоящего экспорта файлы будут здесь."/>}
         </TabsContent>
         <TabsContent value="trip" className="pt-4">
-          <Empty icon={RouteIcon} title="История музыкального путешествия" text="Пока данных нет. GPS и запись разговоров не используются."/>
+          {data.journey.length ?
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">Настоящие сохранённые фрагменты по датам. Показаны до 100 последних записей, без GPS.</p>
+              {groupRealJourney(data.journey).map(day=>(
+                <section key={day.dayKey} className="space-y-2" aria-label={day.heading}>
+                  <h2 className="font-semibold text-sm">{day.heading} · {day.count} фрагм. · {day.minutes} мин</h2>
+                  {clipList(day.clips)}
+                </section>
+              ))}
+            </div>
+            : <Empty icon={RouteIcon} title="История музыкального путешествия" text="Настоящих сохранённых записей пока нет. GPS и разговоры не записываются."/>}
         </TabsContent>
       </Tabs>
     </div>

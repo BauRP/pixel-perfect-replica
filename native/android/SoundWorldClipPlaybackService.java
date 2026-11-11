@@ -53,6 +53,11 @@ public final class SoundWorldClipPlaybackService extends Service {
     if (observer != null && service != null) observer.onPlayback(service.state, service.clipId, service.lastError);
   }
 
+  /** Old Activities may destroy after a new one has already attached. */
+  public static void clearListener(PlaybackListener expected) {
+    if (listener == expected) listener = null;
+  }
+
   private final Handler main = new Handler(Looper.getMainLooper());
   private volatile String state = "stopped";
   private volatile String clipId = "";

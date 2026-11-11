@@ -78,6 +78,8 @@ export interface MusicLibrary {
   listFavorites(): Promise<Result<ClipMeta[]>>;
   markFavorite(clipId: string, value: boolean): Promise<Result>;
   listExports(): Promise<Result<ClipMeta[]>>;
+  /** Latest real retained recordings for a chronological music journey, no GPS. */
+  listJourney(): Promise<Result<ClipMeta[]>>;
   exportRealAudio(clipId: string): Promise<Result<{ uri: string }>>;
   deleteTemporary(clipId: string): Promise<Result>;
   recoverLocalMetadata(): Promise<Result>;
@@ -145,6 +147,7 @@ export const unavailableAdapters: Adapters = {
     listFavorites: () => Promise.resolve({ ok: true, value: [] }),
     markFavorite: () => unavailable("Нет готового фрагмента: движок не подключён"),
     listExports: () => Promise.resolve({ ok: true, value: [] }),
+    listJourney: () => Promise.resolve({ ok: true, value: [] }),
     exportRealAudio: () => unavailable("Нет аудиофайла для сохранения: движок не подключён"),
     deleteTemporary: () => unavailable("Нет временных фрагментов"),
     recoverLocalMetadata: () => Promise.resolve({ ok: true, value: undefined }),
