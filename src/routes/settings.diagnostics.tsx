@@ -113,6 +113,7 @@ function Diagnostics() {
             <p>Окна экономии заряда/нагрева: {hardware?.inferenceThrottled ?? "Нет данных"}</p>
             <p>Анализ окружения: {hardware?.analysisStride===1?"Каждое окно":hardware?.analysisStride?`Каждое ${hardware.analysisStride}-е окно`:"Нет данных"}</p>
             <p>Фоновая аудиослужба PCM: {output?.serviceActive?"Работает":"Не запущена"}</p>
+            <p>Готовность реального PCM-потока: {output?.readyForPcm?"Android готов принять звук":"Не готов / генератор не запущен"}</p>
             <p>Сохранённый WAV: {wavOutput?.state==="playing"?"Играет":wavOutput?.state==="paused"?"Пауза":wavOutput?.state==="preparing"?"Подготовка":"Не воспроизводится"}</p>
             <p>Фактический аудиовыход WAV: {wavOutput?.actualOutput || "Не определён / WAV не запущен"}</p>
             <p>Тип выхода Android: {wavOutput?.actualOutputType || "Нет данных"}</p>
