@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { GeneratedPcmSession, PCM_SEGMENT_BYTES, PCM_TRANSFER_BYTES } from "../lib/sw/generated-pcm-session";
+import { GeneratedPcmSession, PCM_SEGMENT_BYTES, PCM_MINIMUM_SAVE_BYTES, PCM_TRANSFER_BYTES } from "../lib/sw/generated-pcm-session";
 import { DEFAULT_SETTINGS } from "../lib/sw/settings";
 import type { ClipMeta, Result } from "../lib/sw/engine";
 
@@ -37,7 +37,8 @@ describe("real PCM stream without fabricated audio",()=>{
     expect((await p.submit(b)).ok).toBe(true);
     expect((await p.submit(b)).ok).toBe(true);
     expect((await p.stop()).ok).toBe(true);
-    expect(r.recorded).toEqual([{id:"1",length:480,finished:true,aborted:false}]);
+    expect(r.recorded).toEqual([{id:"1",length:480,finished:false,aborted:true}]);
+    expect(p.status.completedClips).toBe(0);
   });
   it("copies reused source buffers and uses bounded packets",async()=>{
     const r=rig();const p=new GeneratedPcmSession(r.sink,r.store,DEFAULT_SETTINGS,[]);
@@ -74,10 +75,13 @@ describe("real PCM stream without fabricated audio",()=>{
     const r=rig();let finishes=0;
     const store={...r.store,finish:async(id:string)=>{finishes++;return r.store.finish(id);}};
     const p=new GeneratedPcmSession(r.sink,store,DEFAULT_SETTINGS,[]);
-    expect((await p.submit(new Uint8Array(4))).ok).toBe(true);
+    const chunk=new Uint8Array(PCM_TRANSFER_BYTES*16);
+    for(let i=0;i<PCM_MINIMUM_SAVE_BYTES/chunk.length;i++)
+      expect((await p.submit(chunk)).ok).toBe(true);
     const [a,b]=await Promise.all([p.stop(),p.stop()]);
     expect(a.ok&&b.ok).toBe(true);
     expect(finishes).toBe(1);
+    expect(p.status.completedClips).toBe(1);
   });
   it("a disk failure stops audible output as well as aborting the incomplete WAV",async()=>{
     const r=rig();let stops=0;
@@ -110,6 +114,22 @@ describe("real PCM stream without fabricated audio",()=>{
       expect(r.recorded[0]?.aborted).toBe(true);
     }finally{vi.useRealTimers();}
   });
+  it("60 seconds saves a real WAV, a shorter incomplete segment never does",async()=>{
+    const chunk=new Uint8Array(PCM_TRANSFER_BYTES*16);
+    const justUnder=rig(),short=new GeneratedPcmSession(justUnder.sink,justUnder.store,DEFAULT_SETTINGS,[]);
+    const chunksAt60=PCM_MINIMUM_SAVE_BYTES/chunk.length;
+    for(let i=0;i<chunksAt60-1;i++)await short.submit(chunk);
+    await short.stop();
+    expect(justUnder.recorded[0]).toMatchObject({finished:false,aborted:true});
+    expect(short.status.completedClips).toBe(0);
+
+    const enough=rig(),real=new GeneratedPcmSession(enough.sink,enough.store,DEFAULT_SETTINGS,[]);
+    for(let i=0;i<chunksAt60;i++)await real.submit(chunk);
+    expect(enough.recorded[0]!.length).toBe(PCM_MINIMUM_SAVE_BYTES);
+    await real.stop();
+    expect(enough.recorded[0]).toMatchObject({finished:true,aborted:false});
+    expect(real.status.completedClips).toBe(1);
+  });
   it("enforces 120 second clip boundary without losing frames",async()=>{
     const r=rig();const p=new GeneratedPcmSession(r.sink,r.store,DEFAULT_SETTINGS,[]);
     // Several realistic PCM blocks rather than allocating a single bridge packet.
@@ -120,6 +140,7 @@ describe("real PCM stream without fabricated audio",()=>{
     await p.submit(new Uint8Array(12));
     await p.stop();
     expect(r.recorded[1]!.length).toBe(12);
-    expect(r.recorded[1]!.finished).toBe(true);
+    expect(r.recorded[1]!.finished).toBe(false);
+    expect(r.recorded[1]!.aborted).toBe(true);
   });
 });

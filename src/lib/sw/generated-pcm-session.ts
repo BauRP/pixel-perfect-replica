@@ -9,6 +9,7 @@ import type { Settings } from "./settings";
 
 export const PCM_BYTES_PER_SECOND = 48000 * 2 * 2;
 export const PCM_SEGMENT_BYTES = PCM_BYTES_PER_SECOND * 120;
+export const PCM_MINIMUM_SAVE_BYTES = PCM_BYTES_PER_SECOND * 60; // user requirement: never publish 11s as finished music
 export const PCM_TRANSFER_BYTES = 48000; // quarter-second chunks (bridge size bound)
 
 export type AudioSink = {
@@ -93,9 +94,19 @@ export class GeneratedPcmSession {
   private async finishIfOpen(): Promise<Result<void>> {
     if (this.id === null) return {ok:true,value:undefined};
     const id = this.id;
-    if (this.bytes === 0) {
-      await this.store.abort(id);
+    if (this.bytes < PCM_MINIMUM_SAVE_BYTES) {
+      // A stopped stream under 60s is not a complete instrumental track.
+      // Even if the native module is called independently it has the same
+      // minimum-length gate. Do not leave a partial WAV in History.
+      const result = await this.bounded(
+        Promise.resolve().then(()=>this.store.abort(id)).then(
+          ():Result => ({ok:true,value:undefined}),
+          (e):Result => ({ok:false,code:"ERROR",message:e instanceof Error?e.message:"Ошибка удаления короткого WAV"}),
+        ),
+      );
+      if(!result.ok)return result;
       this.id = null;
+      this.bytes = 0;
       return {ok:true,value:undefined};
     }
     const finished = await this.bounded(this.store.finish(id));

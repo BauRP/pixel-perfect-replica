@@ -36,6 +36,7 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   private static final int SAMPLE_RATE = 48000;
   private static final int FRAME_BYTES = 4;
   private static final long MAX_PCM = 120L * SAMPLE_RATE * FRAME_BYTES;
+  private static final long MIN_SAVE_PCM = SoundWorldClipLengthPolicy.MIN_SAVE_PCM;
   private static final String PREFS = "soundworld_real_clips";
   private SoundWorldClipPlaybackService.PlaybackListener playbackObserver;
   private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
@@ -146,7 +147,7 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
         call.reject("Нечего завершать");return;
       }
       try {
-        if (written == 0) throw new IllegalStateException("Отсутствует настоящее аудио");
+        if (!SoundWorldClipLengthPolicy.canFinish(written)) throw new IllegalStateException("Готовая музыка должна звучать от 60 до 120 секунд");
         wavHeader(recording, written);
         recording.getFD().sync();
         recording.close(); recording = null;
