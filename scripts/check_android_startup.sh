@@ -79,7 +79,15 @@ check_start() {
   pid="$(adb shell pidof "$package" | tr -d '\r' || true)"
   if [[ -z "$pid" ]]; then
     echo "::error::SoundWorld process terminated after start ($attempt)"
-    adb logcat -d -v time | grep -A 70 -B 12 -E "FATAL EXCEPTION|Process: $package|AndroidRuntime|libc" | tail -n 240 || true
+    # Capture the entire relevant process-exit chain. A Java-only fatal
+    # filter misses signal 9, SIGSEGV, LMKD, force-stop and WebView renderer
+    # death. Do not retry away a real app death or call this a successful run.
+    adb logcat -d -v threadtime > "/tmp/soundworld-process-exit-$attempt.log" || true
+    grep -Ei -A 16 -B 10 "kz\\.soundworld\\.ar|FATAL EXCEPTION|Fatal signal|SIGSEGV|SIGABRT|am_proc_died|am_kill|lowmemorykiller|lmkd|crash|WebView|Renderer|Force stopping|Process .*died" \
+      "/tmp/soundworld-process-exit-$attempt.log" | tail -n 320 || true
+    adb shell dumpsys activity processes | grep -i -C 5 "$package" | tail -n 75 || true
+    adb shell dumpsys meminfo "$package" | head -n 45 || true
+    echo "::error::Android startup failure is NOT attributed to the emulator without process-exit evidence"
     return 1
   fi
   echo "SoundWorld process alive after 15s: PID $pid"
