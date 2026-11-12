@@ -131,6 +131,12 @@ export class GeneratedPcmSession {
         if(!pushed.ok) return this.fail(pushed.message);
         const written = await this.bounded(this.store.append(this.id!,part));
         if(!written.ok) return this.fail(written.message);
+        // Android returns total persisted PCM bytes for THIS recording.
+        // A missing/duplicated/partial acknowledgement must never be counted
+        // toward the 60-second minimum or treated as complete music.
+        if (!Number.isSafeInteger(written.value) ||
+            written.value !== this.bytes + length)
+          return this.fail("Android подтвердил неверную длину сохранённого WAV");
         this.bytes += length;
         processed += length;
         if(this.bytes === PCM_SEGMENT_BYTES) {

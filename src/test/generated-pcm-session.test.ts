@@ -63,6 +63,31 @@ describe("real PCM stream without fabricated audio",()=>{
     expect((await Promise.all(packets)).every(x=>x.ok)).toBe(true);
     expect(p.status.pendingPackets).toBe(0);
   });
+  it("rejects a false or partial Android WAV write acknowledgement",async()=>{
+    const r=rig();let stops=0,aborts=0;
+    const badStore={...r.store,
+      append:async(id:string,chunk:Uint8Array)=>({ok:true as const,value:chunk.length-4}),
+      abort:async(id:string)=>{aborts++;await r.store.abort(id);}};
+    const p=new GeneratedPcmSession({...r.sink,stop:async()=>{stops++;}},badStore,DEFAULT_SETTINGS,[]);
+    const result=await p.submit(new Uint8Array(16));
+    expect(result.ok).toBe(false);
+    expect(p.status.state).toBe("error");
+    expect(p.status.completedClips).toBe(0);
+    expect(stops).toBe(1);
+    expect(aborts).toBe(1);
+    expect(r.recorded[0]?.aborted).toBe(true);
+  });
+  it("rejects duplicate cumulative WAV acknowledgements",async()=>{
+    const r=rig();
+    let writes=0;
+    const duplicate={...r.store,append:async(id:string,chunk:Uint8Array)=>{
+      writes++;return {ok:true as const,value:writes===1?chunk.length:chunk.length};
+    }};
+    const p=new GeneratedPcmSession(r.sink,duplicate,DEFAULT_SETTINGS,[]);
+    expect((await p.submit(new Uint8Array(16))).ok).toBe(true);
+    expect((await p.submit(new Uint8Array(16))).ok).toBe(false);
+    expect(r.recorded[0]?.aborted).toBe(true);
+  });
   it("does not create a fake favorite or file when disk fails",async()=>{
     const r=rig();const p=new GeneratedPcmSession(r.sink,r.store,DEFAULT_SETTINGS,[]);
     r.failNext();
