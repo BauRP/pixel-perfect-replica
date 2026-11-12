@@ -38,6 +38,8 @@ public final class SoundWorldPlaybackService extends Service {
   private final AtomicBoolean running = new AtomicBoolean(false);
   private final AtomicBoolean writerActive = new AtomicBoolean(false);
   private final AtomicBoolean paused = new AtomicBoolean(false);
+  // True only after Android has acknowledged a foreground music session.
+  private final AtomicBoolean foregroundReady = new AtomicBoolean(false);
   private volatile boolean actualPlayback = false;
   private volatile AudioTrack audioTrack;
   private volatile int lastUnderruns = -1; // -1 means not measured
@@ -62,7 +64,7 @@ public final class SoundWorldPlaybackService extends Service {
     session = new MediaSession(this, "SoundWorld AR");
     session.setCallback(new MediaSession.Callback() {
       @Override public void onPause() { pauseAudio(); }
-      @Override public void onStop() { stopSelf(); }
+      @Override public void onStop() { pauseAudio(); stopSelf(); }
     });
     session.setActive(true);
     publishState(false);
@@ -105,20 +107,34 @@ public final class SoundWorldPlaybackService extends Service {
 
   @Override public int onStartCommand(Intent intent, int flags, int startId) {
     String action = intent == null ? ACTION_STOP : intent.getAction();
-    if (ACTION_STOP.equals(action)) { stopSelf(); return START_NOT_STICKY; }
+    if (ACTION_STOP.equals(action)) {
+      pauseAudio();
+      stopSelf(startId);
+      return START_NOT_STICKY;
+    }
     if (ACTION_PAUSE.equals(action)) { pauseAudio(); return START_NOT_STICKY; }
-    if (!ACTION_START.equals(action)) { stopSelf(); return START_NOT_STICKY; }
-    paused.set(false);
-    lastAudioError = "";
-    lastUnderruns = -1;
-    startForeground(NOTIFICATION_ID, notification("Ожидание настоящего аудио"));
+    if (!ACTION_START.equals(action)) { pauseAudio(); stopSelf(startId); return START_NOT_STICKY; }
+    foregroundReady.set(false);
+    paused.set(true); // never accept PCM before the foreground notification exists
+    try {
+      startForeground(NOTIFICATION_ID, notification("Ожидание настоящего аудио"));
+      lastAudioError = "";
+      lastUnderruns = -1;
+      paused.set(false);
+      foregroundReady.set(true);
+    } catch (RuntimeException ex) {
+      lastAudioError = "Android отказал в запуске фонового звука: " + ex.getMessage();
+      pauseAudio();
+      stopSelf(startId);
+    }
     return START_NOT_STICKY; // Android must never auto-restart mic or audio by itself
   }
 
   /** Returns false when there is no active session or the bounded queue is full. */
   public synchronized boolean offerPcm(byte[] pcm) {
     // 16-bit stereo: samples must align to 4 bytes; <1s at 48kHz; never store ambient microphone data.
-    if (pcm == null || pcm.length == 0 || pcm.length % 4 != 0 || pcm.length > 192000 || paused.get()) return false;
+    if (!readyForPcm() || pcm == null || pcm.length == 0 ||
+        pcm.length % 4 != 0 || pcm.length > 192000) return false;
     if (!running.get() && writerActive.get()) return false; // previous AudioTrack is still releasing
     if (writerActive.compareAndSet(false, true)) {
       running.set(true);
@@ -189,6 +205,7 @@ public final class SoundWorldPlaybackService extends Service {
       actualPlayback = false;
       publishState(false);
     } finally {
+      if (!lastAudioError.isEmpty()) foregroundReady.set(false);
       releaseAudio();
       running.set(false);
       writerActive.set(false);
@@ -206,12 +223,19 @@ public final class SoundWorldPlaybackService extends Service {
   }
 
   public synchronized void pauseAudio() {
+    foregroundReady.set(false);
     paused.set(true);
     running.set(false);
     chunks.clear();
     publishState(false);
     actualPlayback = false;
     // Never resume automatically after focus loss or an unplug event.
+  }
+
+  /** The native bridge may enqueue only while foreground playback is ready. */
+  public boolean readyForPcm() {
+    return SoundWorldPcmLifecyclePolicy.canAccept(
+      foregroundReady.get(), paused.get(), running.get(), writerActive.get());
   }
 
   public boolean isAudible() { return actualPlayback && running.get() && !paused.get(); }

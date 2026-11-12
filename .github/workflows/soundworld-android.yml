@@ -41,13 +41,15 @@ jobs:
             native/android/SoundWorldStepTime.java scripts/SoundWorldStepTimeTest.java \
             native/android/SoundWorldFocusPolicy.java scripts/SoundWorldFocusPolicyTest.java \
             native/android/SoundWorldClipLengthPolicy.java scripts/SoundWorldClipLengthPolicyTest.java \
-            native/android/SoundWorldClipRetentionPolicy.java scripts/SoundWorldClipRetentionPolicyTest.java
+            native/android/SoundWorldClipRetentionPolicy.java scripts/SoundWorldClipRetentionPolicyTest.java \
+            native/android/SoundWorldPcmLifecyclePolicy.java scripts/SoundWorldPcmLifecyclePolicyTest.java
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldPowerPolicyTest
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldCapturePolicyTest
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldStepTimeTest
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldFocusPolicyTest
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldClipLengthPolicyTest
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldClipRetentionPolicyTest
+          java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldPcmLifecyclePolicyTest
       - name: Type check
         run: npx tsc --noEmit
       - name: Unit tests
@@ -85,6 +87,7 @@ jobs:
           cp native/android/SoundWorldPowerPolicy.java "$target/SoundWorldPowerPolicy.java"
           cp native/android/MainActivity.java "$target/MainActivity.java"
           cp native/android/SoundWorldPlaybackService.java "$target/SoundWorldPlaybackService.java"
+          cp native/android/SoundWorldPcmLifecyclePolicy.java "$target/SoundWorldPcmLifecyclePolicy.java"
           cp native/android/SoundWorldPlaybackPlugin.java "$target/SoundWorldPlaybackPlugin.java"
           cp native/android/SoundWorldMusicLibraryPlugin.java "$target/SoundWorldMusicLibraryPlugin.java"
           cp native/android/SoundWorldClipRetentionPolicy.java "$target/SoundWorldClipRetentionPolicy.java"

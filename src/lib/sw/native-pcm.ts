@@ -12,7 +12,7 @@ interface PCMPlugin {
   appendPcm(args:{base64:string}): Promise<{queued:boolean}>;
   pause(): Promise<{audible:boolean}>;
   stop(): Promise<{requested:boolean}>;
-  status(): Promise<{audible:boolean;queuedChunks:number;serviceActive:boolean;underruns:number;lastAudioError:string}>;
+  status(): Promise<{audible:boolean;queuedChunks:number;serviceActive:boolean;readyForPcm:boolean;underruns:number;lastAudioError:string}>;
 }
 const native = registerPlugin<PCMPlugin>("SoundWorldPlayback");
 const unavailable = (msg:string):{ok:false;code:"UNAVAILABLE";message:string} => ({ok:false,code:"UNAVAILABLE",message:msg});
@@ -27,8 +27,24 @@ export async function currentAudioSinkStatus() {
  */
 export async function requestNativeAudioSink():Promise<Result<"preparing">> {
   if(Capacitor.getPlatform()!=="android") return unavailable("Аудиослужба доступна только на Android");
-  try {await native.start();return {ok:true,value:"preparing"};}
-  catch(e){return {ok:false,code:"ERROR",message:String(e)};}
+  try {
+    await native.start();
+    // ContextCompat.startForegroundService only REQUESTS startup; Android
+    // invokes onStartCommand later. Do not send music to an unready service.
+    for(let attempt=0;attempt<24;attempt++) {
+      const status=await native.status();
+      if(status.readyForPcm) return {ok:true,value:"preparing"};
+      if(status.lastAudioError) return {ok:false,code:"ERROR",message:status.lastAudioError};
+      await new Promise<void>(resolve=>setTimeout(resolve,100));
+    }
+    // Do not keep an unused foreground service alive if Android never
+    // confirms that it is able to accept generated PCM.
+    await native.stop().catch(()=>{});
+    return {ok:false,code:"TIMEOUT",message:"Android не подготовил аудиослужбу за 2,4 секунды"};
+  } catch(e){
+    await native.stop().catch(()=>{});
+    return {ok:false,code:"ERROR",message:String(e)};
+  }
 }
 export function validatePcmChunk(pcm:Uint8Array):boolean {
   return pcm.length>0 && pcm.length<=192000 && pcm.length%4===0;

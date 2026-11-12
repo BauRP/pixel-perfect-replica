@@ -68,6 +68,7 @@ public class SoundWorldPlaybackPlugin extends Plugin {
     JSObject r=new JSObject();r.put("audible",s!=null&&s.isAudible());
     r.put("queuedChunks",s==null?0:s.bufferedChunks());
     r.put("serviceActive",s!=null);
+    r.put("readyForPcm",s!=null&&s.readyForPcm());
     r.put("underruns",s==null?-1:s.measuredUnderruns());
     r.put("lastAudioError",s==null?"":s.audioError());
     call.resolve(r);
