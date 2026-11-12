@@ -14,21 +14,35 @@ import xml.etree.ElementTree as ET
 
 
 def measured_skip(xml: str, log: str) -> tuple[int, int] | None:
+    bounds: list[list[int]] = []
+    # Android 14 may have no WebView accessibility node at all. On that
+    # version use an actual Android View.getLocationOnScreen measurement
+    # logged by MainActivity instead of guessing an inset or tapping text.
+    native_marker = "SW_NATIVE_WEBVIEW "
+    for line in log.splitlines():
+        if native_marker not in line:
+            continue
+        try:
+            raw = json.loads(line.split(native_marker, 1)[1].strip())
+            found = [raw[k] for k in ("left", "top", "right", "bottom")]
+            if all(type(v) is int and 0 <= v <= 10000 for v in found):
+                if found[2] > found[0] and found[3] > found[1]:
+                    bounds.insert(0, found)  # real native geometry preferred
+        except (ValueError, KeyError, TypeError):
+            continue
     try:
         root = ET.fromstring(xml)
     except ET.ParseError:
-        return None
-    bounds = []
-    for node in root.iter("node"):
-        if node.get("class") != "android.webkit.WebView":
-            continue
-        found = [int(v) for v in re.findall(r"\d+", node.get("bounds", ""))]
-        if len(found) == 4 and found[2] > found[0] and found[3] > found[1]:
-            bounds.append(found)
+        root = None
+    if root is not None:
+        for node in root.iter("node"):
+            if node.get("class") != "android.webkit.WebView":
+                continue
+            found = [int(v) for v in re.findall(r"\d+", node.get("bounds", ""))]
+            if len(found) == 4 and found[2] > found[0] and found[3] > found[1]:
+                bounds.append(found)
     if not bounds:
         return None
-    # WebView itself and nested accessibility root commonly share bounds.
-    left, top, right, bottom = max(bounds, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
     marker = "SW_NAV_GEOMETRY "
     candidates = []
     for line in log.splitlines():
@@ -54,13 +68,17 @@ def measured_skip(xml: str, log: str) -> tuple[int, int] | None:
                 0 <= rect["top"] < rect["bottom"] <= h and
                 1 <= dpr <= 8 and 100 <= w <= 1500 and 100 <= h <= 3000):
             continue
-        if abs((right-left) / w - dpr) > .35 or abs((bottom-top) / h - dpr) > .35:
-            continue
-        x = round(left + (rect["left"] + rect["right"]) * dpr / 2)
-        y = round(top + (rect["top"] + rect["bottom"]) * dpr / 2)
-        if not (left < x < right and top < y < bottom):
-            continue
-        candidates.append((x, y))
+        for left, top, right, bottom in bounds:
+            # Reject stale/incorrect Android view geometries instead of
+            # guessing screen placement. Both native and CSS sizes must agree.
+            if abs((right-left) / w - dpr) > .35 or abs((bottom-top) / h - dpr) > .35:
+                continue
+            x = round(left + (rect["left"] + rect["right"]) * dpr / 2)
+            y = round(top + (rect["top"] + rect["bottom"]) * dpr / 2)
+            if not (left < x < right and top < y < bottom):
+                continue
+            candidates.append((x, y))
+            break  # native measurement wins when present
     return candidates[-1] if candidates else None
 
 

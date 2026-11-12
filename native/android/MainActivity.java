@@ -1,6 +1,7 @@
 package kz.soundworld.ar;
 
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import androidx.core.graphics.Insets;
@@ -21,6 +22,28 @@ import com.getcapacitor.BridgeActivity;
  * zeroed, preventing the WebView from adding a second layer of padding.
  */
 public class MainActivity extends BridgeActivity {
+  /**
+   * Android 14 accessibility may hide the entire WebView from UIAutomator
+   * even though React rendered. Log actual native view bounds, not estimated
+   * screen coordinates. The CI tap still requires a real React button marker
+   * and verifies the resulting screen transition.
+   */
+  @Override public void onWindowFocusChanged(boolean hasFocus) {
+    super.onWindowFocusChanged(hasFocus);
+    if (!hasFocus || getBridge() == null) return;
+    final View web = getBridge().getWebView();
+    if (web == null) return;
+    web.post(() -> {
+      if (!web.isAttachedToWindow() || !web.hasWindowFocus()) return;
+      int[] origin = new int[2];
+      web.getLocationOnScreen(origin);
+      if (web.getWidth() <= 0 || web.getHeight() <= 0) return;
+      Log.i("SoundWorldGeometry", "SW_NATIVE_WEBVIEW {\"left\":" + origin[0]
+          + ",\"top\":" + origin[1] + ",\"right\":" + (origin[0] + web.getWidth())
+          + ",\"bottom\":" + (origin[1] + web.getHeight()) + "}");
+    });
+  }
+
   @Override public void onCreate(Bundle savedInstanceState) {
     registerPlugin(SoundWorldSensorsPlugin.class);
     registerPlugin(SoundWorldPlaybackPlugin.class);

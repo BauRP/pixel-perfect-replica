@@ -217,17 +217,28 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
       try {
         JSONArray source=loadIndex();
         JSONArray output=new JSONArray();
-        if (!"recent".equals(filter) && !"favorites".equals(filter) && !"exports".equals(filter))
+        if (!"recent".equals(filter) && !"favorites".equals(filter) &&
+            !"exports".equals(filter) && !"journey".equals(filter))
           throw new IllegalArgumentException("Неизвестный список файлов");
-        for(int i=source.length()-1;i>=0;i--) {
-          JSONObject item=source.getJSONObject(i);
+        // Recovery may append a valid older WAV after newer entries. Sort by
+        // real creation date, not SharedPreferences insertion order. Preserve
+        // favorites/export metadata and never invent missing WAVs.
+        ArrayList<JSONObject> sorted=new ArrayList<>();
+        for (int i=0;i<source.length();i++) sorted.add(source.getJSONObject(i));
+        sorted.sort((a,b) -> Long.compare(b.optLong("createdAt",0),
+                                               a.optLong("createdAt",0)));
+        java.util.HashSet<String> seen=new java.util.HashSet<>();
+        for (JSONObject item:sorted) {
+          String id=item.optString("id","");
+          if (!validId(id) || !seen.add(id)) continue;
           // A file with a matching name may be truncated/corrupt after a crash.
-          try { verifyWavFile(clipFile(item.getString("id"))); }
+          try { verifyWavFile(clipFile(id)); }
           catch (Exception invalidFile) { continue; }
           if("favorites".equals(filter) && !item.optBoolean("favorite")) continue;
           if("exports".equals(filter) && !item.has("exportedUri")) continue;
           output.put(item);
           if ("recent".equals(filter) && output.length() >= 3) break;
+          if ("journey".equals(filter) && output.length() >= 100) break;
         }
         JSObject r=new JSObject();r.put("items",output);call.resolve(r);
       } catch(Exception ex){call.reject("Ошибка чтения файлов: "+ex.getMessage());}
