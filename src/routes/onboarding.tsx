@@ -41,7 +41,7 @@ function Onboarding() {
       <header className="shrink-0 px-4 pb-2 pt-safe">
         <div className="flex items-center justify-between pt-3">
           <span className="font-display text-[11px] tracking-[0.3em] text-muted-foreground">SOUNDWORLD AR</span>
-          <button onClick={skip} className="min-h-12 px-2 text-sm font-semibold text-primary">Пропустить</button>
+          <button data-sw-action="onboarding-skip" onClick={skip} className="min-h-12 px-2 text-sm font-semibold text-primary">Пропустить</button>
         </div>
         <h1 className="mt-4 text-2xl font-semibold">Музыкальные вкусы</h1>
         <p className="mt-2 text-sm text-muted-foreground">

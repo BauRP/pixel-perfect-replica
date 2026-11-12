@@ -35,8 +35,34 @@ adb shell pm clear "$package" >/dev/null
 check_start() {
   local attempt="$1"
   echo "=== SoundWorld Android startup attempt $attempt ==="
+  # The Android 16 emulator sometimes temporarily disconnects adb after
+  # installation or a system cutout overlay change. ADB transport exit 224
+  # is not evidence of a SoundWorld Java crash. Recover the transport, then
+  # still require two REAL Android application starts and screen navigation.
+  local ready=0
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    if adb shell getprop sys.boot_completed 2>/dev/null | grep -qx '1'; then
+      ready=1
+      break
+    fi
+    adb reconnect offline >/dev/null 2>&1 || true
+    sleep 2
+  done
+  if (( ready == 0 )); then
+    echo "::error::Android emulator lost ADB transport before app launch"
+    return 1
+  fi
   adb shell am force-stop "$package" || true
-  adb logcat -c
+  local cleared=0
+  for _ in 1 2 3; do
+    if adb logcat -c >/dev/null 2>&1; then cleared=1; break; fi
+    adb reconnect offline >/dev/null 2>&1 || true
+    sleep 2
+  done
+  if (( cleared == 0 )); then
+    echo "::error::ADB logcat failed repeatedly; cannot reliably inspect Android crashes"
+    return 1
+  fi
 
   local start_result
   start_result="$(adb shell am start -W -n "$package/.MainActivity" 2>&1)"
@@ -210,6 +236,25 @@ wait_for_ui() {
 tap_ui_text() {
   local text="$1"
   local pos=""
+  # Android 12 WebView 91 often exposes only its title and paragraph, not
+  # clickable HTML buttons, to UIAutomator. Do not tap a paragraph containing
+  # «Пропустить» and then pretend onboarding succeeded. Use the actual
+  # measured button's bounding box from the mounted React DOM instead.
+  if [[ "$text" == "Пропустить" ]]; then
+    for _ in 1 2 3 4 5 6; do
+      capture_ui || true
+      pos="$(adb logcat -d -v brief | python3 scripts/ui_measured_onboarding.py /tmp/soundworld-window.xml 2>/dev/null || true)"
+      if [[ -n "$pos" ]]; then
+        echo "Tap real onboarding button at measured screen coordinates: $pos"
+        adb shell input tap $pos
+        return 0
+      fi
+      sleep 2
+    done
+    echo "::error::No real measured onboarding skip button in the mounted WebView"
+    adb logcat -d -v brief | grep 'SW_NAV_GEOMETRY' | tail -n 8 || true
+    return 1
+  fi
   for _ in 1 2 3 4 5; do
     capture_ui
     pos="$(python3 scripts/ui_accessibility_target.py /tmp/soundworld-window.xml "$text" || true)"

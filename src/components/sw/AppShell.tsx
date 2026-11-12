@@ -39,11 +39,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       const rect = (el: Element | null) => {
         if (!el) return null;
         const r = el.getBoundingClientRect();
-        return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) };
+        return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom), width: Math.round(r.width), height: Math.round(r.height) };
       };
       console.info("SW_NAV_GEOMETRY", JSON.stringify({
         path: loc.pathname, completed: settings.onboardingCompleted,
         nav: rect(nav), shell: rect(shell), root: rect(root),
+        onboardingSkip: rect(document.querySelector('[data-sw-action="onboarding-skip"]')),
         vh: window.innerHeight, vw: window.innerWidth,
         dpr: window.devicePixelRatio,
         heading: document.querySelector("h1")?.textContent?.trim() ?? "",
