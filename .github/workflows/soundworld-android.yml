@@ -279,6 +279,24 @@ jobs:
           emulator-boot-timeout: 360
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: bash scripts/check_android_startup.sh
+      - name: Reclaim emulator disk after Android 31
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Remove runner-local emulator caches, never the compiled APK.
+          adb kill-server || true
+          rm -rf "$HOME/.android/avd/test.avd" "$HOME/.android/avd/test.ini"
+          rm -rf "$ANDROID_SDK_ROOT/system-images/android-31"
+          rm -rf "$ANDROID_SDK_ROOT/.temp"
+          df -h .
+          python3 - <<'PY'
+          import shutil
+          free=shutil.disk_usage(".").free
+          print(f"Free disk before next emulator: {free/1024**3:.2f} GiB")
+          if free < 8 * 1024**3:
+            raise SystemExit("Runner disk too full for next emulator; APK build succeeded")
+          PY
       - name: Verify Android 13 startup and screens (API 33)
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -291,6 +309,24 @@ jobs:
           emulator-boot-timeout: 360
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: bash scripts/check_android_startup.sh
+      - name: Reclaim emulator disk after Android 33
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Remove runner-local emulator caches, never the compiled APK.
+          adb kill-server || true
+          rm -rf "$HOME/.android/avd/test.avd" "$HOME/.android/avd/test.ini"
+          rm -rf "$ANDROID_SDK_ROOT/system-images/android-33"
+          rm -rf "$ANDROID_SDK_ROOT/.temp"
+          df -h .
+          python3 - <<'PY'
+          import shutil
+          free=shutil.disk_usage(".").free
+          print(f"Free disk before next emulator: {free/1024**3:.2f} GiB")
+          if free < 8 * 1024**3:
+            raise SystemExit("Runner disk too full for next emulator; APK build succeeded")
+          PY
       - name: Verify Android 15 edge-to-edge and screen cutout (API 35)
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -303,6 +339,24 @@ jobs:
           emulator-boot-timeout: 360
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: bash scripts/check_android_startup.sh
+      - name: Reclaim emulator disk after Android 35
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Remove runner-local emulator caches, never the compiled APK.
+          adb kill-server || true
+          rm -rf "$HOME/.android/avd/test.avd" "$HOME/.android/avd/test.ini"
+          rm -rf "$ANDROID_SDK_ROOT/system-images/android-35"
+          rm -rf "$ANDROID_SDK_ROOT/.temp"
+          df -h .
+          python3 - <<'PY'
+          import shutil
+          free=shutil.disk_usage(".").free
+          print(f"Free disk before next emulator: {free/1024**3:.2f} GiB")
+          if free < 8 * 1024**3:
+            raise SystemExit("Runner disk too full for next emulator; APK build succeeded")
+          PY
       - name: Verify actual Android 16 startup and screens (API 36)
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -327,7 +381,7 @@ jobs:
           echo "### APK passed Android checks; GitHub Releases had an API outage" >> "$GITHUB_STEP_SUMMARY"
           echo "Download the APK and SHA-256 from the Artifacts section of this workflow run (repository access required; retained 2 days)." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Mark APK verified after Android 12 and 16 launch tests
+      - name: Mark APK verified after Android 12, 13, 15 and 16 launch tests
         if: steps.publish_diagnostic_apk.outcome == 'success'
         shell: bash
         env:
@@ -342,8 +396,8 @@ jobs:
           marked=0
           for attempt in 1 2 3; do
             if gh release edit "$tag" \
-              --title "SoundWorld AR — APK #${{ github.run_number }} (пройдены проверки Android 12 и 16)" \
-              --notes "Автоматические тесты, компиляция и проверка запуска Android 12 и Android 16 пройдены. APK отладочная, не Play Store; поведение на других телефонах не гарантируется. Музыкальная нейросеть Fermata пока не подключена. Коммит: ${GITHUB_SHA}."; then
+              --title "SoundWorld AR — APK #${{ github.run_number }} (Android 12, 13, 15 и 16 проверены)" \
+              --notes "Автоматические тесты, компиляция и проверка запуска Android 12, 13, 15 и 16 пройдены. APK отладочная, не Play Store; поведение на других телефонах не гарантируется. Музыкальная нейросеть Fermata пока не подключена. Коммит: ${GITHUB_SHA}."; then
               marked=1
               break
             fi
@@ -353,4 +407,4 @@ jobs:
           if (( marked == 0 )); then
             echo "::warning::Android tests passed, but GitHub did not update the diagnostic release label; inspect the workflow run before using the APK."
           fi
-          echo "### ✅ Проверка запуска Android 12 и Android 16 пройдена" >> "$GITHUB_STEP_SUMMARY"
+          echo "### ✅ Проверка запуска Android 12, 13, 15 и 16 пройдена" >> "$GITHUB_STEP_SUMMARY"
