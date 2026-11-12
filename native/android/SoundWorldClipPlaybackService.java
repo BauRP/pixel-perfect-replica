@@ -123,6 +123,11 @@ public final class SoundWorldClipPlaybackService extends Service {
       @Override public void onPlay() { main.post(() -> resumeInternal()); }
       @Override public void onPause() { main.post(() -> pauseInternal(false)); }
       @Override public void onStop() { main.post(() -> stopInternal()); }
+      @Override public void onSeekTo(long pos) {
+        // System MediaSession scrubber is allowed to seek only the active,
+        // prepared recording. Uses the same ID-checked native gate as UI.
+        requestSeek(clipId, pos, accepted -> {});
+      }
     });
     session.setActive(true);
     updateMediaState();
@@ -191,7 +196,7 @@ public final class SoundWorldClipPlaybackService extends Service {
       "paused".equals(state) ? PlaybackState.STATE_PAUSED : PlaybackState.STATE_STOPPED;
     try {
       s.setPlaybackState(new PlaybackState.Builder()
-        .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_STOP)
+        .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_STOP | PlaybackState.ACTION_SEEK_TO)
         .setState(playback, playerPrepared ? playbackPositionMs() : PlaybackState.PLAYBACK_POSITION_UNKNOWN,
           "playing".equals(state) ? 1f : 0f).build());
     } catch (RuntimeException ex) { Log.w("SoundWorldSaved", "MediaSession state failed", ex); }
