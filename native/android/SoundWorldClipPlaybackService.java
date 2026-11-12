@@ -72,6 +72,7 @@ public final class SoundWorldClipPlaybackService extends Service {
   private Runnable prepareDeadline;
   private AudioManager audioManager;
   private AudioFocusRequest focusRequest;
+  private boolean focusHeld = false;
   private MediaPlayer player;
   private MediaSession session;
   private NotificationManager notifications;
@@ -264,7 +265,15 @@ public final class SoundWorldClipPlaybackService extends Service {
 
   private boolean acquireFocus() {
     if (audioManager == null) { lastError = "Аудиосистема Android недоступна"; return false; }
-    if (focusRequest != null) return true;
+    if (focusRequest != null) {
+      if (focusHeld) return true;
+      // After transient focus loss, a user pressing Play does not imply the
+      // other app or call has yielded the audio route. Re-request explicitly.
+      focusHeld = audioManager.requestAudioFocus(focusRequest)
+        == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+      if (!focusHeld) lastError = "Android пока не вернул аудиофокус";
+      return focusHeld;
+    }
     final int myGeneration = generation;
     AudioAttributes attrs = new AudioAttributes.Builder()
       .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -274,6 +283,7 @@ public final class SoundWorldClipPlaybackService extends Service {
       .setOnAudioFocusChangeListener(change -> {
         if (myGeneration != generation) return;
         if (change == AudioManager.AUDIOFOCUS_GAIN) {
+          focusHeld = true;
           if (SoundWorldFocusPolicy.canAutoResume(
               focusResumePending, resumeAfterCall, unplugged,
               playerPrepared, "paused".equals(state))) {
@@ -281,6 +291,7 @@ public final class SoundWorldClipPlaybackService extends Service {
             resumeInternal();
           }
         } else if (change == AudioManager.AUDIOFOCUS_LOSS) {
+          focusHeld = false;
           // Permanent focus loss: the original focus grant is no longer valid.
           // Explicit user Resume must request a NEW grant, not steal audio.
           focusResumePending = false;
@@ -288,6 +299,7 @@ public final class SoundWorldClipPlaybackService extends Service {
           abandonFocus();
         } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
                    change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
+          focusHeld = false;
           focusResumePending = "playing".equals(state) && resumeAfterCall;
           pauseInternal(true);
         }
@@ -297,6 +309,7 @@ public final class SoundWorldClipPlaybackService extends Service {
       return false;
     }
     focusRequest = request;
+    focusHeld = true;
     return true;
   }
 
@@ -304,6 +317,7 @@ public final class SoundWorldClipPlaybackService extends Service {
     if (audioManager != null && focusRequest != null)
       audioManager.abandonAudioFocusRequest(focusRequest);
     focusRequest = null;
+    focusHeld = false;
   }
 
   private void playInternal(String requestedId) {
