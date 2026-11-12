@@ -139,7 +139,28 @@ jobs:
           PY
       - name: Build shell-only debug APK
         working-directory: android
-        run: bash ./gradlew assembleDebug
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Maven Central and Google Maven occasionally return missing POMs
+          # even for previously published artifacts. Only retry repository
+          # download/resolution failures. Java/Kotlin compile errors still fail
+          # immediately and are never reported as successful.
+          for attempt in 1 2 3; do
+            if bash ./gradlew assembleDebug --no-daemon 2>&1 | tee /tmp/sw-gradle-build.log; then
+              exit 0
+            fi
+            if ! grep -Eq 'Could not find org\.|Could not resolve all artifacts|Could not GET|Read timed out|Connect timed out|HTTP (429|500|502|503|504)' /tmp/sw-gradle-build.log; then
+              echo "::error::Gradle failed for a non-download reason"
+              exit 1
+            fi
+            if (( attempt == 3 )); then
+              echo "::error::Gradle dependency download still failing after three attempts"
+              exit 1
+            fi
+            echo "::warning::Transient Gradle repository failure; retrying ($attempt/3)"
+            sleep $((attempt * 8))
+          done
       - name: Verify offline model and supported Android floor in built APK
         run: |
           set -euo pipefail
