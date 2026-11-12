@@ -5,6 +5,12 @@ public final class SoundWorldPcmLifecyclePolicyTest {
     if (expected != actual) throw new AssertionError(name + ": "+actual);
   }
   public static void main(String[] args) {
+    check("duplicate active START must not pause PCM",true,
+      SoundWorldPcmLifecyclePolicy.ignoreDuplicateStart(true,false));
+    check("restart after pause must prepare foreground again",false,
+      SoundWorldPcmLifecyclePolicy.ignoreDuplicateStart(false,true));
+    check("foreground not yet ready",false,
+      SoundWorldPcmLifecyclePolicy.ignoreDuplicateStart(false,false));
     check("service created before foreground",false,
       SoundWorldPcmLifecyclePolicy.canAccept(false,false,false,false));
     check("successful foreground startup",true,

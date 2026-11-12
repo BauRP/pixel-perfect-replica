@@ -5,6 +5,10 @@ package kz.soundworld.ar;
  * paused, stopped, or is still tearing down its previous AudioTrack. */
 public final class SoundWorldPcmLifecyclePolicy {
   private SoundWorldPcmLifecyclePolicy() {}
+  /** A duplicate START must preserve an already-running AudioTrack and queue. */
+  public static boolean ignoreDuplicateStart(boolean foregroundReady, boolean paused) {
+    return foregroundReady && !paused;
+  }
   public static boolean canAccept(boolean foregroundReady, boolean paused,
       boolean running, boolean writerActive) {
     return foregroundReady && !paused && (running || !writerActive);
