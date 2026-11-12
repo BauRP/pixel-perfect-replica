@@ -34,7 +34,10 @@ export async function requestNativeAudioSink():Promise<Result<"preparing">> {
     for(let attempt=0;attempt<24;attempt++) {
       const status=await native.status();
       if(status.readyForPcm) return {ok:true,value:"preparing"};
-      if(status.lastAudioError) return {ok:false,code:"ERROR",message:status.lastAudioError};
+      if(status.lastAudioError) {
+        await native.stop().catch(()=>{});
+        return {ok:false,code:"ERROR",message:status.lastAudioError};
+      }
       await new Promise<void>(resolve=>setTimeout(resolve,100));
     }
     // Do not keep an unused foreground service alive if Android never

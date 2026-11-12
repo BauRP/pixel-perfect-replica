@@ -114,6 +114,8 @@ public final class SoundWorldPlaybackService extends Service {
     }
     if (ACTION_PAUSE.equals(action)) { pauseAudio(); return START_NOT_STICKY; }
     if (!ACTION_START.equals(action)) { pauseAudio(); stopSelf(startId); return START_NOT_STICKY; }
+    // A second START request must never pause an already active PCM writer.
+    if (foregroundReady.get() && !paused.get()) return START_NOT_STICKY;
     foregroundReady.set(false);
     paused.set(true); // never accept PCM before the foreground notification exists
     try {
