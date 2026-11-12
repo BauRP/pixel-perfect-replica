@@ -559,7 +559,10 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   public void onSensorChanged(SensorEvent event) {
     if (!listeningSteps || event.sensor.getType() != Sensor.TYPE_STEP_DETECTOR) return;
     JSObject r = new JSObject();
-    r.put("timestamp", System.currentTimeMillis());
+    long when=SoundWorldStepTime.eventEpochMillis(
+      event.timestamp, SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis());
+    if (when<0) return; // Reject stale or invalid hardware event clock.
+    r.put("timestamp", when);
     r.put("sensor", "TYPE_STEP_DETECTOR");
     notifyListeners("step", r);
   }
