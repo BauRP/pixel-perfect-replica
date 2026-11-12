@@ -179,15 +179,26 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
       JSONObject clip=index.getJSONObject(i);
       if(!clip.optBoolean("favorite") && !clip.has("exportedUri") && !clip.optBoolean("recoveredProtected")) temporaryCount++;
     }
-    for(int i=0;i<index.length() && temporaryCount>3;) {
-      JSONObject clip=index.getJSONObject(i);
-      if (!clip.optBoolean("favorite") && !clip.has("exportedUri") && !clip.optBoolean("recoveredProtected")) {
-        String id=clip.getString("id");
-        if (id.equals(protectedId)) { i++; continue; }
-        // Persist catalog before deleting older data to avoid loss on a write failure.
-        evicted.add(id);
-        index.remove(i);temporaryCount--;
-      } else i++;
+    while (temporaryCount > 3) {
+      // The index can contain an orphan WAV recovered after a newer one,
+      // so insertion order is unsafe for deciding which file to erase.
+      long[] times=new long[index.length()];
+      boolean[] blocked=new boolean[index.length()];
+      for (int i=0;i<index.length();i++) {
+        JSONObject item=index.getJSONObject(i);
+        String id=item.optString("id","");
+        times[i]=item.optLong("createdAt",0);
+        blocked[i]=!validId(id) || id.equals(protectedId) ||
+          item.optBoolean("favorite") || item.has("exportedUri") ||
+          item.optBoolean("recoveredProtected");
+      }
+      int oldest=SoundWorldClipRetentionPolicy.oldestEvictable(times,blocked);
+      // If the only excess temporary file is being played, preserve it.
+      // The storage limit can be enforced after playback has stopped.
+      if (oldest < 0) break;
+      evicted.add(index.getJSONObject(oldest).getString("id"));
+      index.remove(oldest);
+      temporaryCount--;
     }
     return evicted;
   }
