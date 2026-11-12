@@ -274,13 +274,18 @@ public final class SoundWorldClipPlaybackService extends Service {
       .setOnAudioFocusChangeListener(change -> {
         if (myGeneration != generation) return;
         if (change == AudioManager.AUDIOFOCUS_GAIN) {
-          if (focusResumePending && resumeAfterCall && !unplugged) {
+          if (SoundWorldFocusPolicy.canAutoResume(
+              focusResumePending, resumeAfterCall, unplugged,
+              playerPrepared, "paused".equals(state))) {
             focusResumePending = false;
             resumeInternal();
           }
         } else if (change == AudioManager.AUDIOFOCUS_LOSS) {
+          // Permanent focus loss: the original focus grant is no longer valid.
+          // Explicit user Resume must request a NEW grant, not steal audio.
           focusResumePending = false;
           pauseInternal(true);
+          abandonFocus();
         } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
                    change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
           focusResumePending = "playing".equals(state) && resumeAfterCall;

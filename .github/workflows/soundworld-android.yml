@@ -38,10 +38,12 @@ jobs:
           javac -d /tmp/soundworld-power-tests \
             native/android/SoundWorldPowerPolicy.java scripts/SoundWorldPowerPolicyTest.java \
             native/android/SoundWorldCapturePolicy.java scripts/SoundWorldCapturePolicyTest.java \
-            native/android/SoundWorldStepTime.java scripts/SoundWorldStepTimeTest.java
+            native/android/SoundWorldStepTime.java scripts/SoundWorldStepTimeTest.java \
+            native/android/SoundWorldFocusPolicy.java scripts/SoundWorldFocusPolicyTest.java
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldPowerPolicyTest
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldCapturePolicyTest
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldStepTimeTest
+          java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldFocusPolicyTest
       - name: Type check
         run: npx tsc --noEmit
       - name: Unit tests
@@ -82,6 +84,7 @@ jobs:
           cp native/android/SoundWorldPlaybackPlugin.java "$target/SoundWorldPlaybackPlugin.java"
           cp native/android/SoundWorldMusicLibraryPlugin.java "$target/SoundWorldMusicLibraryPlugin.java"
           cp native/android/SoundWorldClipPlaybackService.java "$target/SoundWorldClipPlaybackService.java"
+          cp native/android/SoundWorldFocusPolicy.java "$target/SoundWorldFocusPolicy.java"
           # Production YAMNet asset is bundled at APK build time (not downloaded by the user).
           mkdir -p android/app/src/main/assets
           curl --fail --location --retry 3 --silent --show-error \
