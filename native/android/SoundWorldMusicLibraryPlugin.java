@@ -458,6 +458,23 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     });
   }
 
+  @PluginMethod public void seekClip(PluginCall call) {
+    SoundWorldClipPlaybackService service = SoundWorldClipPlaybackService.current();
+    Long position=call.getLong("positionMs");
+    String id=call.getString("id");
+    if (service == null || id == null || position == null ||
+        position < 0 || position > 120500) {
+      call.reject("Настоящая WAV-запись недоступна для перемотки");return;
+    }
+    service.requestSeek(id, position, requested -> {
+      if (requested) {
+        JSObject result=new JSObject();
+        result.put("requested", true);
+        call.resolve(result);
+      } else call.reject("WAV не воспроизводится или сменился фрагмент");
+    });
+  }
+
   @PluginMethod public void pauseClip(PluginCall call) {
     SoundWorldClipPlaybackService service = SoundWorldClipPlaybackService.current();
     if (service == null) {

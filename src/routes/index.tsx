@@ -10,7 +10,7 @@ import { genreNameById } from "@/lib/sw/catalog";
 import { PendingBadge } from "@/components/sw/ui";
 import { cn } from "@/lib/utils";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
-import { latestRealClip, previousRealClip } from "@/lib/sw/stored-clips";
+import { latestRealClip, previousRealClip, nextRealClip } from "@/lib/sw/stored-clips";
 import { verifiedWavProgress, wavTimestamp, type WavProgress } from "@/lib/sw/wav-progress";
 import { observeRawSound, observeRawSteps, observeMicrophoneLevel, sensorStatus } from "@/lib/sw/native-sensors";
 import { AmbientStabilizer, StepPaceEstimator, type Atmosphere } from "@/lib/sw/environment-smoothing";
@@ -40,6 +40,8 @@ function Player() {
   const [storedPlayback,setStoredPlayback]=useState<{state:"playing"|"paused"|"stopped"|"preparing";clipId:string}>({state:"stopped",clipId:""});
   const busyRef = useRef(false);
   const [wavProgress,setWavProgress]=useState<WavProgress|null>(null);
+  const [seekDraft,setSeekDraft]=useState<number|null>(null);
+  useEffect(()=>setSeekDraft(null),[storedPlayback.clipId]);
   const [lastEnvironment,setLastEnvironment] = useState<{kind:Atmosphere;at:number}|null>(null);
   const [lastActivity,setLastActivity] = useState<{kind:"walking"|"running";at:number}|null>(null);
   const [microphone,setMicrophone] = useState<{active:boolean;input:string;at:number}>({active:false,input:"",at:0});
@@ -121,6 +123,7 @@ function Player() {
   const latestClip = latestRealClip(recentClips);
   const currentClip = recentClips.find(c=>c.id===storedPlayback.clipId) ?? latestClip;
   const previousClip = previousRealClip(recentClips,storedPlayback.clipId);
+  const nextClip = nextRealClip(recentClips,storedPlayback.clipId);
   const hasClip = !!currentClip; // only real, verified and completed files
 
   const onPlay = () => run(async () => {
@@ -135,7 +138,20 @@ function Player() {
           : await withTimeout(playing ? engine.pauseSession() : engine.startLiveSession(s));
     notify.result(r, playSaved?"Воспроизведение сохранённого WAV":playing?"Пауза":"Запуск сессии");
   });
-  const onNext = () => run(async () => notify.result(await withTimeout(engine.requestNextVariation(s)), "Запрошена новая вариация"));
+  const onNext = () => run(async () => {
+    if(state==="UNAVAILABLE"){
+      if(!nextClip) return;
+      notify.result(await withTimeout(library.playStoredClip(nextClip.id)),"Воспроизведение следующего сохранённого WAV");
+    } else {
+      notify.result(await withTimeout(engine.requestNextVariation(s)),"Запрошена новая вариация");
+    }
+  });
+  const commitSeek = () => {
+    if(seekDraft===null || !wavProgress || !storedPlayback.clipId)return;
+    const positionMs=seekDraft,clipId=storedPlayback.clipId;
+    setSeekDraft(null);
+    void run(async()=>notify.result(await withTimeout(library.seekStoredClip(clipId,positionMs)),"Перемотка WAV запрошена"));
+  };
   const onHeart = () => run(async () => {
     if(!currentClip)return;
     const r=await withTimeout(library.markFavorite(currentClip.id,!currentClip.favorite));
@@ -201,7 +217,7 @@ function Player() {
         <button aria-label={playing || storedPlayback.state==="playing" ? "Пауза" : "Играть"} disabled={busy||storedPlayback.state==="preparing"} onClick={onPlay} className="grid size-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-play transition-transform active:scale-95 disabled:opacity-70">
           {playing || storedPlayback.state==="playing" ? <Pause className="size-6" fill="currentColor" /> : <Play className="ml-1 size-6" fill="currentColor" />}
         </button>
-        <button aria-label="Следующая вариация" disabled={busy} onClick={onNext} className="grid size-11 place-items-center rounded-full text-foreground">
+        <button aria-label={state==="UNAVAILABLE"?"Следующий сохранённый фрагмент":"Следующая вариация"} disabled={busy||(state==="UNAVAILABLE"&&!nextClip)} onClick={onNext} className="grid size-11 place-items-center rounded-full text-foreground">
           <SkipForward className="size-5" fill="currentColor" />
         </button>
         <button aria-label="Сохранить на телефон" disabled={busy || !hasClip} onClick={onExport} className="grid size-11 place-items-center rounded-full text-muted-foreground hover:text-foreground">
@@ -210,9 +226,13 @@ function Player() {
       </div>
       {wavProgress && storedPlayback.state!=="stopped" &&
         <div className="mt-1.5 space-y-1" aria-label="Фактическая длительность сохранённого WAV">
-          <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
-            <div className="h-full bg-primary" style={{width:`${wavProgress.percent}%`}} />
-          </div>
+          <input type="range" aria-label="Перемотать сохранённый WAV"
+            min={0} max={wavProgress.durationMs} step={1000}
+            value={seekDraft??wavProgress.positionMs}
+            onChange={e=>setSeekDraft(Number(e.target.value))}
+            onPointerUp={commitSeek} onKeyUp={commitSeek} onBlur={commitSeek}
+            disabled={busy||storedPlayback.state==="preparing"}
+            className="w-full accent-primary" />
           <div className="flex justify-between text-[11px] text-muted-foreground">
             <span>{wavTimestamp(wavProgress.positionMs)}</span>
             <span>{wavTimestamp(wavProgress.durationMs)}</span>

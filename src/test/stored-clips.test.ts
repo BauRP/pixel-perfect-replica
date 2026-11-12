@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {latestRealClip,previousRealClip,mayEvictClip} from "../lib/sw/stored-clips";
+import {latestRealClip,previousRealClip,nextRealClip,mayEvictClip} from "../lib/sw/stored-clips";
 import type {ClipMeta} from "../lib/sw/engine";
 const mk=(id:string,createdAt:number,more:Partial<ClipMeta>={}):ClipMeta=>({
   id,createdAt,durationSec:120,genreIds:[],favorite:false,mood:0,speed:0,uri:"file:///data/user/0/kz.soundworld.ar/files/generated_music/"+id+".wav",...more,
@@ -22,6 +22,16 @@ describe("real saved recording selection",()=>{
     expect(previousRealClip(clips,a)).toBeNull();
     expect(previousRealClip(clips)?.id).toBe(b);
     expect(previousRealClip([mk(a,100)])).toBeNull();
+  });
+  it("next returns a newer real WAV, not an imaginary generated clip",()=>{
+    const c="33333333-3333-4333-8333-333333333333";
+    const clips=[mk(a,100),mk(c,300),mk(b,200)];
+    expect(nextRealClip(clips,a)?.id).toBe(b);
+    expect(nextRealClip(clips,b)?.id).toBe(c);
+    expect(nextRealClip(clips,c)).toBeNull();
+    expect(nextRealClip(clips)?.id).toBe(c);
+    expect(nextRealClip([])).toBeNull();
+    expect(nextRealClip([mk("----".padEnd(36,"-"),500),mk(b,200)])?.id).toBe(b);
   });
   it("does not evict exported, liked or recovered protected audio",()=>{
     expect(mayEvictClip(mk(a,100,{favorite:true}))).toBe(false);

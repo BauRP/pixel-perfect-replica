@@ -17,6 +17,7 @@ interface LibraryPlugin {
   recover():Promise<{recovered:number}>;
   playClip(args:{id:string;resumeAfterCall:boolean}):Promise<{requested:boolean;id:string}>;
   pauseClip():Promise<{state:string}>;
+  seekClip(args:{id:string;positionMs:number}):Promise<{requested:boolean}>;
   stopClip():Promise<{state:string}>;
   playbackStatus():Promise<{state:"playing"|"paused"|"stopped"|"preparing";clipId:string;lastError?:string;actualOutput?:string;actualOutputType?:string;positionMs?:number;durationMs?:number}>;
   addListener(event:"clipPlayback",callback:(data:{state:"playing"|"paused"|"stopped"|"preparing";clipId:string;error?:string})=>void):Promise<PluginListenerHandle>;
@@ -65,6 +66,12 @@ export function installNativeMusicLibraryAdapter():void {
     recoverLocalMetadata:async()=>{try {await native.recover();return {ok:true,value:undefined};}catch(e){return error(e);}},
     playStoredClip:async(id)=>{try {await native.playClip({id,resumeAfterCall:getSettingsSnapshot().afterCallAutoResume});return {ok:true,value:undefined};}catch(e){return error(e);}},
     pauseStoredClip:async()=>{try {await native.pauseClip();return {ok:true,value:undefined};}catch(e){return error(e);}},
+    seekStoredClip:async(id,positionMs)=>{
+      if(!Number.isFinite(positionMs) || positionMs<0 || positionMs>120500)
+        return {ok:false,code:"ERROR",message:"Недопустимая позиция WAV"};
+      try {await native.seekClip({id,positionMs:Math.round(positionMs)});return {ok:true,value:undefined};}
+      catch(e){return error(e);}
+    },
     stopStoredClip:async()=>{try {await native.stopClip();return {ok:true,value:undefined};}catch(e){return error(e);}},
     observeStoredPlayback:cb=>{
       let closed=false;

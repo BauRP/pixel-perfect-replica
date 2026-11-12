@@ -14,6 +14,7 @@ import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.AudioDeviceInfo;
 import android.media.MediaPlayer;
+import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
@@ -191,7 +192,7 @@ public final class SoundWorldClipPlaybackService extends Service {
     try {
       s.setPlaybackState(new PlaybackState.Builder()
         .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_STOP)
-        .setState(playback, PlaybackState.PLAYBACK_POSITION_UNKNOWN,
+        .setState(playback, playerPrepared ? playbackPositionMs() : PlaybackState.PLAYBACK_POSITION_UNKNOWN,
           "playing".equals(state) ? 1f : 0f).build());
     } catch (RuntimeException ex) { Log.w("SoundWorldSaved", "MediaSession state failed", ex); }
   }
@@ -329,6 +330,15 @@ public final class SoundWorldClipPlaybackService extends Service {
         if (prepareDeadline != null) main.removeCallbacks(prepareDeadline);
         prepareDeadline = null;
         playerPrepared = true;
+        if (session != null) {
+          try {
+            session.setMetadata(new MediaMetadata.Builder()
+              .putString(MediaMetadata.METADATA_KEY_TITLE, "Сохранённый WAV — SoundWorld AR")
+              .putLong(MediaMetadata.METADATA_KEY_DURATION, mp.getDuration()).build());
+          } catch (RuntimeException ex) {
+            Log.w("SoundWorldSaved", "Media metadata unavailable", ex);
+          }
+        }
         if (!"preparing".equals(state)) return; // pause requested while preparing
         if (!acquireFocus()) { failPlayback(lastError); return; }
         try {
@@ -406,8 +416,32 @@ public final class SoundWorldClipPlaybackService extends Service {
     releasePlayer();
     clipId = "";
     publish("stopped");
+    if (session != null) session.setMetadata(null);
     try { stopForeground(STOP_FOREGROUND_REMOVE); } catch (Exception ignored) {}
     stopSelf();
+  }
+
+  /** Seek within a real, already-prepared WAV; acknowledge request only,
+   * not completion. Same ID check prevents an old UI from seeking a new clip. */
+  public void requestSeek(String requestedId, long ms, java.util.function.Consumer<Boolean> done) {
+    main.post(() -> {
+      if (player == null || !playerPrepared ||
+          (!"playing".equals(state) && !"paused".equals(state)) ||
+          requestedId == null || !requestedId.equals(clipId) || ms < 0) {
+        done.accept(false);
+        return;
+      }
+      try {
+        int duration=player.getDuration();
+        if (duration <= 0) { done.accept(false); return; }
+        player.seekTo((int)Math.min(ms, (long)duration));
+        updateMediaState();
+        done.accept(true);
+      } catch (RuntimeException ex) {
+        Log.w("SoundWorldSaved", "Seek rejected", ex);
+        done.accept(false);
+      }
+    });
   }
 
   public void requestPause() { main.post(() -> pauseInternal(false)); }

@@ -85,6 +85,7 @@ export interface MusicLibrary {
   recoverLocalMetadata(): Promise<Result>;
   playStoredClip(clipId: string): Promise<Result>;
   pauseStoredClip(): Promise<Result>;
+  seekStoredClip(clipId:string,positionMs:number): Promise<Result>;
   stopStoredClip(): Promise<Result>;
   observeStoredPlayback(cb:(state:{state:"playing"|"paused"|"stopped"|"preparing";clipId:string;error?:string})=>void):Unsubscribe;
 }
@@ -153,6 +154,7 @@ export const unavailableAdapters: Adapters = {
     recoverLocalMetadata: () => Promise.resolve({ ok: true, value: undefined }),
     playStoredClip: () => unavailable("Нет настоящей сохранённой записи"),
     pauseStoredClip: () => unavailable("Файл не воспроизводится"),
+    seekStoredClip: () => unavailable("Нет настоящей WAV-записи для перемотки"),
     stopStoredClip: () => unavailable("Файл не воспроизводится"),
     observeStoredPlayback: () => noopUnsub,
   },
