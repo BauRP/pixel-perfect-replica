@@ -2,7 +2,7 @@
  * Do not turn a single door slam, horn or uncertain YAMNet prediction into
  * a new musical atmosphere. All thresholds are policy heuristics, NOT accuracy claims.
  */
-export type Atmosphere = "rain" | "traffic" | "nature" | "indoor" | "unknown";
+export type Atmosphere = "rain" | "traffic" | "nature" | "indoor" | "quiet" | "unknown";
 export interface AmbientPrediction { label: string; confidence: number; timestamp: number }
 export interface StableAmbientEvent { atmosphere: Atmosphere; confidence: number; timestamp: number }
 
@@ -12,6 +12,8 @@ export function classifyAtmosphere(label: string): Atmosphere {
   if (/car|vehicle|bus|truck|motorcycle|traffic|engine|roadway/.test(name)) return "traffic";
   if (/bird|wind|insect|forest|animal/.test(name)) return "nature";
   if (/ventilation|air conditioning|inside, small room/.test(name)) return "indoor";
+  // "Silence" is a real AudioSet/YAMNet output class, not a guessed lack of activity.
+  if (name.trim() === "silence") return "quiet";
   return "unknown";
 }
 

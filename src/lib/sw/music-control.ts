@@ -84,6 +84,7 @@ export class MusicControlPlanner {
     if (env === "rain" && enabled.has("rain-soft")) directorEffects.push("soften-arrangement");
     if (env === "traffic" && enabled.has("transport-pads")) directorEffects.push("deeper-pads");
     if (env === "nature" && enabled.has("birds-melody")) directorEffects.push("brighter-melody");
+    if (env === "quiet" && enabled.has("quiet-sparse")) directorEffects.push("sparser-arrangement");
     const regenerate = !settings.musicOnlyMode && !this.locked && this.regenerationDue;
     this.regenerationDue = false;
     return {

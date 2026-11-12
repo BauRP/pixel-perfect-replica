@@ -61,6 +61,21 @@ describe("real-world signals to future music directives", () => {
     expect(x.regenerate).toBe(false);
     expect(x.stepPulseBpm).toBeNull();
   });
+  it("Studio quiet-sparse director rule uses confirmed Silence, not absence of steps",()=>{
+    const planner=new MusicControlPlanner();
+    const s={...DEFAULT_SETTINGS,directorRules:DEFAULT_SETTINGS.directorRules.map(r=>({
+      ...r,enabled:r.id==="quiet-sparse",
+    }))};
+    expect(planner.plan(s,5000).directorEffects).not.toContain("sparser-arrangement");
+    expect(planner.observeAmbient({atmosphere:"quiet",confidence:.9,timestamp:6000},s)).toBe(true);
+    const plan=planner.plan(s,6000);
+    expect(plan.atmosphere).toBe("quiet");
+    expect(plan.directorEffects).toContain("sparser-arrangement");
+    expect(plan.regenerate).toBe(true);
+    expect(planner.plan({...s,musicOnlyMode:true},6001).directorEffects).not.toContain("sparser-arrangement");
+    const disabled={...s,directorRules:s.directorRules.map(x=>({...x,enabled:false}))};
+    expect(planner.plan(disabled,6002).directorEffects).not.toContain("sparser-arrangement");
+  });
   it("weak steps still receive quiet accents rather than being disabled",()=>{
     const p=new MusicControlPlanner();p.observePace({bpm:90,confidence:.8,timestamp:1000});
     const weak=p.plan({...DEFAULT_SETTINGS,stepsInfluence:"weak"},1000);

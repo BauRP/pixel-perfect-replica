@@ -204,5 +204,5 @@ export function installNativeSensorAdapters(): void {
   registerAdapters(adapters);
 }
 export const ATMOSPHERE_RU: Record<Atmosphere,string> = {
-  rain:"Дождь", traffic:"Транспорт", nature:"Природа", indoor:"Помещение", unknown:"Обстановка не определена"
+  rain:"Дождь", traffic:"Транспорт", nature:"Природа", indoor:"Помещение", quiet:"Тишина", unknown:"Обстановка не определена"
 };

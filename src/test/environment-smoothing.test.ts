@@ -5,6 +5,14 @@ describe("real event filtering (no simulated detections)",()=>{
     expect(classifyAtmosphere("Rain")).toBe("rain");
     expect(classifyAtmosphere("Vehicle")).toBe("traffic");
     expect(classifyAtmosphere("Speech")).toBe("unknown");
+    expect(classifyAtmosphere("Silence")).toBe("quiet");
+    expect(classifyAtmosphere("Silence and conversation")).toBe("unknown");
+  });
+  it("quiet needs two independent real YAMNet Silence predictions",()=>{
+    const s=new AmbientStabilizer();
+    expect(s.update({label:"Silence",confidence:.8,timestamp:1000})).toBeNull();
+    expect(s.update({label:"Silence",confidence:.8,timestamp:1300})).toBeNull();
+    expect(s.update({label:"Silence",confidence:.8,timestamp:2100})?.atmosphere).toBe("quiet");
   });
   it("rejects single events and uncertain sounds",()=>{
     const s=new AmbientStabilizer();
