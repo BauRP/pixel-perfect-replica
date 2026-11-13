@@ -199,7 +199,9 @@ public final class SoundWorldPlaybackService extends Service {
           at += written;
         }
         lastUnderruns = audioTrack.getUnderrunCount();
-        if (at == pcm.length && !actualPlayback) {
+        // A pause/stop may race the final AudioTrack.write return. Never
+        // publish PLAYING after the user or Android already stopped output.
+        if (at == pcm.length && running.get() && !paused.get() && !actualPlayback) {
           actualPlayback = true; publishState(true);
         }
       }
@@ -208,6 +210,10 @@ public final class SoundWorldPlaybackService extends Service {
       actualPlayback = false;
       publishState(false);
     } finally {
+      // MediaSession must never remain PLAYING when the writer exits due to
+      // an audio focus error, interrupted write, or normal output shutdown.
+      actualPlayback = false;
+      publishState(false);
       if (!lastAudioError.isEmpty()) foregroundReady.set(false);
       releaseAudio();
       running.set(false);
