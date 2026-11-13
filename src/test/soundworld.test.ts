@@ -7,7 +7,7 @@ import {
   DEFAULT_SETTINGS, applySkipAllGenres, effectiveDirections, groupState, loadSettings, migrateSettings, saveSettings,
   setDislike, toggleFavoriteInstrument, type KeyValueStorage,
 } from "@/lib/sw/settings";
-import { addCompletedClip, unavailableAdapters, type ClipMeta } from "@/lib/sw/engine";
+import { addCompletedClip, unavailableAdapters, withTimeout, type ClipMeta } from "@/lib/sw/engine";
 import { TABS } from "@/components/sw/AppShell";
 import { effectiveMicrophonePreference } from "@/lib/sw/native-sensors";
 
@@ -86,6 +86,12 @@ describe("engine contracts", () => {
     const r = await unavailableAdapters.engine.startLiveSession(DEFAULT_SETTINGS);
     expect(r.ok).toBe(false);
     expect((await unavailableAdapters.library.exportRealAudio("x")).ok).toBe(false);
+  });
+  it("rejecting native callbacks return an error rather than crash the UI", async () => {
+    const failed = await withTimeout(Promise.reject(new Error("Bridge disconnected")), 100);
+    expect(failed).toEqual({ok:false,code:"ERROR",message:"Bridge disconnected"});
+    const nonError = await withTimeout(Promise.reject("bad"), 100);
+    expect(nonError).toMatchObject({ok:false,code:"ERROR"});
   });
   it("4th clip evicts oldest temp, keeps favorites", () => {
     const c = (id: string, t: number, favorite = false): ClipMeta => ({ id, createdAt: t, durationSec: 120, genreIds: [], mood: 0, speed: 0, favorite });
