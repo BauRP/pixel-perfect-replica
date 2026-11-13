@@ -5,7 +5,7 @@ import {buildMusicRequest} from "../lib/sw/music-preferences";
 import type {ClipMeta} from "../lib/sw/engine";
 const plan=new MusicControlPlanner().plan(DEFAULT_SETTINGS,1000);
 const clip=(fav:boolean):ClipMeta=>({id:"a",createdAt:1,durationSec:120,genreIds:["g01-s01"],mood:0,speed:0,favorite:fav});
-describe("future Magenta request must reflect actual user preferences",()=>{
+describe("future local Fermata request must reflect actual user preferences",()=>{
   it("skip grants all 150 until user excludes a genre",()=>{
     const a=applySkipAllGenres(DEFAULT_SETTINGS);
     expect(buildMusicRequest(a,plan,[]).genreCandidates).toHaveLength(150);
@@ -33,6 +33,16 @@ describe("future Magenta request must reflect actual user preferences",()=>{
     expect(r.preferredInstruments).toEqual([]);
     expect(r.emphasizedGenres).toEqual([]);
     expect(r.genreCandidates).toContain("g01-s01");
+  });
+  it("never boosts a hearted subgenre under a disliked parent",()=>{
+    const s={...DEFAULT_SETTINGS,chosenGenreIds:["g01-s01","g02-s01"],
+      dislikes:{"g01":"notPreferred" as const}};
+    const liked:ClipMeta={...clip(true),genreIds:["g01-s01","g02-s01"]};
+    const r=buildMusicRequest(s,plan,[liked]);
+    expect(r.deemphasizedGenres).toContain("g01-s01");
+    expect(r.emphasizedGenres).not.toContain("g01-s01");
+    expect(r.emphasizedGenres).toContain("g02-s01");
+    expect(r.genreCandidates).toContain("g01-s01"); // soft dislike is not a ban
   });
   it("passes weak dislikes without falsely excluding them",()=>{
     const s={...DEFAULT_SETTINGS,chosenGenreIds:["g01-s01","g01-s02","g02-s01"],

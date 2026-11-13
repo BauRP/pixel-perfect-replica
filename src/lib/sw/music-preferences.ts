@@ -1,6 +1,6 @@
 /**
  * Builds a truthful request for a future LOCAL music model.
- * Preference guidance is not a promise that MRT2 supports every instrument.
+ * Preference guidance is not proof that Fermata supports every instrument.
  * No audio generation or fake playback happens here.
  */
 import { effectiveDirections, type Settings } from "./settings";
@@ -44,6 +44,7 @@ export function buildMusicRequest(settings:Settings, plan:ControlPlan, favorites
     .filter(([,level])=>level==="notPreferred").map(([id])=>id));
   const deemphasizedGenres=allowedGenres.filter(id => notPreferred.has(id) ||
     (id.includes("-") && notPreferred.has(id.split("-")[0]!)));
+  const mutedGenres = new Set(deemphasizedGenres);
   const deemphasizedInstruments=Object.keys(settings.dislikes).filter(id=>
     settings.dislikes[id]==="notPreferred" && instrumentNameById[id]!==undefined);
   // A heart is positive guidance only. No heart is NOT negative feedback.
@@ -51,7 +52,8 @@ export function buildMusicRequest(settings:Settings, plan:ControlPlan, favorites
   for(const clip of favorites) {
     if(!clip.favorite)continue;
     for(const genre of clip.genreIds) {
-      if(allowedGenres.includes(genre) && settings.dislikes[genre]!=="notPreferred")
+      // A parent genre's "not preferred" must outrank old favorites.
+      if(allowedGenres.includes(genre) && !mutedGenres.has(genre))
         score.set(genre,(score.get(genre)??0)+1);
     }
   }
