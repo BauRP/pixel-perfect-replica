@@ -90,6 +90,7 @@ export class GeneratedPcmSession {
       // recording created too late instead of leaving an orphan WAV behind.
       void opening.then((late) => {
         if (late.ok) return this.bestEffortCleanup(() => this.store.abort(late.value));
+        return undefined;
       }, () => undefined);
       return started;
     }
