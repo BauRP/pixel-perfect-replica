@@ -60,16 +60,16 @@ export function installNativeMusicLibraryAdapter():void {
     listFavorites:async()=>{try {const x=await native.list({filter:"favorites"});return {ok:true,value:x.items};}catch(e){return error(e);}},
     listExports:async()=>{try {const x=await native.list({filter:"exports"});return {ok:true,value:x.items};}catch(e){return error(e);}},
     listJourney:async()=>{try {const x=await native.list({filter:"journey"});return {ok:true,value:x.items};}catch(e){return error(e);}},
-    markFavorite:async(id,value)=>{try {await native.favorite({id,value});return {ok:true,value:undefined};}catch(e){return error(e);}},
-    exportRealAudio:async(id)=>{try {const x=await native.export({id});return {ok:true,value:{uri:x.uri}};}catch(e){return error(e);}},
-    deleteTemporary:async(id)=>{try {await native.deleteTemporary({id});return {ok:true,value:undefined};}catch(e){return error(e);}},
+    markFavorite:async(id,value)=>{try {const x=await native.favorite({id,value});return x.updated===true?{ok:true,value:undefined}:unavailable("Android не подтвердил избранное");}catch(e){return error(e);}},
+    exportRealAudio:async(id)=>{try {const x=await native.export({id});return typeof x.uri==="string"&&x.uri.length>0?{ok:true,value:{uri:x.uri}}:unavailable("Android не подтвердил экспорт");}catch(e){return error(e);}},
+    deleteTemporary:async(id)=>{try {const x=await native.deleteTemporary({id});return x.deleted===true?{ok:true,value:undefined}:unavailable("Android не подтвердил удаление временной записи");}catch(e){return error(e);}},
     recoverLocalMetadata:async()=>{try {await native.recover();return {ok:true,value:undefined};}catch(e){return error(e);}},
-    playStoredClip:async(id)=>{try {await native.playClip({id,resumeAfterCall:getSettingsSnapshot().afterCallAutoResume});return {ok:true,value:undefined};}catch(e){return error(e);}},
+    playStoredClip:async(id)=>{try {const x=await native.playClip({id,resumeAfterCall:getSettingsSnapshot().afterCallAutoResume});return x.requested===true&&x.id===id?{ok:true,value:undefined}:unavailable("Android не подтвердил запуск WAV");}catch(e){return error(e);}},
     pauseStoredClip:async()=>{try {await native.pauseClip();return {ok:true,value:undefined};}catch(e){return error(e);}},
     seekStoredClip:async(id,positionMs)=>{
       if(!Number.isFinite(positionMs) || positionMs<0 || positionMs>120500)
         return {ok:false,code:"ERROR",message:"Недопустимая позиция WAV"};
-      try {await native.seekClip({id,positionMs:Math.round(positionMs)});return {ok:true,value:undefined};}
+      try {const x=await native.seekClip({id,positionMs:Math.round(positionMs)});return x.requested===true?{ok:true,value:undefined}:unavailable("Android не подтвердил перемотку WAV");}
       catch(e){return error(e);}
     },
     stopStoredClip:async()=>{try {await native.stopClip();return {ok:true,value:undefined};}catch(e){return error(e);}},
