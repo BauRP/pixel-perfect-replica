@@ -6,6 +6,7 @@
  */
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import type { Result } from "./engine";
+import { pcmToBase64 } from "./pcm-base64";
 
 interface PCMPlugin {
   start(): Promise<{preparing:boolean}>;
@@ -60,10 +61,8 @@ export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
   if(Capacitor.getPlatform()!=="android") return unavailable("Аудиовывод Android недоступен");
   if(!validatePcmChunk(pcm))return {ok:false,code:"ERROR",message:"Неверный размер или формат PCM"};
   // Chunk <=1s prevents large JS -> native bridge payloads.
-  let binary="";
-  for(let i=0;i<pcm.length;i++)binary+=String.fromCharCode(pcm[i]!);
   try {
-    const acknowledgment = await native.appendPcm({base64:btoa(binary)});
+    const acknowledgment = await native.appendPcm({base64:pcmToBase64(pcm)});
     // A resolved bridge call is not proof that Android accepted this packet.
     // Only an explicit native queue acknowledgment may advance WAV storage.
     if (!positivePcmAcknowledgment(acknowledgment))
