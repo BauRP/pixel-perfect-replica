@@ -6,6 +6,7 @@ import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor
 import { registerAdapters, type Adapters, type ClipMeta, type Result } from "./engine";
 import { getSettingsSnapshot, type Settings } from "./settings";
 import { pcmToBase64 } from "./pcm-base64";
+import { confirmedFinishedClip } from "./clip-verification";
 interface LibraryPlugin {
   beginClip(args:{genreIdsJson:string;instrumentIdsJson:string;mood:number;speed:number}):Promise<{id:string}>;
   appendPcm(args:{id:string;base64:string}):Promise<{bytesWritten:number}>;
@@ -46,7 +47,7 @@ export async function appendGenuineClipPcm(id:string,pcm:Uint8Array):Promise<Res
 }
 export async function finishGenuineClip(id:string):Promise<Result<ClipMeta>> {
   if(!nativeMusicLibraryAvailable())return unavailable("Только Android");
-  try {const r=await native.finishClip({id});return {ok:true,value:r.clip};}
+  try {const r=await native.finishClip({id});return confirmedFinishedClip(r.clip,id)?{ok:true,value:r.clip}:{ok:false,code:"ERROR",message:"Android вернул неверные данные завершённого WAV"};}
   catch(e){return error(e);}
 }
 export async function abortGenuineClip(id:string):Promise<void> {
