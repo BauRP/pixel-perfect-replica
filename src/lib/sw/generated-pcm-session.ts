@@ -83,8 +83,16 @@ export class GeneratedPcmSession {
 
   private async openIfNeeded(): Promise<Result<void>> {
     if (this.id !== null) return {ok:true,value:undefined};
-    const started = await this.bounded(this.store.begin(this.settings, this.genres));
-    if (!started.ok) return started;
+    const opening = this.store.begin(this.settings, this.genres);
+    const started = await this.bounded(opening);
+    if (!started.ok) {
+      // An Android begin callback can arrive after its deadline. Abort any
+      // recording created too late instead of leaving an orphan WAV behind.
+      void opening.then((late) => {
+        if (late.ok) return this.bestEffortCleanup(() => this.store.abort(late.value));
+      }, () => undefined);
+      return started;
+    }
     this.id = started.value;
     this.bytes = 0;
     this.state = "streaming";
