@@ -41,6 +41,14 @@ describe("real-world signals to future music directives", () => {
     expect(p.plan(DEFAULT_SETTINGS,8000).stepPulseBpm).toBeNull();
     expect(p.plan(DEFAULT_SETTINGS,8000).activity).toBe("unknown");
   });
+  it("does not blend fresh steps with an obsolete pace after a long pause", () => {
+    const p = new MusicControlPlanner();
+    expect(p.observePace({bpm:80,confidence:.9,timestamp:1000})).toBe(true);
+    expect(p.observePace({bpm:175,confidence:.9,timestamp:12000})).toBe(true);
+    expect(p.plan(DEFAULT_SETTINGS,12000).stepPulseBpm).toBe(175);
+    expect(p.observePace({bpm:95,confidence:.9,timestamp:11000})).toBe(false);
+    expect(p.plan(DEFAULT_SETTINGS,12000).stepPulseBpm).toBe(175);
+  });
   it("locks atmosphere while allowing step percussion instructions", () => {
     const p=new MusicControlPlanner();
     p.setAtmosphereLock(true);
