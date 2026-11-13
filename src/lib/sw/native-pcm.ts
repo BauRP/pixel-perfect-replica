@@ -49,6 +49,10 @@ export async function requestNativeAudioSink():Promise<Result<"preparing">> {
     return {ok:false,code:"ERROR",message:String(e)};
   }
 }
+/** Never count a bridge resolution without affirmative Android queue receipt. */
+export function positivePcmAcknowledgment(result:{queued?:boolean}|null|undefined):boolean {
+  return result?.queued === true;
+}
 export function validatePcmChunk(pcm:Uint8Array):boolean {
   return pcm.length>0 && pcm.length<=192000 && pcm.length%4===0;
 }
@@ -62,7 +66,7 @@ export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
     const acknowledgment = await native.appendPcm({base64:btoa(binary)});
     // A resolved bridge call is not proof that Android accepted this packet.
     // Only an explicit native queue acknowledgment may advance WAV storage.
-    if (acknowledgment.queued !== true)
+    if (!positivePcmAcknowledgment(acknowledgment))
       return {ok:false,code:"ERROR",message:"Android не подтвердил приём PCM"};
     return {ok:true,value:"queued"};
   }catch(e){return {ok:false,code:"ERROR",message:String(e)};}
