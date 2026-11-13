@@ -367,12 +367,22 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         captureThread.start();
         JSObject r = new JSObject(); r.put("started", true); call.resolve(r);
       } catch (Exception ex) {
+        // A failed capture start must release EVERY resource opened so far,
+        // including both policy and inference workers, and never leave a
+        // running AudioRecord holding the phone microphone.
         capturing.set(false);
-        if (rec != null) { try { rec.release(); } catch (Exception ignored) {} }
+        ExecutorService failedInference = inferenceWorker; inferenceWorker = null;
+        if (failedInference != null) failedInference.shutdownNow();
+        if (rec != null) {
+          try {
+            if (rec.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) rec.stop();
+          } catch (Exception ignored) {}
+          try { rec.release(); } catch (Exception ignored) {}
+        }
         if (preparedClassifier != null) try { preparedClassifier.close(); } catch (Exception ignored) {}
         if (powerWorker != null) powerWorker.shutdownNow();
         powerWorker = null;
-        recorder = null; analyzer = null; inferenceWorker = null; analysisActive = false;
+        recorder = null; analyzer = null; analysisActive = false;
         activeCaptureEpoch = -1;
         actualInput = ""; actualKind = ""; captureRateHz = 0;
         call.reject("Не удалось открыть микрофон: " + ex.getMessage());
