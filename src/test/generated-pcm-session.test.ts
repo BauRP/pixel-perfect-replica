@@ -159,6 +159,46 @@ describe("real PCM stream without fabricated audio",()=>{
       expect(stops).toBe(1);
     }finally{vi.useRealTimers();}
   });
+  it("removes a WAV whose native commit succeeded only after its deadline",async()=>{
+    vi.useFakeTimers();
+    try{
+      const r=rig(),pcm=new Uint8Array(PCM_TRANSFER_BYTES*16);
+      let finish!: (value:Result<ClipMeta>)=>void;
+      const late=new Promise<Result<ClipMeta>>(resolve=>{finish=resolve;});
+      const deleted:string[]=[];
+      let stops=0;
+      const store={...r.store,
+        finish:(_id:string)=>late,
+        discardFinished:async(id:string)=>{deleted.push(id);},
+      };
+      const s=new GeneratedPcmSession({...r.sink,stop:async()=>{stops++;}},store,DEFAULT_SETTINGS,[]);
+      for(let i=0;i<PCM_MINIMUM_SAVE_BYTES/pcm.length;i++)
+        expect((await s.submit(pcm)).ok).toBe(true);
+      const stopping=s.stop();
+      await vi.advanceTimersByTimeAsync(12001);
+      expect((await stopping).ok).toBe(false);
+      expect(s.status.completedClips).toBe(0);
+      finish({ok:true,value:{id:"1"} as ClipMeta});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(deleted).toEqual(["1"]);
+      expect(stops).toBe(1);
+    }finally{vi.useRealTimers();}
+  });
+  it("cleans up a rejected native WAV finish instead of throwing from stop",async()=>{
+    const r=rig(),pcm=new Uint8Array(PCM_TRANSFER_BYTES*16);
+    let stops=0;
+    const store={...r.store,finish:async(_id:string):Promise<{ok:true;value:ClipMeta}>=>{
+      throw new Error("Android disk failed");
+    }};
+    const s=new GeneratedPcmSession({...r.sink,stop:async()=>{stops++;}},store,DEFAULT_SETTINGS,[]);
+    for(let i=0;i<PCM_MINIMUM_SAVE_BYTES/pcm.length;i++)
+      expect((await s.submit(pcm)).ok).toBe(true);
+    const result=await s.stop();
+    expect(result.ok).toBe(false);
+    expect(s.status.state).toBe("error");
+    expect(r.recorded[0]?.aborted).toBe(true);
+    expect(stops).toBe(1);
+  });
   it("60 seconds saves a real WAV, a shorter incomplete segment never does",async()=>{
     const chunk=new Uint8Array(PCM_TRANSFER_BYTES*16);
     const justUnder=rig(),short=new GeneratedPcmSession(justUnder.sink,justUnder.store,DEFAULT_SETTINGS,[]);

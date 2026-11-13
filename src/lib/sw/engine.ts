@@ -184,9 +184,13 @@ export const getAdapters = () => adapters;
 
 /** Rolling "last 3" rule: evict oldest temp clip that is neither favorite nor exported. */
 export function addCompletedClip(list: ClipMeta[], clip: ClipMeta, max = 3): { kept: ClipMeta[]; evicted: ClipMeta[] } {
-  const all = [...list, clip];
+  // Retried completion must not create duplicate history IDs. Never evict
+  // recovered recordings that native recovery explicitly marked protected.
+  const byId = new Map<string, ClipMeta>();
+  for (const item of [...list, clip]) byId.set(item.id, item);
+  const all = [...byId.values()];
   const evicted: ClipMeta[] = [];
-  const temps = () => all.filter((c) => !c.favorite && !c.exportedUri);
+  const temps = () => all.filter((c) => !c.favorite && !c.exportedUri && !c.recoveredProtected);
   while (temps().length > max) {
     const oldest = temps().sort((a, b) => a.createdAt - b.createdAt)[0]!;
     all.splice(all.indexOf(oldest), 1);

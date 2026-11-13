@@ -7,10 +7,12 @@ export interface AmbientPrediction { label: string; confidence: number; timestam
 export interface StableAmbientEvent { atmosphere: Atmosphere; confidence: number; timestamp: number }
 
 export function classifyAtmosphere(label: string): Atmosphere {
-  const name = label.toLowerCase();
-  if (/rain|raindrop|thunder|drizzle/.test(name)) return "rain";
-  if (/car|vehicle|bus|truck|motorcycle|traffic|engine|roadway/.test(name)) return "traffic";
-  if (/bird|wind|insect|forest|animal/.test(name)) return "nature";
+  // Match whole sound-class words, never substrings: AudioSet "Train"
+  // contains "rain", and "Window" contains "wind".
+  const name = typeof label === "string" ? label.toLowerCase() : "";
+  if (/\b(?:rain|raining|rainfall|raindrops?|thunder|thunderstorm|drizzle)\b/.test(name)) return "rain";
+  if (/\b(?:car|cars|vehicle|vehicles|bus|buses|truck|trucks|motorcycle|motorcycles|traffic|engine|roadway|train|trains|railroad|railway|subway|tram)\b/.test(name)) return "traffic";
+  if (/\b(?:bird|birds|birdsong|wind|windy|insect|insects|forest|animal|animals)\b/.test(name)) return "nature";
   if (/ventilation|air conditioning|inside, small room/.test(name)) return "indoor";
   // "Silence" is a real AudioSet/YAMNet output class, not a guessed lack of activity.
   if (name.trim() === "silence") return "quiet";
@@ -27,7 +29,7 @@ export class AmbientStabilizer {
   constructor(private readonly minConfidence = 0.53, private readonly requiredHits = 2, private readonly minTransitionMs = 1500) {}
   update(p: AmbientPrediction): StableAmbientEvent | null {
     if (!Number.isFinite(p.confidence) || !Number.isFinite(p.timestamp) ||
-        p.timestamp <= 0 || p.confidence < this.minConfidence) {
+        p.timestamp <= 0 || p.confidence > 1 || p.confidence < this.minConfidence) {
       // Secondary low-confidence labels are common within one YAMNet window.
       // Ignore them instead of erasing a previously confirmed candidate.
       return null;

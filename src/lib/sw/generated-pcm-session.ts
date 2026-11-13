@@ -22,6 +22,8 @@ export type ClipStore = {
   append(id: string, chunk: Uint8Array): Promise<Result<number>>;
   finish(id: string): Promise<Result<ClipMeta>>;
   abort(id: string): Promise<void>;
+  /** If finish succeeds only AFTER a timeout, remove its unintended WAV. */
+  discardFinished?(id: string): Promise<void>;
 };
 type DispatchStatus = "idle" | "streaming" | "error" | "stopped";
 
@@ -78,6 +80,8 @@ export class GeneratedPcmSession {
       timer=setTimeout(()=>resolve({ok:false,code:"TIMEOUT",message:"Аудиомодуль не ответил вовремя"}),this.operationTimeoutMs);
     });
     try{return await Promise.race([operation,deadline]);}
+    catch(e){return {ok:false,code:"ERROR",
+      message:e instanceof Error?e.message:"Ошибка нативного аудиомодуля"};}
     finally{if(timer!==undefined)clearTimeout(timer);}
   }
 
@@ -118,8 +122,20 @@ export class GeneratedPcmSession {
       this.bytes = 0;
       return {ok:true,value:undefined};
     }
-    const finished = await this.bounded(this.store.finish(id));
-    if (!finished.ok) return finished;
+    // The native disk writer is serial, but a commit can complete after our
+    // timeout. Abort handles only an OPEN recording, not an already committed
+    // WAV, so register a separate cleanup for a late successful finish.
+    const finishing = Promise.resolve().then(() => this.store.finish(id));
+    const finished = await this.bounded(finishing);
+    if (!finished.ok) {
+      if (this.store.discardFinished) {
+        void finishing.then((late) => {
+          if (late.ok) return this.bestEffortCleanup(() => this.store.discardFinished!(id));
+          return undefined;
+        }, () => undefined);
+      }
+      return finished;
+    }
     this.completed++;
     this.id = null;
     this.bytes = 0;
@@ -241,6 +257,7 @@ export function createNativeGeneratedPcmSession(settings:Settings,genres:string[
     append:async(id,bytes)=> (await libraryPromise).appendGenuineClipPcm(id,bytes),
     finish:async(id)=> (await libraryPromise).finishGenuineClip(id),
     abort:async(id)=> (await libraryPromise).abortGenuineClip(id),
+    discardFinished:async(id)=> (await libraryPromise).discardGenuineFinishedClip(id),
   };
   return new GeneratedPcmSession(sink,store,settings,genres);
 }

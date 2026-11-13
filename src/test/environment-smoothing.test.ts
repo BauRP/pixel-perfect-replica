@@ -7,6 +7,16 @@ describe("real event filtering (no simulated detections)",()=>{
     expect(classifyAtmosphere("Speech")).toBe("unknown");
     expect(classifyAtmosphere("Silence")).toBe("quiet");
     expect(classifyAtmosphere("Silence and conversation")).toBe("unknown");
+    // These were real false matches caused by substring-based classification.
+    expect(classifyAtmosphere("Train")).toBe("traffic");
+    expect(classifyAtmosphere("Railroad")).toBe("traffic");
+    expect(classifyAtmosphere("Train horn")).toBe("traffic");
+    expect(classifyAtmosphere("Brain")).toBe("unknown");
+    expect(classifyAtmosphere("Window")).toBe("unknown");
+    expect(classifyAtmosphere("Carpenter")).toBe("unknown");
+    expect(classifyAtmosphere("Rain on surface")).toBe("rain");
+    expect(classifyAtmosphere("Bird vocalization, bird call, bird song")).toBe("nature");
+    expect(classifyAtmosphere(undefined as unknown as string)).toBe("unknown");
   });
   it("quiet needs two independent real YAMNet Silence predictions",()=>{
     const s=new AmbientStabilizer();
@@ -18,6 +28,8 @@ describe("real event filtering (no simulated detections)",()=>{
     const s=new AmbientStabilizer();
     expect(s.update({label:"Rain",confidence:.7,timestamp:1000})).toBeNull();
     expect(s.update({label:"Car horn",confidence:.15,timestamp:1200})).toBeNull();
+    expect(s.stable).toBe("unknown");
+    expect(s.update({label:"Rain",confidence:5,timestamp:1500})).toBeNull();
     expect(s.stable).toBe("unknown");
   });
   it("ignores secondary speech/low score without resetting real rain evidence",()=>{

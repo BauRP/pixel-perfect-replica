@@ -93,6 +93,18 @@ describe("engine contracts", () => {
     const nonError = await withTimeout(Promise.reject("bad"), 100);
     expect(nonError).toMatchObject({ok:false,code:"ERROR"});
   });
+  it("protects recovered WAV recordings and deduplicates a retried clip ID", () => {
+    const mk=(id:string,t:number,recoveredProtected=false):ClipMeta=>({
+      id,createdAt:t,durationSec:120,genreIds:[],mood:0,speed:0,favorite:false,recoveredProtected,
+    });
+    const recovered=mk("restored",1,true);
+    const {kept,evicted}=addCompletedClip([
+      recovered,mk("old",2),mk("middle",3),mk("newer",4),mk("middle",3),
+    ],mk("latest",5));
+    expect(kept.map(c=>c.id)).toEqual(["restored","middle","newer","latest"]);
+    expect(evicted.map(c=>c.id)).toEqual(["old"]);
+    expect(kept.filter(c=>c.id==="middle")).toHaveLength(1);
+  });
   it("4th clip evicts oldest temp, keeps favorites", () => {
     const c = (id: string, t: number, favorite = false): ClipMeta => ({ id, createdAt: t, durationSec: 120, genreIds: [], mood: 0, speed: 0, favorite });
     const { kept, evicted } = addCompletedClip([c("a", 1, true), c("b", 2), c("c", 3), c("d", 4)], c("e", 5));

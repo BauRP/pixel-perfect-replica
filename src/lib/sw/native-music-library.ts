@@ -53,6 +53,13 @@ export async function abortGenuineClip(id:string):Promise<void> {
   if(!nativeMusicLibraryAvailable())return;
   try {await native.abortClip({id});} catch { /* already finished / unavailable */ }
 }
+/** Remove a completed WAV if Android confirms its finish too late.
+ * A partial-file abort cannot remove an already committed WAV index entry. */
+export async function discardGenuineFinishedClip(id:string):Promise<void> {
+  if(!nativeMusicLibraryAvailable())throw new Error("Нативное хранилище недоступно");
+  const result=await native.deleteTemporary({id});
+  if(result.deleted!==true)throw new Error("Android не подтвердил очистку поздней WAV");
+}
 export function installNativeMusicLibraryAdapter():void {
   if(!nativeMusicLibraryAvailable())return;
   const library:Adapters["library"]={
