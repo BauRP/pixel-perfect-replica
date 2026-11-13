@@ -275,7 +275,7 @@ tap_ui_text() {
         sleep 2
         continue
       fi
-      printf '<hierarchy/>\\n' > /tmp/soundworld-native-only.xml
+      printf '%s\n' '<hierarchy/>' > /tmp/soundworld-native-only.xml
       pos="$(adb logcat -d -v brief | python3 scripts/ui_measured_onboarding.py /tmp/soundworld-native-only.xml 2>/dev/null || true)"
       if [[ -z "$pos" ]]; then
         capture_ui || true
