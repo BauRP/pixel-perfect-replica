@@ -179,10 +179,22 @@ for line in sys.stdin:
 sys.exit(1)
 ' "$route" "$heading"
 }
+# Validate the currently visible Activity before trusting WebView log markers.
+# An Android System UI ANR may put the launcher in front of a living process.
+app_in_foreground() {
+  local active
+  active="$(adb shell dumpsys activity activities 2>/dev/null | grep -E 'topResumedActivity|mResumedActivity|ResumedActivity' | tail -n 1 || true)"
+  [[ "$active" == *"$package/"* ]]
+}
+
 # Tap an Android tab by its actual measured nav bounding box, not fixed pixels.
 # Used only if accessibility omits WebView virtual links on an old WebView.
 tap_measured_tab() {
   local label="$1"
+  if ! app_in_foreground; then
+    echo "::error::SoundWorld is not the resumed Activity; cannot tap tabs"
+    return 1
+  fi
   adb logcat -d -v brief | python3 -c '
 import sys,json,xml.etree.ElementTree as ET,re,subprocess
 label=sys.argv[1]
@@ -227,16 +239,24 @@ subprocess.run(["adb","shell","input","tap",str(x),str(y)],check=True)
 wait_for_ui() {
   local text="$1"
   for _ in 1 2 3 4 5 6 7 8; do
+    # A real mounted React heading is cheaper to inspect than UIAutomator,
+    # but only while the actual SoundWorld Activity is visible.
+    if app_in_foreground; then
+      case "$text" in
+        "Музыкальные вкусы") visible_dom_route "/onboarding" "$text" && return 0 ;;
+        "Живая музыка") visible_dom_route "/" "$text" && return 0 ;;
+        "Настроение") visible_dom_route "/studio" "Студия" && return 0 ;;
+        "Звук и микрофон") visible_dom_route "/settings" "Настройки" && return 0 ;;
+      esac
+    fi
     capture_ui || true
-    if find_ui_text "$text" 2>/dev/null; then return 0; fi
-    case "$text" in
-      "Живая музыка") visible_dom_route "/" "$text" && return 0 ;;
-      "Настроение") visible_dom_route "/studio" "Студия" && return 0 ;;
-      "Звук и микрофон") visible_dom_route "/settings" "Настройки" && return 0 ;;
-    esac
+    if app_in_foreground && find_ui_text "$text" 2>/dev/null; then return 0; fi
     sleep 2
   done
   echo "::error::WebView failed to expose expected screen: $text"
+  echo "Android resumed Activity:"
+  adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity|ResumedActivity' | tail -n 5 || true
+  echo "SoundWorld PID: $(adb shell pidof "$package" || true)"
   head -c 6000 /tmp/soundworld-window.xml || true
   adb logcat -d -v time | grep -E 'chromium|WebView|AndroidRuntime|Capacitor' | tail -n 150 || true
   return 1
@@ -250,8 +270,17 @@ tap_ui_text() {
   # measured button's bounding box from the mounted React DOM instead.
   if [[ "$text" == "Пропустить" ]]; then
     for _ in 1 2 3 4 5 6; do
-      capture_ui || true
-      pos="$(adb logcat -d -v brief | python3 scripts/ui_measured_onboarding.py /tmp/soundworld-window.xml 2>/dev/null || true)"
+      if ! app_in_foreground; then
+        capture_ui || true
+        sleep 2
+        continue
+      fi
+      printf '<hierarchy/>\\n' > /tmp/soundworld-native-only.xml
+      pos="$(adb logcat -d -v brief | python3 scripts/ui_measured_onboarding.py /tmp/soundworld-native-only.xml 2>/dev/null || true)"
+      if [[ -z "$pos" ]]; then
+        capture_ui || true
+        pos="$(adb logcat -d -v brief | python3 scripts/ui_measured_onboarding.py /tmp/soundworld-window.xml 2>/dev/null || true)"
+      fi
       if [[ -n "$pos" ]]; then
         echo "Tap real onboarding button at measured screen coordinates: $pos"
         adb shell input tap $pos
