@@ -87,9 +87,12 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private volatile int batteryThrottledWindows = 0;
   private AudioManager routingManager;
   private AudioDeviceCallback audioDeviceObserver;
+  // Battery/thermal/LMK binder queries must never block AudioRecord.read().
+  // Power policy is always enabled; it only runs on its own bounded worker.
+  private volatile ExecutorService powerWorker;
+  private volatile AtomicBoolean powerRefreshBusy = new AtomicBoolean(false);
 
-  // Capture worker only: never query Android power services from the UI thread.
-  private void refreshAnalysisStride() {
+  private int calculateAnalysisStride() {
     PowerManager power = (PowerManager)getContext().getSystemService(Context.POWER_SERVICE);
     BatteryManager battery = (BatteryManager)getContext().getSystemService(Context.BATTERY_SERVICE);
     ActivityManager memory = (ActivityManager)getContext().getSystemService(Context.ACTIVITY_SERVICE);
@@ -102,8 +105,29 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       memory.getMemoryInfo(info);
       lowRam = info.lowMemory;
     }
-    analysisStride = SoundWorldPowerPolicy.analysisStride(
+    return SoundWorldPowerPolicy.analysisStride(
       batteryMode, thermal, batteryPercent, lowRam);
+  }
+
+  private void schedulePowerRefresh(long epoch) {
+    ExecutorService worker = powerWorker;
+    AtomicBoolean busy = powerRefreshBusy;
+    if (worker == null || !busy.compareAndSet(false,true)) return;
+    try {
+      worker.execute(() -> {
+        try {
+          int next = calculateAnalysisStride();
+          if (SoundWorldPowerEpochGuard.mayApply(
+              epoch, activeCaptureEpoch, capturing.get()))
+            analysisStride = next;
+        } catch (RuntimeException ex) {
+          // Keep previous safe policy until the next refresh; do not block
+          // microphone capture or disable thermal/battery protections.
+        } finally { busy.set(false); }
+      });
+    } catch (java.util.concurrent.RejectedExecutionException ex) {
+      busy.set(false);
+    }
   }
 
   @PluginMethod
@@ -287,10 +311,17 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         inferenceBusy = new AtomicBoolean(false);
         scheduledWindows = 0;
         batteryThrottledWindows = 0;
-        refreshAnalysisStride();
+        analysisStride = 1;
         if (epoch != captureEpoch.get()) throw new IllegalStateException("Запуск отменён");
         activeCaptureEpoch = epoch;
         capturing.set(true);
+        powerRefreshBusy = new AtomicBoolean(false);
+        powerWorker = Executors.newSingleThreadExecutor(r -> {
+          Thread t = new Thread(r,"SoundWorld-Power-Policy");
+          t.setDaemon(true);
+          return t;
+        });
+        schedulePowerRefresh(epoch);
         final AudioRecord active = rec;
         final AtomicBoolean sessionBusy = inferenceBusy;
         final AtomicBoolean sessionHealthy = inferenceHealthy;
@@ -302,6 +333,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         capturing.set(false);
         if (rec != null) { try { rec.release(); } catch (Exception ignored) {} }
         if (preparedClassifier != null) try { preparedClassifier.close(); } catch (Exception ignored) {}
+        if (powerWorker != null) powerWorker.shutdownNow();
+        powerWorker = null;
         recorder = null; analyzer = null; inferenceWorker = null; analysisActive = false;
         activeCaptureEpoch = -1;
         actualInput = ""; actualKind = "";
@@ -338,7 +371,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
               soundFilled = 0;
               // Refresh thermal/battery conditions roughly every six windows.
               int windowNumber = ++scheduledWindows;
-              if (windowNumber % 6 == 0) refreshAnalysisStride();
+              if (windowNumber % 6 == 0) schedulePowerRefresh(epoch);
               // Real capture continues; only duplicate heavy inference is
               // throttled. Even under severe heat process every third window.
               if (windowNumber % analysisStride != 0) {
@@ -438,6 +471,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       AudioClassifier cls = analyzer; analyzer = null;
       analysisActive = false;
       ExecutorService worker = inferenceWorker; inferenceWorker = null;
+      ExecutorService policy = powerWorker; powerWorker = null;
+      if (policy != null) policy.shutdownNow();
       if (worker != null) worker.shutdownNow();
       if (rec != null) {
         try { if (rec.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) rec.stop(); } catch (Exception ignored) {}
