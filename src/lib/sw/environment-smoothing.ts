@@ -62,9 +62,12 @@ export class StepPaceEstimator {
     const prev = this.times.at(-1);
     // Hardware callbacks may arrive out of order after an Android pause.
     // Ignore delayed steps rather than replacing the valid cadence history.
-    if (prev != null && timestamp <= prev) return this.estimate();
+    // Invalid/duplicated timestamps must not re-emit an OLD walking status:
+    // the UI timestamps any non-unknown callback as "now".
+    const ignored = {activity:"unknown" as const,bpm:0,confidence:0};
+    if (prev != null && timestamp <= prev) return ignored;
     if (prev != null && timestamp - prev > 8000) this.times = [];
-    else if (prev != null && timestamp - prev < 260) return this.estimate();
+    else if (prev != null && timestamp - prev < 260) return ignored;
     this.times.push(timestamp);
     this.times = this.times.slice(-8);
     return this.estimate();
