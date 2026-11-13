@@ -203,6 +203,11 @@ export async function withTimeout<T>(p: Promise<Result<T>>, ms = 5000): Promise<
   });
   try {
     return await Promise.race([p, timeout]);
+  } catch (e) {
+    // A rejected native promise is a failure Result, not a thrown exception
+    // capable of tearing down a React click handler or a diagnostic screen.
+    return { ok: false, code: "ERROR",
+      message: e instanceof Error ? e.message : "Ошибка модуля Android" };
   } finally {
     clearTimeout(t);
   }
