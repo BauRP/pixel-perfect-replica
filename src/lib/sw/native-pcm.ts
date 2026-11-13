@@ -59,7 +59,11 @@ export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
   let binary="";
   for(let i=0;i<pcm.length;i++)binary+=String.fromCharCode(pcm[i]!);
   try {
-    await native.appendPcm({base64:btoa(binary)});
+    const acknowledgment = await native.appendPcm({base64:btoa(binary)});
+    // A resolved bridge call is not proof that Android accepted this packet.
+    // Only an explicit native queue acknowledgment may advance WAV storage.
+    if (acknowledgment.queued !== true)
+      return {ok:false,code:"ERROR",message:"Android не подтвердил приём PCM"};
     return {ok:true,value:"queued"};
   }catch(e){return {ok:false,code:"ERROR",message:String(e)};}
 }
