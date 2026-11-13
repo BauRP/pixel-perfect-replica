@@ -139,6 +139,26 @@ describe("real PCM stream without fabricated audio",()=>{
       expect(r.recorded[0]?.aborted).toBe(true);
     }finally{vi.useRealTimers();}
   });
+  it("aborts a native WAV created after the begin timeout",async()=>{
+    vi.useFakeTimers();
+    try {
+      let complete!: (result: Result<string>) => void;
+      const delayed = new Promise<Result<string>>(resolve => {complete=resolve;});
+      const aborted:string[]=[];
+      const r=rig();
+      let stops=0;
+      const store={...r.store,begin:()=>delayed,abort:async(id:string)=>{aborted.push(id);}};
+      const p=new GeneratedPcmSession({...r.sink,stop:async()=>{stops++;}},store,DEFAULT_SETTINGS,[]);
+      const result=p.submit(new Uint8Array(4));
+      await vi.advanceTimersByTimeAsync(12001);
+      expect((await result).ok).toBe(false);
+      expect(p.status.state).toBe("error");
+      complete({ok:true,value:"late-wav"});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(aborted).toEqual(["late-wav"]);
+      expect(stops).toBe(1);
+    }finally{vi.useRealTimers();}
+  });
   it("60 seconds saves a real WAV, a shorter incomplete segment never does",async()=>{
     const chunk=new Uint8Array(PCM_TRANSFER_BYTES*16);
     const justUnder=rig(),short=new GeneratedPcmSession(justUnder.sink,justUnder.store,DEFAULT_SETTINGS,[]);
