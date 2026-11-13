@@ -27,13 +27,15 @@ export class AmbientStabilizer {
   constructor(private readonly minConfidence = 0.53, private readonly requiredHits = 2, private readonly minTransitionMs = 1500) {}
   update(p: AmbientPrediction): StableAmbientEvent | null {
     if (!Number.isFinite(p.confidence) || !Number.isFinite(p.timestamp) ||
-        p.confidence < this.minConfidence) {
+        p.timestamp <= 0 || p.confidence < this.minConfidence) {
       // Secondary low-confidence labels are common within one YAMNet window.
       // Ignore them instead of erasing a previously confirmed candidate.
       return null;
     }
     const next = classifyAtmosphere(p.label);
     if (next === "unknown") return null;
+    // Out-of-order native callback must never take us back to an older scene.
+    if (this.lastSeen > 0 && p.timestamp <= this.lastSeen) return null;
     // Distinct YAMNet windows only. Several labels from one window are NOT repeat evidence.
     if (this.lastSeen > 0 && p.timestamp - this.lastSeen < 650 && p.timestamp >= this.lastSeen) return null;
     if (next !== this.candidate || p.timestamp - this.lastSeen > 3500 || p.timestamp < this.lastSeen) {
@@ -56,7 +58,10 @@ export class StepPaceEstimator {
   ingest(timestamp: number): { activity: "walking" | "running" | "unknown"; bpm: number; confidence: number } {
     if (!Number.isFinite(timestamp) || timestamp <= 0) return { activity: "unknown", bpm: 0, confidence: 0 };
     const prev = this.times.at(-1);
-    if (prev != null && (timestamp <= prev || timestamp - prev > 8000)) this.times = [];
+    // Hardware callbacks may arrive out of order after an Android pause.
+    // Ignore delayed steps rather than replacing the valid cadence history.
+    if (prev != null && timestamp <= prev) return this.estimate();
+    if (prev != null && timestamp - prev > 8000) this.times = [];
     else if (prev != null && timestamp - prev < 260) return this.estimate();
     this.times.push(timestamp);
     this.times = this.times.slice(-8);
