@@ -74,6 +74,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private volatile int skippedInferenceWindows = 0;
   private final long appStartedAt = SystemClock.elapsedRealtime();
   private volatile int actualInputType = -1;
+  private volatile int captureRateHz = 0;
   private Thread captureThread;
   private SensorManager sensorManager;
   private Sensor stepDetector;
@@ -180,6 +181,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     o.put("stepsSupported", sm != null && sm.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR) != null);
     o.put("recording", capturing.get());
     o.put("actualInput", actualInput);
+    o.put("captureRateHz", captureRateHz);
     o.put("skippedInferenceWindows", skippedInferenceWindows);
     o.put("inferenceThrottled", batteryThrottledWindows);
     o.put("analysisStride", analysisStride);
@@ -258,8 +260,15 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
           JSObject r = new JSObject(); r.put("started", true); call.resolve(r); return;
         }
       }
-      int min = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
-      if (min <= 0) { call.reject("Устройство не поддерживает захват 16 кГц"); return; }
+      // Prefer native YAMNet 16kHz microphone input. If a handset rejects
+      // that format, capture genuine mono 48kHz PCM and anti-alias it to 16k.
+      int captureRate = 16000;
+      int min = AudioRecord.getMinBufferSize(captureRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+      if (min <= 0) {
+        captureRate = 48000;
+        min = AudioRecord.getMinBufferSize(captureRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+      }
+      if (min <= 0) { call.reject("Микрофон не поддерживает 16 или 48 кГц PCM"); return; }
       AudioRecord rec = null;
       AudioClassifier preparedClassifier = null;
       try {
@@ -271,9 +280,31 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
           preparedClassifier = AudioClassifier.createFromOptions(getContext(), options);
         }
         if (epoch != captureEpoch.get()) throw new IllegalStateException("Запуск отменён");
-        rec = new AudioRecord(MediaRecorder.AudioSource.MIC, 16000,
-          AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
-          Math.max(min * 2, 3200));
+        try {
+          rec = new AudioRecord(MediaRecorder.AudioSource.MIC, captureRate,
+            AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+            Math.max(min * 2, captureRate / 5));
+        } catch (IllegalArgumentException unsupported16k) {
+          if (captureRate != 16000) throw unsupported16k;
+          // Some HALs throw instead of returning STATE_UNINITIALIZED.
+          captureRate = 48000;
+          min = AudioRecord.getMinBufferSize(captureRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+          if (min <= 0) throw new IllegalStateException("Микрофон не поддерживает 16 или 48 кГц", unsupported16k);
+          rec = new AudioRecord(MediaRecorder.AudioSource.MIC, captureRate,
+            AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+            Math.max(min * 2, captureRate / 5));
+        }
+        if (rec.getState() != AudioRecord.STATE_INITIALIZED && captureRate == 16000) {
+          // A few Android audio HALs report a valid minimum 16k buffer but
+          // reject the actual AudioRecord initialization. Retry once at 48k.
+          rec.release();
+          captureRate = 48000;
+          min = AudioRecord.getMinBufferSize(captureRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+          if (min <= 0) throw new IllegalStateException("Микрофон не поддерживает 16 или 48 кГц");
+          rec = new AudioRecord(MediaRecorder.AudioSource.MIC, captureRate,
+            AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+            Math.max(min * 2, captureRate / 5));
+        }
         if (rec.getState() != AudioRecord.STATE_INITIALIZED) throw new IllegalStateException("Микрофон не инициализирован");
         AudioManager manager = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
         if (manager != null) {
@@ -297,6 +328,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         rec.startRecording();
         if (rec.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IllegalStateException("Захват микрофона не начался");
         recorder = rec;
+        captureRateHz = captureRate;
         analyzer = preparedClassifier;
         analysisActive = classify;
         if (preparedClassifier != null) inferenceWorker = Executors.newSingleThreadExecutor(r -> {
@@ -327,9 +359,10 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
           schedulePowerRefresh(epoch);
         }
         final AudioRecord active = rec;
+        final int activeSampleRate = captureRate;
         final AtomicBoolean sessionBusy = inferenceBusy;
         final AtomicBoolean sessionHealthy = inferenceHealthy;
-        captureThread = new Thread(() -> readMic(active, epoch, sessionBusy, sessionHealthy), "SoundWorld-Microphone-Probe");
+        captureThread = new Thread(() -> readMic(active, epoch, activeSampleRate, sessionBusy, sessionHealthy), "SoundWorld-Microphone-Probe");
         captureThread.setDaemon(true);
         captureThread.start();
         JSObject r = new JSObject(); r.put("started", true); call.resolve(r);
@@ -341,7 +374,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         powerWorker = null;
         recorder = null; analyzer = null; inferenceWorker = null; analysisActive = false;
         activeCaptureEpoch = -1;
-        actualInput = ""; actualKind = "";
+        actualInput = ""; actualKind = ""; captureRateHz = 0;
         call.reject("Не удалось открыть микрофон: " + ex.getMessage());
       }
     }
@@ -351,8 +384,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     return SoundWorldCapturePolicy.canEmit(rec, recorder, epoch, activeCaptureEpoch, capturing.get());
   }
 
-  private void readMic(AudioRecord rec, long epoch, AtomicBoolean busy, AtomicBoolean healthy) {
-    short[] samples = new short[1600];
+  private void readMic(AudioRecord rec, long epoch, int sampleRate, AtomicBoolean busy, AtomicBoolean healthy) {
+    short[] samples = new short[sampleRate / 10];
+    final SoundWorldMicResampler resampler = sampleRate == 48000 ? new SoundWorldMicResampler() : null;
     long lastReport = 0;
     // 15600 samples = 975 ms, the input window required by YAMNet.
     final float[] soundWindow = new float[15600];
@@ -370,7 +404,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         AudioClassifier cls = analyzer;
         if (cls != null && healthy.get()) {
           for (int i = 0; i < n; i++) {
-            soundWindow[soundFilled++] = samples[i] / 32768f;
+            float mapped = resampler == null ? samples[i] / 32768f : resampler.push(samples[i]);
+            if (Float.isNaN(mapped)) continue; // 48kHz FIR emits one genuine 16kHz sample per 3 inputs
+            soundWindow[soundFilled++] = mapped;
             if (soundFilled == soundWindow.length) {
               soundFilled = 0;
               // Refresh thermal/battery conditions roughly every six windows.
@@ -507,7 +543,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
           closing.start();
         }
       }
-      actualInput = ""; actualKind = ""; actualInputType = -1;
+      actualInput = ""; actualKind = ""; actualInputType = -1; captureRateHz = 0;
     }
   }
 
@@ -555,6 +591,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     result.put("inferenceSkipped", skippedInferenceWindows);
     result.put("inferenceThrottled", batteryThrottledWindows);
     result.put("analysisStride", analysisStride);
+    result.put("captureRateHz", captureRateHz);
     result.put("batteryMode", batteryMode);
     result.put("recording", capturing.get());
     // Never invent CPU temperature or audio glitches: they are not measured here.

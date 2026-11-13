@@ -36,7 +36,7 @@ function Diagnostics() {
   const [micRms,setMicRms] = useState<number | null>(null);
   const [output,setOutput] = useState<Awaited<ReturnType<typeof currentAudioSinkStatus>>>(null);
   const [wavOutput,setWavOutput] = useState<Awaited<ReturnType<typeof currentStoredPlayback>>>(null);
-  const [hardware,setHardware] = useState<{ramMb?:number;battery?:number;thermalStatus?:number;inferenceSkipped:number;inferenceThrottled?:number;analysisStride?:number;batteryMode?:string;lowMemory?:boolean}|null>(null);
+  const [hardware,setHardware] = useState<{ramMb?:number;battery?:number;thermalStatus?:number;inferenceSkipped:number;inferenceThrottled?:number;analysisStride?:number;batteryMode?:string;lowMemory?:boolean;captureRateHz?:number}|null>(null);
   useEffect(()=>{
     const estimator = new StepPaceEstimator();
     const stabilizer = new AmbientStabilizer();
@@ -103,6 +103,7 @@ function Diagnostics() {
             <p>Fermata (музыкальная нейросеть): не подключена</p>
             <p>Микрофон: {status?.microphoneGranted?"Разрешение есть":"Разрешение не получено"}</p>
             <p>Источник микрофона: {active?(micInput||status?.actualInput||"Определяется"):"Не используется"}</p>
+            <p>Фактическая частота микрофона: {active?((hardware?.captureRateHz||status?.captureRateHz)?(hardware?.captureRateHz||status?.captureRateHz)+" Гц":"Определяется"):"Микрофон выключен"}{active && (hardware?.captureRateHz||status?.captureRateHz)===48000?" (YAMNet получает 16 кГц после фильтрации)":""}</p>
             <p>Живой уровень микрофона: {active&&micRms!==null?Math.round(micRms*1000)/10+"%":"Нет сигнала"}</p>
             <p>Датчик шагов: {status?.stepsSupported?"Найден":"Нет данных / отсутствует"}</p>
             <p>Активность: {steps}</p>
