@@ -316,12 +316,16 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         activeCaptureEpoch = epoch;
         capturing.set(true);
         powerRefreshBusy = new AtomicBoolean(false);
-        powerWorker = Executors.newSingleThreadExecutor(r -> {
-          Thread t = new Thread(r,"SoundWorld-Power-Policy");
-          t.setDaemon(true);
-          return t;
-        });
-        schedulePowerRefresh(epoch);
+        if (classify) {
+          // A plain microphone routing probe does no YAMNet inference and
+          // should not run periodic battery/thermal Binder queries.
+          powerWorker = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r,"SoundWorld-Power-Policy");
+            t.setDaemon(true);
+            return t;
+          });
+          schedulePowerRefresh(epoch);
+        }
         final AudioRecord active = rec;
         final AtomicBoolean sessionBusy = inferenceBusy;
         final AtomicBoolean sessionHealthy = inferenceHealthy;
