@@ -69,8 +69,11 @@ describe("real event filtering (no simulated detections)",()=>{
     [1000,1600,2200,2800].forEach(t=>s.ingest(t));
     expect(s.ingest(3400).activity).toBe("walking");
     // Old step, duplicate and near-duplicate are not new independent steps.
-    expect(s.ingest(1800).bpm).toBe(100);
-    expect(s.ingest(3400).bpm).toBe(100);
+    expect(s.ingest(1800).activity).toBe("unknown");
+    expect(s.ingest(3400).activity).toBe("unknown");
+    expect(s.ingest(3500).activity).toBe("unknown"); // debounce <260 ms
+    // Returning "unknown" for rejected events prevents a stale hardware
+    // callback from refreshing the player with a fictitious new step.
     expect(s.ingest(3800).activity).toBe("walking");
     expect(s.ingest(13000).activity).toBe("unknown");
   });
