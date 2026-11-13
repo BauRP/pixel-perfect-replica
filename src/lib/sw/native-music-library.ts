@@ -5,6 +5,7 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { registerAdapters, type Adapters, type ClipMeta, type Result } from "./engine";
 import { getSettingsSnapshot, type Settings } from "./settings";
+import { pcmToBase64 } from "./pcm-base64";
 interface LibraryPlugin {
   beginClip(args:{genreIdsJson:string;instrumentIdsJson:string;mood:number;speed:number}):Promise<{id:string}>;
   appendPcm(args:{id:string;base64:string}):Promise<{bytesWritten:number}>;
@@ -40,8 +41,7 @@ export async function beginGenuineClip(settings:Settings,genreIds:string[]):Prom
 export async function appendGenuineClipPcm(id:string,pcm:Uint8Array):Promise<Result<number>> {
   if(!nativeMusicLibraryAvailable())return unavailable("Только Android");
   if(!pcm.length || pcm.length%4!==0 || pcm.length>192000)return {ok:false,code:"ERROR",message:"Недопустимый размер PCM"};
-  let bin="";for(const value of pcm)bin+=String.fromCharCode(value);
-  try {const r=await native.appendPcm({id,base64:btoa(bin)});return {ok:true,value:r.bytesWritten};}
+  try {const r=await native.appendPcm({id,base64:pcmToBase64(pcm)});return {ok:true,value:r.bytesWritten};}
   catch(e){return error(e);}
 }
 export async function finishGenuineClip(id:string):Promise<Result<ClipMeta>> {
