@@ -54,8 +54,11 @@ export class MusicControlPlanner {
         !Number.isFinite(input.confidence) || input.confidence < 0.55 ||
         input.bpm < 40 || input.bpm > 225) return false;
     if (this.lastPace && input.timestamp <= this.lastPace.timestamp) return false;
-    // damp abrupt changes in pace before routing to percussion
-    const bpm = this.lastPace ? this.lastPace.bpm * .7 + input.bpm * .3 : input.bpm;
+    // An old cadence is not evidence for the user's new walking speed.
+    // After a long sensor gap, adopt the fresh measured pace without blending
+    // it with the rate from before a pause or stopped walk.
+    const recent = this.lastPace && input.timestamp - this.lastPace.timestamp <= 8000;
+    const bpm = recent ? this.lastPace!.bpm * .7 + input.bpm * .3 : input.bpm;
     this.lastPace = { ...input, bpm };
     return true;
   }
