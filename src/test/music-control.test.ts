@@ -15,6 +15,14 @@ describe("real-world signals to future music directives", () => {
     expect(p.plan(DEFAULT_SETTINGS,3000).atmosphere).toBe("rain");
     expect(p.observeAmbient({atmosphere:"traffic",confidence:.9,timestamp:25000},DEFAULT_SETTINGS)).toBe(true);
   });
+  it("discards old ambient callbacks so weather never moves backwards in time",()=>{
+    const p=new MusicControlPlanner();
+    expect(p.observeAmbient({atmosphere:"rain",confidence:.9,timestamp:20000},DEFAULT_SETTINGS)).toBe(true);
+    expect(p.observeAmbient({atmosphere:"traffic",confidence:.9,timestamp:1000},DEFAULT_SETTINGS)).toBe(false);
+    expect(p.plan(DEFAULT_SETTINGS,21000).atmosphere).toBe("rain");
+    expect(p.observeAmbient({atmosphere:"traffic",confidence:.9,timestamp:45000},DEFAULT_SETTINGS)).toBe(true);
+    expect(p.plan(DEFAULT_SETTINGS,45000).atmosphere).toBe("traffic");
+  });
   it("weak mode requires stronger confidence and longer gap between scene changes",()=>{
     const p=new MusicControlPlanner();
     const weak={...DEFAULT_SETTINGS,environmentReaction:"weak" as const};

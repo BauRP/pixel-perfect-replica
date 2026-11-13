@@ -330,7 +330,16 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
             if (active != null && id.equals(active.playbackClipId())) {
               call.reject("Сначала остановите воспроизведение этого файла");return;
             }
-            index.remove(i);saveIndex(index);clipFile(id).delete();removed=true;break;
+            // Never announce deletion if Android could not unlink the WAV.
+            // Removing metadata first would hide the file and then recovery
+            // could rediscover it as a protected orphan, confusing the user.
+            File target=clipFile(id);
+            if(target.isFile() && !target.delete()) {
+              call.reject("Android не смог удалить временный WAV");return;
+            }
+            index.remove(i);
+            saveIndex(index);
+            removed=true;break;
           }
         }
         if(!removed){call.reject("Запись не найдена");return;}
