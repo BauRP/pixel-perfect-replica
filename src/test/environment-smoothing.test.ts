@@ -47,8 +47,8 @@ describe("real event filtering (no simulated detections)",()=>{
     expect(s.update({label:"Rain",confidence:.9,timestamp:1000})).toBeNull();
     expect(s.update({label:"Rain",confidence:.9,timestamp:2000})?.atmosphere).toBe("rain");
     expect(s.update({label:"Traffic",confidence:.9,timestamp:1500})).toBeNull();
-    expect(s.update({label:"Traffic",confidence:.9,timestamp:2500})).toBeNull();
-    expect(s.update({label:"Traffic",confidence:.9,timestamp:3600})?.atmosphere).toBe("traffic");
+    expect(s.update({label:"Traffic",confidence:.9,timestamp:2700})).toBeNull();
+    expect(s.update({label:"Traffic",confidence:.9,timestamp:3800})?.atmosphere).toBe("traffic");
     expect(s.update({label:"Rain",confidence:.95,timestamp:3000})).toBeNull();
     expect(s.stable).toBe("traffic");
   });
