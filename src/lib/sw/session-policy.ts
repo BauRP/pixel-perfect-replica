@@ -42,6 +42,9 @@ export function transitionAudioPolicy(
     case "user-stop":
       return { state: { ...INITIAL_POLICY }, action: "stop" };
     case "call-start":
+      // Duplicate Android call notifications must not erase the permission
+      // to resume a session that was actually playing before the first call.
+      if (state.interruptedByCall) break;
       state.interruptedByCall = true;
       state.resumeAfterCall = state.playback === "playing";
       state.resumeAfterFocus = false;
@@ -55,8 +58,11 @@ export function transitionAudioPolicy(
       state.resumeAfterCall = false;
       break;
     case "audio-focus-loss":
-      state.resumeAfterFocus = state.playback === "playing";
-      if (state.resumeAfterFocus) { state.playback = "paused"; action = "pause"; }
+      // Repeated focus-loss callbacks while already paused are not a user
+      // pause request. Preserve the earlier eligible resume state.
+      if (state.playback === "playing") {
+        state.resumeAfterFocus = true; state.playback = "paused"; action = "pause";
+      }
       break;
     case "audio-focus-gain":
       if (state.resumeAfterFocus && !state.interruptedByCall && !state.headsetWasDisconnected) {
