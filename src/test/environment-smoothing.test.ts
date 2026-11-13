@@ -42,6 +42,26 @@ describe("real event filtering (no simulated detections)",()=>{
     expect(s.update({label:"Vehicle",confidence:.8,timestamp:3600})).toBeNull();
     expect(s.update({label:"Vehicle",confidence:.8,timestamp:4200})?.atmosphere).toBe("traffic");
   });
+  it("ignores delayed YAMNet labels rather than reverting a confirmed scene",()=>{
+    const s=new AmbientStabilizer();
+    expect(s.update({label:"Rain",confidence:.9,timestamp:1000})).toBeNull();
+    expect(s.update({label:"Rain",confidence:.9,timestamp:2000})?.atmosphere).toBe("rain");
+    expect(s.update({label:"Traffic",confidence:.9,timestamp:1500})).toBeNull();
+    expect(s.update({label:"Traffic",confidence:.9,timestamp:2500})).toBeNull();
+    expect(s.update({label:"Traffic",confidence:.9,timestamp:3600})?.atmosphere).toBe("traffic");
+    expect(s.update({label:"Rain",confidence:.95,timestamp:3000})).toBeNull();
+    expect(s.stable).toBe("traffic");
+  });
+  it("does not lose a valid step cadence after a delayed sensor callback",()=>{
+    const s=new StepPaceEstimator();
+    [1000,1600,2200,2800].forEach(t=>s.ingest(t));
+    expect(s.ingest(3400).activity).toBe("walking");
+    // Old step, duplicate and near-duplicate are not new independent steps.
+    expect(s.ingest(1800).bpm).toBe(100);
+    expect(s.ingest(3400).bpm).toBe(100);
+    expect(s.ingest(3800).activity).toBe("walking");
+    expect(s.ingest(13000).activity).toBe("unknown");
+  });
   it("does not infer rest from absent steps",()=>{
     const s=new StepPaceEstimator();
     expect(s.ingest(1000).activity).toBe("unknown");
