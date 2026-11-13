@@ -72,14 +72,14 @@ export function installNativeMusicLibraryAdapter():void {
     deleteTemporary:async(id)=>{try {const x=await native.deleteTemporary({id});return x.deleted===true?{ok:true,value:undefined}:unavailable("Android не подтвердил удаление временной записи");}catch(e){return error(e);}},
     recoverLocalMetadata:async()=>{try {await native.recover();return {ok:true,value:undefined};}catch(e){return error(e);}},
     playStoredClip:async(id)=>{try {const x=await native.playClip({id,resumeAfterCall:getSettingsSnapshot().afterCallAutoResume});return x.requested===true&&x.id===id?{ok:true,value:undefined}:unavailable("Android не подтвердил запуск WAV");}catch(e){return error(e);}},
-    pauseStoredClip:async()=>{try {await native.pauseClip();return {ok:true,value:undefined};}catch(e){return error(e);}},
+    pauseStoredClip:async()=>{try {const x=await native.pauseClip();return x.state==="requested"||x.state==="stopped"?{ok:true,value:undefined}:unavailable("Android не подтвердил запрос паузы WAV");}catch(e){return error(e);}},
     seekStoredClip:async(id,positionMs)=>{
       if(!Number.isFinite(positionMs) || positionMs<0 || positionMs>120500)
         return {ok:false,code:"ERROR",message:"Недопустимая позиция WAV"};
       try {const x=await native.seekClip({id,positionMs:Math.round(positionMs)});return x.requested===true?{ok:true,value:undefined}:unavailable("Android не подтвердил перемотку WAV");}
       catch(e){return error(e);}
     },
-    stopStoredClip:async()=>{try {await native.stopClip();return {ok:true,value:undefined};}catch(e){return error(e);}},
+    stopStoredClip:async()=>{try {const x=await native.stopClip();return x.state==="requested"||x.state==="stopped"?{ok:true,value:undefined}:unavailable("Android не подтвердил запрос остановки WAV");}catch(e){return error(e);}},
     observeStoredPlayback:cb=>{
       let closed=false;
       const handle=native.addListener("clipPlayback",e=>{if(!closed)cb(e)});
