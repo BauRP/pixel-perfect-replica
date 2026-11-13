@@ -104,6 +104,23 @@ describe("audio interruption safety rules",()=>{
     expect(transitionAudioPolicy(b.state,"call-end",false).action).toBe("none");
     expect(transitionAudioPolicy(b.state,"call-end",true).action).toBe("play");
   });
+  it("duplicate call notification never cancels an eligible automatic resume",()=>{
+    const playing=transitionAudioPolicy(INITIAL_POLICY,"user-play",true).state;
+    const first=transitionAudioPolicy(playing,"call-start",true);
+    const duplicate=transitionAudioPolicy(first.state,"call-start",true);
+    expect(duplicate.action).toBe("none");
+    expect(duplicate.state.resumeAfterCall).toBe(true);
+    expect(transitionAudioPolicy(duplicate.state,"call-end",true).action).toBe("play");
+  });
+  it("repeated audio focus losses preserve resume only until a user pause",()=>{
+    const playing=transitionAudioPolicy(INITIAL_POLICY,"user-play",true).state;
+    const first=transitionAudioPolicy(playing,"audio-focus-loss",true);
+    const again=transitionAudioPolicy(first.state,"audio-focus-loss",true);
+    expect(again.state.resumeAfterFocus).toBe(true);
+    expect(transitionAudioPolicy(again.state,"audio-focus-gain",true).action).toBe("play");
+    const userPaused=transitionAudioPolicy(again.state,"user-pause",true).state;
+    expect(transitionAudioPolicy(userPaused,"audio-focus-gain",true).action).toBe("none");
+  });
   it("manual pause during a call suppresses auto resume",()=>{
     const a=transitionAudioPolicy(INITIAL_POLICY,"user-play",true).state;
     const b=transitionAudioPolicy(a,"call-start",true).state;
