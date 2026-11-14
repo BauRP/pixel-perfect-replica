@@ -28,20 +28,34 @@ public class MainActivity extends BridgeActivity {
    * screen coordinates. The CI tap still requires a real React button marker
    * and verifies the resulting screen transition.
    */
+  private void logMeasuredWebView() {
+    // Window focus can arrive BEFORE Capacitor constructs its bridge.
+    // Android 14 AOSP did exactly this: React was visible but no native
+    // geometry was logged, so CI refused to tap the real onboarding button.
+    // Re-measure after Activity resume, not only on focus changes.
+    if (isFinishing() || isDestroyed() || getBridge() == null) return;
+    final View web = getBridge().getWebView();
+    if (web == null || !web.isAttachedToWindow()) return;
+    int[] origin = new int[2];
+    web.getLocationOnScreen(origin);
+    if (web.getWidth() <= 0 || web.getHeight() <= 0) return;
+    Log.i("SoundWorldGeometry", "SW_NATIVE_WEBVIEW {\"left\":" + origin[0]
+        + ",\"top\":" + origin[1] + ",\"right\":" + (origin[0] + web.getWidth())
+        + ",\"bottom\":" + (origin[1] + web.getHeight()) + "}");
+  }
+
   @Override public void onWindowFocusChanged(boolean hasFocus) {
     super.onWindowFocusChanged(hasFocus);
-    if (!hasFocus || getBridge() == null) return;
-    final View web = getBridge().getWebView();
-    if (web == null) return;
-    web.post(() -> {
-      if (!web.isAttachedToWindow() || !web.hasWindowFocus()) return;
-      int[] origin = new int[2];
-      web.getLocationOnScreen(origin);
-      if (web.getWidth() <= 0 || web.getHeight() <= 0) return;
-      Log.i("SoundWorldGeometry", "SW_NATIVE_WEBVIEW {\"left\":" + origin[0]
-          + ",\"top\":" + origin[1] + ",\"right\":" + (origin[0] + web.getWidth())
-          + ",\"bottom\":" + (origin[1] + web.getHeight()) + "}");
-    });
+    if (hasFocus) getWindow().getDecorView().post(this::logMeasuredWebView);
+  }
+
+  @Override protected void onResume() {
+    super.onResume();
+    // Two bounded one-shot probes cover WebView creation and first layout
+    // without a polling loop or changing UI geometry. Both run on UI thread.
+    final View decor = getWindow().getDecorView();
+    decor.postDelayed(this::logMeasuredWebView, 500);
+    decor.postDelayed(this::logMeasuredWebView, 1500);
   }
 
   @Override public void onCreate(Bundle savedInstanceState) {

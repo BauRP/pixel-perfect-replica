@@ -20,6 +20,18 @@ class MeasuredOnboardingTest(unittest.TestCase):
         logs=marker({"left":100,"right":140,"top":20,"bottom":50})+"\n"+marker()
         self.assertEqual(measured_skip(xml(),logs),(914,196))
 
+    def test_android14_aosp_onboarding_matches_real_webview_viewport(self):
+        # Reproduces CI #208: DOM button was measured, while Android 14's
+        # accessibility tree omitted the WebView entirely. Native geometry
+        # must be present; do not guess the location from phone dimensions.
+        dom = marker(
+            rect={"left":280,"right":377,"top":24,"bottom":72},
+            dpr=2.75,w=393,h=758,
+        )
+        self.assertIsNone(measured_skip("<hierarchy/>",dom))
+        real = 'I/SoundWorldGeometry SW_NATIVE_WEBVIEW {"left":0,"top":80,"right":1080,"bottom":2164}'
+        self.assertEqual(measured_skip("<hierarchy/>",real+"\n"+dom),(903,212))
+
     def test_android14_native_geometry_when_accessibility_hides_webview(self):
         actual = 'I/SoundWorldGeometry SW_NATIVE_WEBVIEW {"left":0,"top":76,"right":1080,"bottom":2225}'
         self.assertEqual(measured_skip('<hierarchy/>', actual+"\n"+marker(h=782)), (914,189))
