@@ -10,6 +10,8 @@ import { resetSettings, updateSettings, useSettings, type Settings } from "@/lib
 import { notify } from "@/lib/sw/notify";
 import { androidSensorsAvailable, sensorStatus, observeActualRouteChanges, getNativePerformanceSnapshot, stopSensorDiagnostics, type SensorsStatus } from "@/lib/sw/native-sensors";
 import { deviceHealthAlerts, deviceHealthReadout } from "@/lib/sw/device-health";
+import { currentStoredPlayback } from "@/lib/sw/native-music-library";
+import { describeSavedWavRoute } from "@/lib/sw/saved-wav-output-route";
 
 export const Route = createFileRoute("/settings/")({
   head: () => ({ meta: [{ title: "Настройки — SoundWorld AR" }, { name: "description", content: "Общие настройки приложения SoundWorld AR." }, { property: "og:title", content: "Настройки — SoundWorld AR" }, { property: "og:description", content: "Общие настройки приложения." }] }),
@@ -31,6 +33,7 @@ function SettingsPage() {
   const s = useSettings();
   const [device,setDevice] = useState<SensorsStatus | null>(null);
   const [health,setHealth] = useState<Awaited<ReturnType<typeof getNativePerformanceSnapshot>>>(null);
+  const [wavRoute,setWavRoute] = useState<Awaited<ReturnType<typeof currentStoredPlayback>>>(null);
   const warnings=deviceHealthAlerts(health);
   useEffect(() => {
     let live=true;
@@ -41,10 +44,20 @@ function SettingsPage() {
       reading=true;
       void getNativePerformanceSnapshot().then(x=>{if(live)setHealth(x)}).finally(()=>{reading=false});
     };
-    refresh();refreshHealth();
+    let routeReading=false;
+    const refreshWavRoute=()=>{
+      if(routeReading)return;
+      routeReading=true;
+      void currentStoredPlayback().then(x=>{if(live)setWavRoute(x)}).finally(()=>{routeReading=false});
+    };
+    refresh();refreshHealth();refreshWavRoute();
+    // Only while the Settings page is mounted. Android's MediaPlayer
+    // route is reported after preparation and may change when switching
+    // between speaker, wired headphones and Bluetooth.
     const timer=window.setInterval(refreshHealth,15000);
-    const off=observeActualRouteChanges(refresh);
-    return ()=>{live=false;window.clearInterval(timer);off()};
+    const routeTimer=window.setInterval(refreshWavRoute,5000);
+    const off=observeActualRouteChanges(()=>{refresh();refreshWavRoute()});
+    return ()=>{live=false;window.clearInterval(timer);window.clearInterval(routeTimer);off()};
   },[]);
   return (
     <>
@@ -65,6 +78,15 @@ function SettingsPage() {
         </Section>
 
         <Section title="Воспроизведение">
+          <div className="space-y-1 px-3 py-2" aria-label="Фактический аудиовыход сохранённой музыки">
+            <p className="text-sm font-medium">Куда Android выводит сохранённый WAV</p>
+            <p className="text-xs text-muted-foreground" role="status">
+              {androidSensorsAvailable()?describeSavedWavRoute(wavRoute):"Фактический маршрут доступен только в Android APK"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Показывается реальный маршрут MediaPlayer, не выбранный микрофон. При отсутствии воспроизведения устройство не угадывается.
+            </p>
+          </div>
           <ToggleRow title="Продолжать после звонка" desc="Для сохранённых WAV применяется при кратковременном прерывании звонком. Для генерации новой музыки заработает после подключения движка" checked={s.afterCallAutoResume} onChange={(v) => set("afterCallAutoResume", v)} />
           <ToggleRow title="Без анализа окружения" desc="Автоматический анализ и проверка микрофона и шагов отключаются до выключения режима" checked={s.musicOnlyMode}
             onChange={(v) => {set("musicOnlyMode",v);if(v)void stopSensorDiagnostics();}} />
