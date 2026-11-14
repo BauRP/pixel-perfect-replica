@@ -5,7 +5,7 @@ function verifiedMetadataCandidates(clips: readonly ClipMeta[]): ClipMeta[] {
   return clips.filter(c => (
     /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(c.id)
     && Number.isFinite(c.createdAt) && c.createdAt > 0
-    && Number.isFinite(c.durationSec) && c.durationSec > 0 && c.durationSec <= 120
+    && Number.isFinite(c.durationSec) && c.durationSec >= 60 && c.durationSec <= 120
     && typeof c.uri === "string" && c.uri.startsWith("file:")
   ));
 }

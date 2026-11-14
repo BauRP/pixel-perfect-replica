@@ -13,6 +13,8 @@ describe("real saved recording selection",()=>{
   it("never selects a fabricated current ID or an incomplete recording",()=>{
     expect(latestRealClip([mk("current",300),{...mk(a,400),uri:""},mk(b,200)])?.id).toBe(b);
     expect(latestRealClip([mk(a,100,{durationSec:0})])).toBeNull();
+    expect(latestRealClip([mk(a,100,{durationSec:59.99})])).toBeNull();
+    expect(latestRealClip([mk(a,100,{durationSec:60})])?.id).toBe(a);
   });
   it("previous selects the older recording, not the latest one",()=>{
     const c="33333333-3333-4333-8333-333333333333";

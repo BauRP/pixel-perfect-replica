@@ -9,6 +9,7 @@ import {
 import { AmbientStabilizer, StepPaceEstimator } from "@/lib/sw/environment-smoothing";
 import { MusicControlPlanner, type ControlPlan } from "@/lib/sw/music-control";
 import { RealStepSession } from "@/lib/sw/real-step-session";
+import {buildSafeDiagnosticsReport,copySafeDiagnosticsReport} from "@/lib/sw/safe-diagnostics-report";
 import { YamnetObservationLog, type YamnetObservation } from "@/lib/sw/yamnet-observation-log";
 import { useSettings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
@@ -41,6 +42,7 @@ function Diagnostics() {
   const stepCounter = useRef(new RealStepSession());
   const lastRealStep = useRef(0);
   const [error,setError] = useState("");
+  const [reportMessage,setReportMessage] = useState("");
   const [environment,setEnvironment] = useState("Обстановка не определена");
   const [micInput,setMicInput] = useState("");
   const [micRms,setMicRms] = useState<number | null>(null);
@@ -123,6 +125,17 @@ function Diagnostics() {
       setHardware(await getNativePerformanceSnapshot());
     } finally {pendingRef.current=false;setPending(false);}
   };
+  const copyReport=async()=>{
+    const report=buildSafeDiagnosticsReport({
+      android:androidSensorsAvailable(),musicOnly:settings.musicOnlyMode,
+      active,stepsOnly,stepCount,sensors:status,performance:hardware,
+      pcm:output,wav:wavOutput,
+    });
+    const copied=await copySafeDiagnosticsReport(report);
+    setReportMessage(copied
+      ?"Диагностический отчёт скопирован. Аудио и личные данные не включены."
+      :"Не удалось скопировать отчёт: буфер обмена недоступен.");
+  };
   const stop=async()=>{
     if(pendingRef.current) return;
     pendingRef.current=true;setPending(true);
@@ -203,6 +216,14 @@ function Diagnostics() {
             disabled={!active||pending} onClick={()=>void stop()}>
             Остановить проверку
           </button>
+        </div>
+        <div className="space-y-1">
+          <button className="min-h-12 rounded-xl border border-border px-5 text-sm"
+            onClick={()=>void copyReport()}>Скопировать диагностический отчёт</button>
+          {reportMessage&&<p role="status" className="text-xs text-muted-foreground">{reportMessage}</p>}
+          <p className="text-xs text-muted-foreground">
+            Только показатели системы и функции. Без звука, файлов, имён устройств и геолокации.
+          </p>
         </div>
         {settings.musicOnlyMode && <p className="text-xs text-warning" role="status">Включён режим «Без анализа окружения». Выключите его в Настройках, чтобы проверить микрофон и шаги.</p>}
         <p className="text-xs text-muted-foreground">

@@ -182,7 +182,12 @@ export function installNativeSensorAdapters(): void {
         return s?{ok:true,value:s.microphoneGranted?"granted" as const:"prompt" as const}:unavailable("Нет данных о разрешении");
       },
       requestMicrophone: async () => {
-        try {const r=await native.requestMicrophone();return {ok:true,value:r.granted?"granted" as const:"denied" as const};}
+        if(!sensorsAllowed(getSettingsSnapshot()))return unavailable(SENSOR_MODE_BLOCKED);
+        try {
+          const r=await native.requestMicrophone();
+          if(!sensorsAllowed(getSettingsSnapshot()))return unavailable(SENSOR_MODE_BLOCKED);
+          return {ok:true,value:r.granted?"granted" as const:"denied" as const};
+        }
         catch(e){return safeError(e);}
       }
     },
