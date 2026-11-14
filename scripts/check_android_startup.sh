@@ -228,7 +228,8 @@ subprocess.run(["adb","shell","input","tap",str(x),str(y)],check=True)
 wait_for_ui() {
   local text="$1"
   local onboarding_retry=0
-  for _ in 1 2 3 4 5 6 7 8; do
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8; do
     # A real mounted React heading is cheaper to inspect than UIAutomator,
     # but only while the actual SoundWorld Activity is visible.
     if app_in_foreground; then
@@ -244,7 +245,7 @@ wait_for_ui() {
     # A System UI ANR overlay can swallow the first REAL tap without killing
     # SoundWorld. After dismissing the overlay, retry ONCE only if the latest
     # mounted React snapshot still shows incomplete onboarding.
-    if [[ "$text" == "Живая музыка" && "$_" -ge 3 && $onboarding_retry -lt 1 ]] &&
+    if [[ "$text" == "Живая музыка" && $attempt -ge 3 && $onboarding_retry -lt 1 ]] &&
        app_in_foreground && visible_dom_route "/onboarding" "Музыкальные вкусы"; then
       onboarding_retry=$((onboarding_retry + 1))
       echo "::warning::Android emulator swallowed onboarding input; retrying measured button once"
