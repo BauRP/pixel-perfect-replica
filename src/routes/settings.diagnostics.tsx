@@ -8,6 +8,7 @@ import {
 } from "@/lib/sw/native-sensors";
 import { AmbientStabilizer, StepPaceEstimator } from "@/lib/sw/environment-smoothing";
 import { MusicControlPlanner, type ControlPlan } from "@/lib/sw/music-control";
+import { RealStepSession } from "@/lib/sw/real-step-session";
 import { useSettings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
 import { buildMusicRequest } from "@/lib/sw/music-preferences";
@@ -30,6 +31,10 @@ function Diagnostics() {
   const [pending,setPending] = useState(false);
   const pendingRef = useRef(false);
   const [steps,setSteps] = useState("Нет подтверждённых шагов");
+  const [stepCount,setStepCount] = useState<number|null>(null);
+  const countingSteps = useRef(false);
+  const stepCounter = useRef(new RealStepSession());
+  const lastRealStep = useRef(0);
   const [error,setError] = useState("");
   const [environment,setEnvironment] = useState("Обстановка не определена");
   const [micInput,setMicInput] = useState("");
@@ -48,11 +53,18 @@ function Diagnostics() {
     void currentAudioSinkStatus().then(s=>{if(mounted)setOutput(s)});
     void currentStoredPlayback().then(s=>{if(mounted)setWavOutput(s)});
     const removeSteps=observeRawSteps(e=>{
+      if (!countingSteps.current) return;
+      const accepted=stepCounter.current.ingest(e,Date.now());
+      if (!accepted) return; // no fake increments from duplicated/old callbacks
+      setStepCount(accepted.count);
+      lastRealStep.current=accepted.lastStepAt;
       const pace=estimator.ingest(e.timestamp);
       if (pace.activity!=="unknown"){
         setSteps((pace.activity==="running"?"Бег":"Ходьба")+" · "+pace.bpm+" шагов/мин");
         planner.observePace({bpm:pace.bpm,confidence:pace.confidence,timestamp:e.timestamp});
         updatePlan();
+      } else {
+        setSteps("Шаги обнаружены · ритм определяется");
       }
     });
     const removeErrors=observeSensorErrors(setError);
@@ -69,9 +81,14 @@ function Diagnostics() {
       void getNativePerformanceSnapshot().then(x=>{if(mounted)setHardware(x)});
       void currentAudioSinkStatus().then(x=>{if(mounted)setOutput(x)});
       void currentStoredPlayback().then(x=>{if(mounted)setWavOutput(x)});
+      // Lack of fresh steps is "unknown", not proof that the user is resting.
+      if (countingSteps.current && lastRealStep.current > 0 &&
+          Date.now()-lastRealStep.current>5000)
+        setSteps("Нет свежих шагов · активность не определена");
       updatePlan();
     },3000);
-    return ()=>{mounted=false;clearInterval(interval);removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
+    return ()=>{mounted=false;countingSteps.current=false;stepCounter.current.stop();
+      clearInterval(interval);removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
   },[]);
   const start=async()=>{
     if(pendingRef.current) return;
@@ -79,7 +96,14 @@ function Diagnostics() {
     try {
       const result=await startSensorDiagnostics(true);
       if(!result.ok) {notify.result(result,"");setError(result.message);}
-      else {setActive(true);setError("");setEnvironment("Ожидание достоверного результата");}
+      else {
+        stepCounter.current.start(Date.now());
+        countingSteps.current=true;
+        lastRealStep.current=0;
+        setStepCount(0);
+        setSteps("Ожидание настоящих шагов Android");
+        setActive(true);setError("");setEnvironment("Ожидание достоверного результата");
+      }
       setStatus(await sensorStatus());
       setHardware(await getNativePerformanceSnapshot());
     } finally {pendingRef.current=false;setPending(false);}
@@ -87,8 +111,11 @@ function Diagnostics() {
   const stop=async()=>{
     if(pendingRef.current) return;
     pendingRef.current=true;setPending(true);
+    countingSteps.current=false;
+    stepCounter.current.stop();
     try {
       await stopSensorDiagnostics();setActive(false);setMicRms(null);setPlan(null);
+      setSteps("Проверка остановлена");
       setStatus(await sensorStatus());setHardware(await getNativePerformanceSnapshot());
     } finally {pendingRef.current=false;setPending(false);}
   };
@@ -107,6 +134,7 @@ function Diagnostics() {
             <p>Живой уровень микрофона: {active&&micRms!==null?Math.round(micRms*1000)/10+"%":"Нет сигнала"}</p>
             <p>Датчик шагов: {status?.stepsSupported?"Найден":"Нет данных / отсутствует"}</p>
             <p>Активность: {steps}</p>
+            <p aria-live="polite">Шаги за {active?"текущую":"последнюю"} проверку: {stepCount===null?"Проверка не запускалась":stepCount}</p>
             <p>Доступная оперативная память: {hardware?.ramMb === undefined?"Нет данных":hardware.ramMb+" МБ"}</p>
             <p>Заряд батареи: {hardware?.battery === undefined?"Нет данных":hardware.battery+"%"}</p>
             <p>Тепловой статус Android: {hardware?.thermalStatus === undefined?"Нет данных":hardware.thermalStatus}</p>
