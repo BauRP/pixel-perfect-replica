@@ -44,7 +44,8 @@ jobs:
             native/android/SoundWorldClipRetentionPolicy.java scripts/SoundWorldClipRetentionPolicyTest.java \
             native/android/SoundWorldPcmLifecyclePolicy.java scripts/SoundWorldPcmLifecyclePolicyTest.java \
             native/android/SoundWorldPowerEpochGuard.java scripts/SoundWorldPowerEpochGuardTest.java \
-            native/android/SoundWorldMicResampler.java scripts/SoundWorldMicResamplerTest.java
+            native/android/SoundWorldMicResampler.java scripts/SoundWorldMicResamplerTest.java \
+            native/android/SoundWorldWavExportPolicy.java scripts/SoundWorldWavExportPolicyTest.java
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldPowerPolicyTest
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldCapturePolicyTest
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldStepTimeTest
@@ -54,6 +55,7 @@ jobs:
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldPcmLifecyclePolicyTest
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldPowerEpochGuardTest
           java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldMicResamplerTest
+          java -cp /tmp/soundworld-power-tests kz.soundworld.ar.SoundWorldWavExportPolicyTest
       - name: Type check
         run: npx tsc --noEmit
       - name: Unit tests
@@ -96,6 +98,7 @@ jobs:
           cp native/android/SoundWorldPcmLifecyclePolicy.java "$target/SoundWorldPcmLifecyclePolicy.java"
           cp native/android/SoundWorldPlaybackPlugin.java "$target/SoundWorldPlaybackPlugin.java"
           cp native/android/SoundWorldMusicLibraryPlugin.java "$target/SoundWorldMusicLibraryPlugin.java"
+          cp native/android/SoundWorldWavExportPolicy.java "$target/SoundWorldWavExportPolicy.java"
           cp native/android/SoundWorldClipRetentionPolicy.java "$target/SoundWorldClipRetentionPolicy.java"
           cp native/android/SoundWorldClipLengthPolicy.java "$target/SoundWorldClipLengthPolicy.java"
           cp native/android/SoundWorldClipPlaybackService.java "$target/SoundWorldClipPlaybackService.java"

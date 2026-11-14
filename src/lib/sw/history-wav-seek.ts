@@ -32,3 +32,26 @@ export function verifiedHistorySeek(
       positionMs<0 || positionMs>measured.durationMs)return null;
   return positionMs;
 }
+
+// Reconcile missed native playback callbacks with actual Android status.
+// The caller must reject late polling results if React has since received
+// a newer playback event for another clip.
+export type HistoryPlaybackState = Readonly<{
+  state:"playing"|"paused"|"stopped"|"preparing";
+  clipId:string;
+}>;
+
+export function reconcileHistoryPlayback(
+  previous:HistoryPlaybackState,
+  reported:SavedPlaybackReading|null|undefined,
+):HistoryPlaybackState|null {
+  if(!reported || typeof reported.clipId!=="string")return null;
+  if(reported.state==="stopped")
+    return previous.state==="stopped"&&previous.clipId===""
+      ? null : {state:"stopped",clipId:""};
+  if(reported.state!=="playing" && reported.state!=="paused" &&
+     reported.state!=="preparing")return null;
+  if(!reported.clipId)return null;
+  if(reported.state===previous.state && reported.clipId===previous.clipId)return null;
+  return {state:reported.state,clipId:reported.clipId};
+}

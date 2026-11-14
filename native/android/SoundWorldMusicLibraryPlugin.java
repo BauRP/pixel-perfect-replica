@@ -301,10 +301,10 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
         if(outputUri==null)throw new IOException("Android не разрешил экспорт");
         try(InputStream input=new FileInputStream(file);
             OutputStream output=getContext().getContentResolver().openOutputStream(outputUri)) {
-          if(output==null)throw new IOException("Не открыть выходной файл");
-          byte[] buffer=new byte[65536];int n;
-          while((n=input.read(buffer))!=-1)output.write(buffer,0,n);
-          output.flush();
+          // MediaStore must receive the ENTIRE previously verified WAV. If
+          // the file shrinks/grows or the target write fails, the pending
+          // MediaStore item is deleted instead of appearing in Exports.
+          SoundWorldWavExportPolicy.copyExactly(input,output,file.length());
         }
         ContentValues done=new ContentValues();done.put(MediaStore.Audio.Media.IS_PENDING,0);
         if(getContext().getContentResolver().update(outputUri,done,null,null)<1)

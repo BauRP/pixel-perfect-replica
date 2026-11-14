@@ -9,7 +9,7 @@ import { notify } from "@/lib/sw/notify";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 import { groupRealJourney } from "@/lib/sw/journey";
 import { wavTimestamp, type WavProgress } from "@/lib/sw/wav-progress";
-import { verifiedHistoryProgress, verifiedHistorySeek } from "@/lib/sw/history-wav-seek";
+import { verifiedHistoryProgress, verifiedHistorySeek, reconcileHistoryPlayback } from "@/lib/sw/history-wav-seek";
 
 export const Route = createFileRoute("/history")({
   head: () => ({ meta: [{ title: "История и избранное — SoundWorld AR" }, { name: "description", content: "Настоящие сохранённые фрагменты SoundWorld AR" }] }),
@@ -65,8 +65,12 @@ function HistoryPage(){
       try{
         const status=await currentStoredPlayback();
         if(!alive||!status)return;
-        if(status.state==="stopped"){
-          setPlayback(prev=>prev.clipId===playback.clipId?{state:"stopped",clipId:""}:prev);
+        // An event may be lost while the History page is backgrounded.
+        // Accept live native pause/stop/clip-change, but do not let an old
+        // poll overwrite a newer native event delivered in the meantime.
+        const change=reconcileHistoryPlayback(playback,status);
+        if(change){
+          setPlayback(prev=>prev.clipId===playback.clipId && prev.state===playback.state ? change:prev);
           return;
         }
         const progress=verifiedHistoryProgress(playback.clipId,status);

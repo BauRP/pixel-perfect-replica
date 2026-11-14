@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {verifiedHistoryProgress,verifiedHistorySeek} from "../lib/sw/history-wav-seek";
+import {verifiedHistoryProgress,verifiedHistorySeek,reconcileHistoryPlayback} from "../lib/sw/history-wav-seek";
 
 describe("real Android WAV history slider",()=>{
   const reading={clipId:"first-real-wav",state:"playing",positionMs:28000,durationMs:120000};
@@ -11,6 +11,22 @@ describe("real Android WAV history slider",()=>{
     expect(verifiedHistoryProgress("first-real-wav",{...reading,positionMs:NaN})).toBeNull();
     expect(verifiedHistoryProgress("first-real-wav",null)).toBeNull();
     expect(verifiedHistoryProgress("first-real-wav",{...reading,state:"paused"})?.positionMs).toBe(28000);
+  });
+  it("recovers missed pause, stop or track-change events from native status",()=>{
+    const old={clipId:"first-real-wav",state:"playing" as const};
+    expect(reconcileHistoryPlayback(old,{...reading,state:"paused"})).toEqual({
+      clipId:"first-real-wav",state:"paused"
+    });
+    expect(reconcileHistoryPlayback(old,{...reading,state:"stopped",clipId:""})).toEqual({
+      clipId:"",state:"stopped"
+    });
+    expect(reconcileHistoryPlayback(old,{...reading,clipId:"second-real-wav"})).toEqual({
+      clipId:"second-real-wav",state:"playing"
+    });
+    expect(reconcileHistoryPlayback(old,reading)).toBeNull();
+    expect(reconcileHistoryPlayback(old,null)).toBeNull();
+    expect(reconcileHistoryPlayback(old,{...reading,clipId:"",state:"playing"})).toBeNull();
+    expect(reconcileHistoryPlayback(old,{...reading,state:"error"})).toBeNull();
   });
   it("cannot seek another WAV or outside confirmed native duration",()=>{
     const p=verifiedHistoryProgress("first-real-wav",reading);
