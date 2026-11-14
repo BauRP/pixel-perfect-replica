@@ -260,14 +260,20 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     String id=call.getString("id");boolean value=Boolean.TRUE.equals(call.getBoolean("value"));
     writer.execute(() -> {
       try {
+        if (!validId(id)) throw new IllegalArgumentException("Недопустимый ID WAV");
+        // Adding a heart is allowed ONLY for a fully verified 60-120 second WAV.
+        // File.isFile() alone used to accept corrupt/truncated recordings.
+        // Removing a heart must remain possible if a previously saved file
+        // is missing, so the user can clear obsolete protected metadata.
+        if (value) verifyPlayableClip(id);
         JSONArray index=loadIndex();boolean found=false;
         for(int i=0;i<index.length();i++) {
           JSONObject item=index.getJSONObject(i);
-          if(item.getString("id").equals(id) && clipFile(id).isFile()) {
+          if(item.getString("id").equals(id)) {
             item.put("favorite",value);found=true;break;
           }
         }
-        if(!found){call.reject("Настоящий аудиофайл не найден");return;}
+        if(!found){call.reject("Запись не найдена в каталоге");return;}
         saveIndex(index);JSObject r=new JSObject();r.put("updated",true);call.resolve(r);
       }catch(Exception ex){call.reject("Не удалось изменить избранное: "+ex.getMessage());}
     });
