@@ -49,7 +49,7 @@ public class MainActivity extends BridgeActivity {
     if (hasFocus) getWindow().getDecorView().post(this::logMeasuredWebView);
   }
 
-  @Override protected void onResume() {
+  @Override public void onResume() {
     super.onResume();
     // Two bounded one-shot probes cover WebView creation and first layout
     // without a polling loop or changing UI geometry. Both run on UI thread.
