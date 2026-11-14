@@ -73,6 +73,11 @@ export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
 export async function pauseNativeAudioSink():Promise<void>{
   if(Capacitor.getPlatform()==="android")await native.pause().catch(()=>{});
 }
+export function confirmedAudioStop(response:{requested?:boolean}|null|undefined):boolean {
+  return response?.requested === true;
+}
 export async function stopNativeAudioSink():Promise<void>{
-  if(Capacitor.getPlatform()==="android")await native.stop();
+  if(Capacitor.getPlatform()!=="android")return;
+  const response=await native.stop();
+  if(!confirmedAudioStop(response))throw new Error("Android не подтвердил остановку аудиослужбы");
 }

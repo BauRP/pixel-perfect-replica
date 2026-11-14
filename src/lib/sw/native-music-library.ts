@@ -28,6 +28,9 @@ const native=registerPlugin<LibraryPlugin>("SoundWorldMusicLibrary");
 const error=(e:unknown):{ok:false;code:"ERROR";message:string}=>({ok:false,code:"ERROR",message:e instanceof Error?e.message:String(e)});
 const unavailable=(msg:string):{ok:false;code:"UNAVAILABLE";message:string}=>({ok:false,code:"UNAVAILABLE",message:msg});
 export const nativeMusicLibraryAvailable=()=>Capacitor.getPlatform()==="android";
+export function validNativeRecordingId(id:unknown):id is string {
+  return typeof id==="string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id);
+}
 export async function currentStoredPlayback(){
   if(!nativeMusicLibraryAvailable())return null;
   try{return await native.playbackStatus();}catch{return null;}
@@ -35,7 +38,10 @@ export async function currentStoredPlayback(){
 /** Only the approved, genuinely running instrumental model may begin this transaction. */
 export async function beginGenuineClip(settings:Settings,genreIds:string[]):Promise<Result<string>> {
   if(!nativeMusicLibraryAvailable())return unavailable("Только Android");
-  try {const r=await native.beginClip({mood:settings.mood,speed:settings.speed,genreIdsJson:JSON.stringify(genreIds),instrumentIdsJson:JSON.stringify(settings.favoriteInstrumentIds)});return {ok:true,value:r.id};}
+  try {
+    const r=await native.beginClip({mood:settings.mood,speed:settings.speed,genreIdsJson:JSON.stringify(genreIds),instrumentIdsJson:JSON.stringify(settings.favoriteInstrumentIds)});
+    return validNativeRecordingId(r.id)?{ok:true,value:r.id}:{ok:false,code:"ERROR",message:"Android вернул неверный ID новой записи"};
+  }
   catch(e){return error(e);}
 }
 /** PCM belongs to the actual generator output; never pass ambient microphone buffers. */
