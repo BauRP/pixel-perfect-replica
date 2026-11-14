@@ -164,20 +164,9 @@ PY
 # rendered them. Verify React's actual mounted heading in logcat as a fallback.
 visible_dom_route() {
   local route="$1" heading="$2"
-  adb logcat -d -v brief | python3 -c '
-import sys,json
-route,heading=sys.argv[1:3]
-for line in sys.stdin:
-    marker="SW_NAV_GEOMETRY "
-    if marker not in line:continue
-    try: data=json.loads(line.split(marker,1)[1].strip())
-    except (ValueError,IndexError): continue
-    if data.get("path")==route and heading.casefold() in data.get("heading","").casefold():
-        if not data.get("root") or not data.get("shell"): continue
-        print("DOM_ROUTE_OK",route,"heading=",data.get("heading"),"nav=",data.get("nav"))
-        sys.exit(0)
-sys.exit(1)
-' "$route" "$heading"
+  # Only the LAST mounted React screen may establish success. Historical
+  # logcat markers from a prior route or a previous tap are never sufficient.
+  adb logcat -d -v brief | python3 scripts/ui_route_status.py "$route" "$heading"
 }
 # Validate the currently visible Activity before trusting WebView log markers.
 # An Android System UI ANR may put the launcher in front of a living process.
@@ -238,6 +227,7 @@ subprocess.run(["adb","shell","input","tap",str(x),str(y)],check=True)
 }
 wait_for_ui() {
   local text="$1"
+  local onboarding_retry=0
   for _ in 1 2 3 4 5 6 7 8; do
     # A real mounted React heading is cheaper to inspect than UIAutomator,
     # but only while the actual SoundWorld Activity is visible.
@@ -251,6 +241,15 @@ wait_for_ui() {
     fi
     capture_ui || true
     if app_in_foreground && find_ui_text "$text" 2>/dev/null; then return 0; fi
+    # A System UI ANR overlay can swallow the first REAL tap without killing
+    # SoundWorld. After dismissing the overlay, retry ONCE only if the latest
+    # mounted React snapshot still shows incomplete onboarding.
+    if [[ "$text" == "Живая музыка" && "$_" -ge 3 && $onboarding_retry -lt 1 ]] &&
+       app_in_foreground && visible_dom_route "/onboarding" "Музыкальные вкусы"; then
+      onboarding_retry=$((onboarding_retry + 1))
+      echo "::warning::Android emulator swallowed onboarding input; retrying measured button once"
+      tap_ui_text "Пропустить" || true
+    fi
     sleep 2
   done
   echo "::error::WebView failed to expose expected screen: $text"

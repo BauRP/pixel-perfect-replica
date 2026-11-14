@@ -8,6 +8,7 @@ public final class SoundWorldClipLengthPolicyTest {
     long sec = SoundWorldClipLengthPolicy.PCM_BYTES_PER_SECOND;
     check("11s forbidden", false, 11 * sec);
     check("59s forbidden", false, 59 * sec);
+    check("59s 999ms forbidden", false, 60 * sec - 4);
     check("60s accepted", true, 60 * sec);
     check("120s accepted", true, 120 * sec);
     check("over 120s", false, 121 * sec);

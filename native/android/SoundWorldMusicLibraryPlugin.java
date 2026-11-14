@@ -430,8 +430,8 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
          rate!=SAMPLE_RATE || byteRate!=SAMPLE_RATE*FRAME_BYTES || blockAlign!=FRAME_BYTES || bits!=16)
         throw new IOException("Неподдерживаемый или повреждённый формат WAV");
       long size=(header[40]&255L)|((header[41]&255L)<<8)|((header[42]&255L)<<16)|((header[43]&255L)<<24);
-      if(size!=file.length()-44 || size%FRAME_BYTES!=0)
-        throw new IOException("Повреждён размер WAV");
+      if(size!=file.length()-44 || !SoundWorldClipLengthPolicy.canFinish(size))
+        throw new IOException("Готовый WAV должен быть 60–120 секунд PCM без повреждений");
     }
   }
 
