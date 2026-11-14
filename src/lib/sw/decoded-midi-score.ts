@@ -30,6 +30,11 @@ export type ScoreCheck =
 const MIN_US = 60_000_000;
 const MAX_US = 120_000_000;
 const MAX_NOTES = 50_000;
+// Conservative *symbolic* continuity gate: notes cannot leave an invented
+// minute of empty timeline while claiming a 120s finished composition.
+// This does not replace acoustic testing after real MIDI synthesis.
+const MAX_INTERNAL_REST_US = 8_000_000;
+const MAX_EDGE_REST_US = 2_000_000;
 
 const inRange = (value: unknown, from: number, through: number): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) &&
@@ -46,6 +51,7 @@ export function validateDecodedMidiScore(input: unknown): ScoreCheck {
 
   const verified: DecodedMidiNote[] = [];
   let previousStart = -1;
+  let soundingUntil = 0;
   for (const entry of raw.notes) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry))
       return {ok:false,reason:"Malformed MIDI note"};
@@ -60,12 +66,22 @@ export function validateDecodedMidiScore(input: unknown): ScoreCheck {
     // The consumer can schedule notes without sorting huge untrusted arrays.
     if (n.startUs < previousStart)
       return {ok:false,reason:"MIDI note onsets are out of order"};
+    if (verified.length === 0 && n.startUs > MAX_EDGE_REST_US)
+      return {ok:false,reason:"Score starts with too much silence"};
+    // A sustained note on ANY track keeps symbolic music alive; overlapping
+    // tracks do not falsely count as separate gaps.
+    if (n.startUs > soundingUntil + MAX_INTERNAL_REST_US)
+      return {ok:false,reason:"Excessive silent gap in symbolic score"};
+    soundingUntil = Math.max(soundingUntil,n.endUs);
     previousStart = n.startUs;
     verified.push(Object.freeze({
       track:n.track,channel:n.channel,program:n.program,
       pitch:n.pitch,velocity:n.velocity,startUs:n.startUs,endUs:n.endUs,
     }));
   }
+
+  if (raw.durationUs - soundingUntil > MAX_EDGE_REST_US)
+    return {ok:false,reason:"Score declares a silent tail as finished music"};
 
   // Copy/freeze so the decoder cannot change an already accepted score
   // while asynchronous native synthesis schedules its notes.
