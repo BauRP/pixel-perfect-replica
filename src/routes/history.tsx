@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Clock, Heart, FolderDown, Route as RouteIcon, Play, Pause, Download, RefreshCw } from "lucide-react";
+import { Clock, Heart, FolderDown, Route as RouteIcon, Play, Pause, Square, Download, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/sw/ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAdapters, withTimeout, type ClipMeta } from "@/lib/sw/engine";
@@ -8,6 +8,8 @@ import { genreNameById } from "@/lib/sw/catalog";
 import { notify } from "@/lib/sw/notify";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 import { groupRealJourney } from "@/lib/sw/journey";
+import { wavTimestamp, type WavProgress } from "@/lib/sw/wav-progress";
+import { verifiedHistoryProgress, verifiedHistorySeek } from "@/lib/sw/history-wav-seek";
 
 export const Route = createFileRoute("/history")({
   head: () => ({ meta: [{ title: "История и избранное — SoundWorld AR" }, { name: "description", content: "Настоящие сохранённые фрагменты SoundWorld AR" }] }),
@@ -30,6 +32,8 @@ function HistoryPage(){
   const busyRef=useRef(false);
   const [error,setError]=useState("");
   const [playback,setPlayback]=useState<Playback>({state:"stopped",clipId:""});
+  const [measured,setMeasured]=useState<{clipId:string;progress:WavProgress}|null>(null);
+  const [seekDraft,setSeekDraft]=useState<{clipId:string;positionMs:number}|null>(null);
   const library=getAdapters().library;
   const reload=useCallback(async()=>{
     const results=await Promise.all([
@@ -49,20 +53,48 @@ function HistoryPage(){
     const unsubscribe=library.observeStoredPlayback(state=>{if(mounted){setPlayback(state);if(state.error){setError(state.error);notify.error(state.error)}}});
     return ()=>{mounted=false;unsubscribe();};
   },[library,reload]);
-  const execute=async<T,>(action:()=>Promise<import("@/lib/sw/engine").Result<T>>,message:string)=>{
+  // Poll only while the History page is open and a real native WAV is active.
+  // Never estimate playback time from a timer or a saved clip's metadata.
+  useEffect(()=>{
+    setMeasured(null);setSeekDraft(null);
+    if(!playback.clipId || (playback.state!=="playing"&&playback.state!=="paused"))return;
+    let alive=true,reading=false;
+    const refresh=async()=>{
+      if(reading)return;
+      reading=true;
+      try{
+        const status=await currentStoredPlayback();
+        if(!alive||!status)return;
+        if(status.state==="stopped"){
+          setPlayback(prev=>prev.clipId===playback.clipId?{state:"stopped",clipId:""}:prev);
+          return;
+        }
+        const progress=verifiedHistoryProgress(playback.clipId,status);
+        setMeasured(progress?{clipId:playback.clipId,progress}:null);
+      }finally{reading=false}
+    };
+    void refresh();
+    const interval=window.setInterval(()=>void refresh(),1000);
+    return ()=>{alive=false;window.clearInterval(interval)};
+  },[playback.clipId,playback.state]);
+  const execute=async<T,>(action:()=>Promise<import("@/lib/sw/engine").Result<T>>,message:string,refreshAfter=true)=>{
     if(busyRef.current)return;
     busyRef.current=true;
     setBusy(true);
     try{
       const result=await withTimeout(action());
       if(!result.ok){notify.result(result,"");setError(result.message);}
-      else{if(message)notify.saved(message);await reload();}
+      else{if(message)notify.saved(message);if(refreshAfter)await reload();}
     }catch(e){const m=e instanceof Error?e.message:"Неизвестная ошибка";setError(m);notify.error(m);}
     finally{busyRef.current=false;setBusy(false);}
   };
   const clipList=(items:ClipMeta[])=><ul className="space-y-2">
     {items.map(c=>{
       const playing=playback.clipId===c.id&&playback.state==="playing";
+      const active=playback.clipId===c.id&&(playing||playback.state==="paused");
+      const progress=active&&measured?.clipId===c.id?measured.progress:null;
+      const draft=seekDraft?.clipId===c.id?seekDraft.positionMs:null;
+      const seekTarget=verifiedHistorySeek(c.id,playback.clipId,draft,progress);
       return <li key={c.id} className="rounded-xl border border-border bg-surface p-3 text-sm">
         <p>{new Date(c.createdAt).toLocaleString("ru")} · {Math.round(c.durationSec)} с</p>
         <p className="mt-1 text-xs text-muted-foreground">
@@ -74,6 +106,11 @@ function HistoryPage(){
             onClick={()=>void execute(playing?()=>library.pauseStoredClip():()=>library.playStoredClip(c.id),"")}>
             {playing?<Pause className="size-4"/>:<Play className="size-4"/>}{playing?"Пауза":"Слушать"}
           </button>
+          {active && <button disabled={busy} aria-label="Остановить WAV"
+            className="flex min-h-11 items-center gap-1 rounded-lg border border-border px-3 disabled:opacity-50"
+            onClick={()=>void execute(()=>library.stopStoredClip(),"",false)}>
+            <Square className="size-4"/>Стоп
+          </button>}
           <button disabled={busy} aria-label={c.favorite?"Убрать из избранного":"В избранное"} aria-pressed={c.favorite}
             className="flex min-h-11 items-center gap-1 rounded-lg border border-border px-3 disabled:opacity-50"
             onClick={()=>void execute(()=>library.markFavorite(c.id,!c.favorite),c.favorite?"Убрано из избранного":"Добавлено в избранное")}>
@@ -84,6 +121,30 @@ function HistoryPage(){
             <Download className="size-4"/>Сохранить
           </button>
         </div>
+        {active && <div className="mt-3 space-y-2" aria-label="Перемотка сохранённого WAV">
+          {progress
+            ? <>
+                <div className="flex justify-between gap-2 text-xs text-muted-foreground">
+                  <span>{wavTimestamp(draft??progress.positionMs)}</span>
+                  <span>{wavTimestamp(progress.durationMs)}</span>
+                </div>
+                <input type="range" min={0} max={progress.durationMs} step={1000}
+                  value={draft??progress.positionMs}
+                  onChange={e=>setSeekDraft({clipId:c.id,positionMs:Number(e.currentTarget.value)})}
+                  disabled={busy}
+                  className="w-full accent-primary"
+                  aria-label="Выбрать позицию сохранённого WAV"
+                  aria-valuetext={wavTimestamp(draft??progress.positionMs)}/>
+                <button disabled={busy||seekTarget===null}
+                  className="min-h-11 rounded-lg border border-border px-3 text-xs disabled:opacity-50"
+                  onClick={()=>{
+                    if(seekTarget===null)return;
+                    setSeekDraft(null);
+                    void execute(()=>library.seekStoredClip(c.id,seekTarget),"",false);
+                  }}>Перемотать</button>
+              </>
+            : <p className="text-xs text-muted-foreground">Позиция WAV не подтверждена Android</p>}
+        </div>}
       </li>;
     })}
   </ul>;
