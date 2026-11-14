@@ -4,6 +4,7 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import android.os.ParcelFileDescriptor;
 import android.os.Build;
 import android.provider.MediaStore;
 import android.util.Base64;
@@ -71,6 +72,24 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   }
   private JSObject errorMessage(Exception ex) {
     JSObject obj = new JSObject();obj.put("message", ex.getMessage());return obj;
+  }
+
+  /** MediaStore copy can be deleted by the user independently of our WAV.
+   * Never show stale entries in Saved, but preserve their index metadata.
+   * File descriptors are checked only on the serial disk worker thread. */
+  private boolean exportedCopyExists(String uriText, long expectedBytes) {
+    if (uriText == null || uriText.isEmpty() || expectedBytes <= 44) return false;
+    try {
+      Uri uri = Uri.parse(uriText);
+      if (!"content".equals(uri.getScheme()) || !"media".equals(uri.getAuthority()))
+        return false;
+      try (ParcelFileDescriptor descriptor =
+          getContext().getContentResolver().openFileDescriptor(uri, "r")) {
+        return descriptor != null && descriptor.getStatSize() == expectedBytes;
+      }
+    } catch (Exception missing) {
+      return false;
+    }
   }
 
   @PluginMethod public void beginClip(PluginCall call) {
@@ -246,7 +265,10 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
           try { verifyWavFile(clipFile(id)); }
           catch (Exception invalidFile) { continue; }
           if("favorites".equals(filter) && !item.optBoolean("favorite")) continue;
-          if("exports".equals(filter) && !item.has("exportedUri")) continue;
+          if("exports".equals(filter) && (
+               !item.has("exportedUri") ||
+               !exportedCopyExists(item.optString("exportedUri", ""),
+                                    clipFile(id).length()))) continue;
           output.put(item);
           if ("recent".equals(filter) && output.length() >= 3) break;
           if ("journey".equals(filter) && output.length() >= 100) break;
@@ -309,6 +331,15 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
         ContentValues done=new ContentValues();done.put(MediaStore.Audio.Media.IS_PENDING,0);
         if(getContext().getContentResolver().update(outputUri,done,null,null)<1)
           throw new IOException("Не удалось подтвердить сохранение файла");
+        // Byte count is not enough: confirm the Android-exposed copy is
+        // byte-for-byte identical to the private, verified WAV. Keep this
+        // work on the existing disk executor, never block the UI thread.
+        if (!exportedCopyExists(outputUri.toString(), file.length()))
+          throw new IOException("Android не подтвердил полный размер экспортированного WAV");
+        try (InputStream source=new FileInputStream(file);
+             InputStream saved=getContext().getContentResolver().openInputStream(outputUri)) {
+          SoundWorldWavExportPolicy.verifyExactCopy(source,saved,file.length());
+        }
         record.put("exportedUri",outputUri.toString());
         saveIndex(index);
         JSObject r=new JSObject();r.put("uri",outputUri.toString());call.resolve(r);

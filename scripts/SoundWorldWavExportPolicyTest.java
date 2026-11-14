@@ -43,6 +43,30 @@ public final class SoundWorldWavExportPolicyTest {
         }, wav.length);
     } catch (IOException expectedFailure) { failedWrite = true; }
     check(failedWrite, "failed MediaStore write rejected");
+
+    SoundWorldWavExportPolicy.verifyExactCopy(
+      new ByteArrayInputStream(wav), new ByteArrayInputStream(output.toByteArray()), wav.length);
+    check(true, "verified exported WAV digest matches source");
+    byte[] corrupted = output.toByteArray();
+    corrupted[70] ^= (byte)0xff;
+    boolean rejectedCorruption = false;
+    try {
+      SoundWorldWavExportPolicy.verifyExactCopy(
+        new ByteArrayInputStream(wav), new ByteArrayInputStream(corrupted), wav.length);
+    } catch (IOException ex) { rejectedCorruption = true; }
+    check(rejectedCorruption, "equal size but corrupt WAV rejected");
+    boolean rejectedTruncation = false;
+    try {
+      SoundWorldWavExportPolicy.verifyExactCopy(new ByteArrayInputStream(wav),
+        new ByteArrayInputStream(Arrays.copyOf(wav,wav.length-1)), wav.length);
+    } catch (IOException ex) { rejectedTruncation = true; }
+    check(rejectedTruncation, "truncated MediaStore readback rejected");
+    boolean rejectedExtra = false;
+    try {
+      SoundWorldWavExportPolicy.verifyExactCopy(new ByteArrayInputStream(wav),
+        new ByteArrayInputStream(Arrays.copyOf(wav,wav.length+1)), wav.length);
+    } catch (IOException ex) { rejectedExtra = true; }
+    check(rejectedExtra, "extended MediaStore readback rejected");
     System.out.println("SoundWorldWavExportPolicyTest: " + checks + " checks passed");
   }
 }
