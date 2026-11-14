@@ -129,6 +129,11 @@ function Player() {
   const previousClip = previousRealClip(recentClips,storedPlayback.clipId);
   const nextClip = nextRealClip(recentClips,storedPlayback.clipId);
   const hasClip = !!currentClip; // only real, verified and completed files
+  // Hide any cached sensor display immediately when user enables the
+  // no-analysis privacy mode, not five seconds after the last callback.
+  const visibleEnvironment = s.musicOnlyMode ? null : lastEnvironment;
+  const visibleActivity = s.musicOnlyMode ? null : lastActivity;
+  const visibleMicrophone = !s.musicOnlyMode && microphone.active;
 
   const onPlay = () => run(async () => {
     const playSaved = !playing && storedPlayback.state==="stopped" &&
@@ -205,7 +210,7 @@ function Player() {
       <div className="mt-2 flex min-h-9 items-center gap-2 rounded-lg border border-dashed border-border px-3 text-xs text-muted-foreground">
         <Activity className="size-4" />
         <div className="h-px flex-1 bg-border" />
-        <span>{microphone.active ? `Микрофон: ${microphone.input || "активен"}` : "Микрофон выключен — нет сигнала"}</span>
+        <span>{visibleMicrophone ? `Микрофон: ${microphone.input || "активен"}` : "Микрофон выключен — нет сигнала"}</span>
       </div>
 
       <div className="mt-2 flex items-center justify-between">
@@ -271,9 +276,9 @@ function Player() {
         </div>
         <ul className="mt-2 grid grid-cols-2 gap-1.5 text-[11px]">
           {[
-            { icon: CloudRain, label: "Дождь", v: lastEnvironment?.kind==="rain"?"Обнаружен":"нет данных" },
-            { icon: Footprints, label: "Ходьба", v: lastActivity?.kind==="walking"?"Обнаружена":lastActivity?.kind==="running"?"Бег":"нет данных" },
-            { icon: Bus, label: "Транспорт", v: lastEnvironment?.kind==="traffic"?"Обнаружен":"нет данных" },
+            { icon: CloudRain, label: "Дождь", v: visibleEnvironment?.kind==="rain"?"Обнаружен":"нет данных" },
+            { icon: Footprints, label: "Ходьба", v: visibleActivity?.kind==="walking"?"Обнаружена":visibleActivity?.kind==="running"?"Бег":"нет данных" },
+            { icon: Bus, label: "Транспорт", v: visibleEnvironment?.kind==="traffic"?"Обнаружен":"нет данных" },
             { icon: Music2, label: "Жанр", v: genreSummary || "—" },
           ].map((f) => (
             <li key={f.label} className="flex min-w-0 items-center gap-1.5 rounded-lg bg-background/50 px-2 py-1.5">
