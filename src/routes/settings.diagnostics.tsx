@@ -3,12 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import { PageHeader, Section } from "@/components/sw/ui";
 import {
   androidSensorsAvailable, observeRawSteps, observeSensorErrors, observeRawSound, observeMicrophoneLevel, sensorStatus,
-  startSensorDiagnostics, stopSensorDiagnostics, getNativePerformanceSnapshot, ATMOSPHERE_RU,
+  startSensorDiagnostics, startStepOnlyDiagnostics, stopSensorDiagnostics, getNativePerformanceSnapshot, ATMOSPHERE_RU,
   type SensorsStatus
 } from "@/lib/sw/native-sensors";
 import { AmbientStabilizer, StepPaceEstimator } from "@/lib/sw/environment-smoothing";
 import { MusicControlPlanner, type ControlPlan } from "@/lib/sw/music-control";
 import { RealStepSession } from "@/lib/sw/real-step-session";
+import { YamnetObservationLog, type YamnetObservation } from "@/lib/sw/yamnet-observation-log";
 import { useSettings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
 import { buildMusicRequest } from "@/lib/sw/music-preferences";
@@ -33,6 +34,10 @@ function Diagnostics() {
   const [steps,setSteps] = useState("Нет подтверждённых шагов");
   const [stepCount,setStepCount] = useState<number|null>(null);
   const countingSteps = useRef(false);
+  const [stepsOnly,setStepsOnly]=useState(false);
+  const collectingSound=useRef(false);
+  const soundLog=useRef(new YamnetObservationLog());
+  const [soundEvents,setSoundEvents]=useState<readonly YamnetObservation[]>([]);
   const stepCounter = useRef(new RealStepSession());
   const lastRealStep = useRef(0);
   const [error,setError] = useState("");
@@ -69,6 +74,9 @@ function Diagnostics() {
     });
     const removeErrors=observeSensorErrors(setError);
     const removeSounds=observeRawSound(e=>{
+      if (!collectingSound.current || settingsRef.current.musicOnlyMode) return;
+      const received=soundLog.current.ingest(e,Date.now());
+      if (received!==null) setSoundEvents(received);
       const stable=stabilizer.update(e);
       if(!stable)return;
       setEnvironment(stable.atmosphere+" · "+Math.round(stable.confidence*100)+"%");
@@ -88,13 +96,14 @@ function Diagnostics() {
       updatePlan();
     },3000);
     return ()=>{mounted=false;countingSteps.current=false;stepCounter.current.stop();
+      collectingSound.current=false;soundLog.current.stop();
       clearInterval(interval);removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
   },[]);
-  const start=async()=>{
+  const start=async(mode:"all"|"steps"="all")=>{
     if(pendingRef.current || settingsRef.current.musicOnlyMode) return;
     pendingRef.current=true;setPending(true);
     try {
-      const result=await startSensorDiagnostics(true);
+      const result=mode==="steps"?await startStepOnlyDiagnostics():await startSensorDiagnostics(true);
       if(!result.ok) {notify.result(result,"");setError(result.message);}
       else {
         stepCounter.current.start(Date.now());
@@ -102,7 +111,13 @@ function Diagnostics() {
         lastRealStep.current=0;
         setStepCount(0);
         setSteps("Ожидание настоящих шагов Android");
-        setActive(true);setError("");setEnvironment("Ожидание достоверного результата");
+        const soundEnabled=mode==="all";
+        collectingSound.current=soundEnabled;
+        soundLog.current.stop();
+        if(soundEnabled)soundLog.current.start(Date.now());
+        setSoundEvents([]);
+        setStepsOnly(mode==="steps");
+        setActive(true);setError("");setEnvironment(soundEnabled?"Ожидание достоверного результата":"Анализ не запущен: только шаги");
       }
       setStatus(await sensorStatus());
       setHardware(await getNativePerformanceSnapshot());
@@ -113,6 +128,9 @@ function Diagnostics() {
     pendingRef.current=true;setPending(true);
     countingSteps.current=false;
     stepCounter.current.stop();
+    collectingSound.current=false;
+    soundLog.current.stop();
+    setSoundEvents([]);
     try {
       await stopSensorDiagnostics();setActive(false);setMicRms(null);setPlan(null);
       setSteps("Проверка остановлена");
@@ -150,7 +168,15 @@ function Diagnostics() {
             <p>Буфер звука: {output?.serviceActive?output.queuedChunks+" фрагментов":"Не используется"}</p>
             <p>Пропуски AudioTrack: {output?.underruns !== undefined && output.underruns >= 0?output.underruns:"Не измерены"}</p>
             {output?.lastAudioError&&<p role="alert" className="text-destructive">Последняя ошибка звука: {output.lastAudioError}</p>}
-            <p>Обстановка: {status?.yamnetIncluded ? environment : ATMOSPHERE_RU.unknown}</p>
+            <p>Обстановка: {stepsOnly?"Не анализируется: только шаги":status?.yamnetIncluded ? environment : ATMOSPHERE_RU.unknown}</p>
+            <div className="space-y-1" aria-label="Последние распознанные звуки YAMNet">
+              <p className="font-medium">Распознанные звуки YAMNet за текущую проверку</p>
+              {!soundEvents.length && <p className="text-xs text-muted-foreground">Нет подтверждённых событий за текущую проверку</p>}
+              {soundEvents.map((e,i)=><p className="text-xs text-muted-foreground" key={e.timestamp+"-"+e.label+"-"+i}>
+                {e.label} · {Math.round(e.confidence*100)}% · {e.source}
+              </p>)}
+              <p className="text-xs text-muted-foreground">Только локальные названия классов звука. Сам звук и разговоры не сохраняются.</p>
+            </div>
             <p>Запрошенный темп будущей музыки: {plan?.tempoBpm ?? "Нет плана"} BPM</p>
             <p>Ритм шагов для отдельной перкуссии: {plan?.stepPulseBpm ?? "Не определён"}</p>
             <p>План смены атмосферы: {plan?.transitionMs ?? "Не определён"} мс</p>
@@ -166,8 +192,12 @@ function Diagnostics() {
         </Section>
         <div className="flex flex-wrap gap-3">
           <button className="min-h-12 rounded-xl bg-primary px-5 text-primary-foreground disabled:opacity-50"
-            disabled={!androidSensorsAvailable()||active||pending||settings.musicOnlyMode} onClick={()=>void start()}>
+            disabled={!androidSensorsAvailable()||active||pending||settings.musicOnlyMode} onClick={()=>void start("all")}>
             Проверить микрофон и шаги
+          </button>
+          <button className="min-h-12 rounded-xl border border-border px-5 disabled:opacity-50"
+            disabled={!androidSensorsAvailable()||active||pending||settings.musicOnlyMode} onClick={()=>void start("steps")}>
+            Проверить только шаги
           </button>
           <button className="min-h-12 rounded-xl border border-border px-5 disabled:opacity-50"
             disabled={!active||pending} onClick={()=>void stop()}>
@@ -176,6 +206,7 @@ function Diagnostics() {
         </div>
         {settings.musicOnlyMode && <p className="text-xs text-warning" role="status">Включён режим «Без анализа окружения». Выключите его в Настройках, чтобы проверить микрофон и шаги.</p>}
         <p className="text-xs text-muted-foreground">
+          Проверка «только шаги» использует разрешение на активность и датчик шагов, микрофон при этом не включается.
           Проверка запускается только по нажатию и выключается при уходе с экрана.
           Разговоры не сохраняются. При наличии YAMNet кнопка запускает настоящее локальное распознавание звуков. Музыкальная генерация пока недоступна.
         </p>

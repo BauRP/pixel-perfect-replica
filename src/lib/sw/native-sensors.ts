@@ -121,6 +121,36 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
     return safeError(e);
   }
 }
+/** Independent step-detector test. It must never ask for microphone permission,
+ * initialize AudioRecord, or create YAMNet inference resources. */
+export async function startStepOnlyDiagnostics(): Promise<Result> {
+  if (!androidSensorsAvailable()) return unavailable("Шагомер доступен только в Android APK");
+  if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
+  const epoch = ++diagnosticEpoch;
+  const cancelled = () => epoch !== diagnosticEpoch;
+  try {
+    const status = await native.status();
+    if (cancelled()) return unavailable("Запуск шагомера отменён");
+    if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
+    if (!status.stepsSupported) return unavailable("На устройстве отсутствует датчик шагов");
+    const permission = await native.requestActivity();
+    if (cancelled()) return unavailable("Запуск шагомера отменён");
+    if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
+    if (!permission.granted)
+      return {ok:false,code:"PERMISSION_DENIED",message:"Разрешите физическую активность для шагомера"};
+    const result = await native.startSteps();
+    if (cancelled() || !sensorsAllowed(getSettingsSnapshot())) {
+      await native.stopSteps().catch(()=>{});
+      return unavailable("Запуск шагомера отменён");
+    }
+    return result.started
+      ? {ok:true,value:undefined}
+      : unavailable("Android не подтвердил запуск датчика шагов");
+  } catch (e) {
+    return safeError(e);
+  }
+}
+
 export async function stopSensorDiagnostics(): Promise<void> {
   ++diagnosticEpoch; // invalidate suspended permission dialogs / native starts
   if (!androidSensorsAvailable()) return;
