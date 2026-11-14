@@ -21,7 +21,7 @@ describe("real Android battery, memory and thermal diagnostics",()=>{
     expect(deviceHealthAlerts({battery:50,lowMemory:true})[0]?.id).toBe("memory");
     expect(deviceHealthAlerts({thermalStatus:3,battery:4,lowMemory:true}).map(x=>x.id))
       .toEqual(["heat","battery","memory"]);
-    expect(deviceHealthAlerts({thermalStatus:NaN,battery:-1,ramMb:undefined})).toEqual([]);
+    expect(deviceHealthAlerts({thermalStatus:NaN,battery:-1})).toEqual([]);
     expect(deviceHealthAlerts(null)).toEqual([]);
   });
 });
