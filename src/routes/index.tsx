@@ -5,7 +5,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { getAdapters, withTimeout, type SessionState, type ClipMeta } from "@/lib/sw/engine";
 import { notify } from "@/lib/sw/notify";
-import { effectiveDirections, useSettings } from "@/lib/sw/settings";
+import { effectiveDirections, useSettings, getSettingsSnapshot } from "@/lib/sw/settings";
 import { genreNameById } from "@/lib/sw/catalog";
 import { PendingBadge } from "@/components/sw/ui";
 import { cn } from "@/lib/utils";
@@ -92,14 +92,18 @@ function Player() {
     let mounted=true;
     void sensorStatus().then(s=>{if(mounted&&s?.recording)setMicrophone({active:true,input:s.actualInput,at:Date.now()})});
     const offSound=observeRawSound(event=>{
+      if(getSettingsSnapshot().musicOnlyMode)return;
       const stable=stabilizer.update(event);
       if(stable)setLastEnvironment({kind:stable.atmosphere,at:Date.now()});
     });
     const offSteps=observeRawSteps(event=>{
+      if(getSettingsSnapshot().musicOnlyMode)return;
       const next=pace.ingest(event.timestamp);
       if(next.activity!=="unknown")setLastActivity({kind:next.activity,at:Date.now()});
     });
-    const offMicrophone=observeMicrophoneLevel(event=>setMicrophone({active:true,input:event.input,at:Date.now()}));
+    const offMicrophone=observeMicrophoneLevel(event=>{
+      if(!getSettingsSnapshot().musicOnlyMode)setMicrophone({active:true,input:event.input,at:Date.now()});
+    });
     // Never show old sensor readings as if detection was still active.
     const interval=window.setInterval(()=>{
       const now=Date.now();

@@ -91,7 +91,7 @@ function Diagnostics() {
       clearInterval(interval);removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
   },[]);
   const start=async()=>{
-    if(pendingRef.current) return;
+    if(pendingRef.current || settingsRef.current.musicOnlyMode) return;
     pendingRef.current=true;setPending(true);
     try {
       const result=await startSensorDiagnostics(true);
@@ -166,7 +166,7 @@ function Diagnostics() {
         </Section>
         <div className="flex flex-wrap gap-3">
           <button className="min-h-12 rounded-xl bg-primary px-5 text-primary-foreground disabled:opacity-50"
-            disabled={!androidSensorsAvailable()||active||pending} onClick={()=>void start()}>
+            disabled={!androidSensorsAvailable()||active||pending||settings.musicOnlyMode} onClick={()=>void start()}>
             Проверить микрофон и шаги
           </button>
           <button className="min-h-12 rounded-xl border border-border px-5 disabled:opacity-50"
@@ -174,6 +174,7 @@ function Diagnostics() {
             Остановить проверку
           </button>
         </div>
+        {settings.musicOnlyMode && <p className="text-xs text-warning" role="status">Включён режим «Без анализа окружения». Выключите его в Настройках, чтобы проверить микрофон и шаги.</p>}
         <p className="text-xs text-muted-foreground">
           Проверка запускается только по нажатию и выключается при уходе с экрана.
           Разговоры не сохраняются. При наличии YAMNet кнопка запускает настоящее локальное распознавание звуков. Музыкальная генерация пока недоступна.

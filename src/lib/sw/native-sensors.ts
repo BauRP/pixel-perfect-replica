@@ -8,6 +8,7 @@ import {
 } from "./engine";
 import { AmbientStabilizer, StepPaceEstimator, type Atmosphere } from "./environment-smoothing";
 import { getSettingsSnapshot, type Settings } from "./settings";
+import { sensorsAllowed, SENSOR_MODE_BLOCKED } from "./sensor-mode";
 
 type NativeResult = { started?: boolean; stopped?: boolean; granted?: boolean; active?: boolean; name?: string; kind?: string; input?: string; output?: string };
 export interface SensorsStatus {
@@ -68,15 +69,18 @@ export async function sensorStatus(): Promise<SensorsStatus | null> {
 let diagnosticEpoch = 0;
 export async function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
   if (!androidSensorsAvailable()) return unavailable("Только в Android APK");
+  if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
   const epoch = ++diagnosticEpoch;
   const cancelled = () => epoch !== diagnosticEpoch;
   let started=false;
   try {
     const permission = await native.requestMicrophone();
     if(cancelled()) return unavailable("Проверка микрофона отменена");
+    if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
     if (!permission.granted) return {ok:false,code:"PERMISSION_DENIED",message:"Микрофон не разрешён"};
     const availability = await native.status();
     if(cancelled()) return unavailable("Проверка микрофона отменена");
+    if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
     // Request all permissions BEFORE starting audio: Android may pause the
     // Activity while showing a permission dialog, which stops diagnostic capture.
     if (includeSteps && availability.stepsSupported) {
@@ -87,12 +91,21 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
       } catch { /* microphone still works without the motion sensor */ }
     }
     if(cancelled()) return unavailable("Проверка микрофона отменена");
+    if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
     await native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())});
     if(cancelled()) return unavailable("Проверка микрофона отменена");
+    if (!sensorsAllowed(getSettingsSnapshot())) {
+      await native.stopSteps().catch(()=>{});
+      return unavailable(SENSOR_MODE_BLOCKED);
+    }
     const r = availability.yamnetIncluded
       ? await native.startAnalysis()
       : await native.startMicrophoneProbe();
     if(cancelled()) return unavailable("Проверка микрофона отменена");
+    if (!sensorsAllowed(getSettingsSnapshot())) {
+      await Promise.allSettled([native.stopMicrophoneProbe(),native.stopSteps()]);
+      return unavailable(SENSOR_MODE_BLOCKED);
+    }
     if (!r.started) {
       await native.stopSteps().catch(()=>{});
       return unavailable("Проверка микрофона не запущена");
@@ -149,11 +162,18 @@ export function installNativeSensorAdapters(): void {
         return s?.yamnetIncluded?{ok:true,value:undefined}:unavailable("Файл YAMNet отсутствует");
       },
       startCapture: async () => {
+        if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
         try {
           const s=await native.status();
           if(!s.microphoneGranted) return {ok:false,code:"PERMISSION_DENIED",message:"Разрешите микрофон при запуске музыки"};
+          if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
           await native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())});
+          if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
           const r = await native.startAnalysis();
+          if (!sensorsAllowed(getSettingsSnapshot())) {
+            await native.stopAnalysis().catch(()=>{});
+            return unavailable(SENSOR_MODE_BLOCKED);
+          }
           return r.started ? {ok:true,value:undefined} : unavailable("Модель YAMNet недоступна");
         }catch(e){return safeError(e);}
       },
@@ -162,6 +182,7 @@ export function installNativeSensorAdapters(): void {
         catch(e){return safeError(e);}
       },
       observeEnvironment: cb => observeRawSound(e=>{
+        if (!sensorsAllowed(getSettingsSnapshot())) return;
         const stable=stability.update(e);
         if (!stable) return;
         const mapped:EnvironmentEvent={label:stable.atmosphere,confidence:stable.confidence,timestamp:stable.timestamp,source:e.source};
@@ -170,6 +191,7 @@ export function installNativeSensorAdapters(): void {
     },
     activity: {
       observeWalkingRunningTransportRest: cb => observeRawSteps(e=>{
+        if (!sensorsAllowed(getSettingsSnapshot())) return;
         const rate=pace.ingest(e.timestamp);
         if(rate.activity!=="unknown")cb({activity:rate.activity,confidence:rate.confidence});
       }),

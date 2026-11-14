@@ -8,7 +8,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { resetSettings, updateSettings, useSettings, type Settings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
-import { androidSensorsAvailable, sensorStatus, observeActualRouteChanges, type SensorsStatus } from "@/lib/sw/native-sensors";
+import { androidSensorsAvailable, sensorStatus, observeActualRouteChanges, getNativePerformanceSnapshot, stopSensorDiagnostics, type SensorsStatus } from "@/lib/sw/native-sensors";
+import { deviceHealthAlerts, deviceHealthReadout } from "@/lib/sw/device-health";
 
 export const Route = createFileRoute("/settings/")({
   head: () => ({ meta: [{ title: "Настройки — SoundWorld AR" }, { name: "description", content: "Общие настройки приложения SoundWorld AR." }, { property: "og:title", content: "Настройки — SoundWorld AR" }, { property: "og:description", content: "Общие настройки приложения." }] }),
@@ -29,12 +30,21 @@ function ToggleRow({ title, desc, checked, onChange }: { title: string; desc: Re
 function SettingsPage() {
   const s = useSettings();
   const [device,setDevice] = useState<SensorsStatus | null>(null);
+  const [health,setHealth] = useState<Awaited<ReturnType<typeof getNativePerformanceSnapshot>>>(null);
+  const warnings=deviceHealthAlerts(health);
   useEffect(() => {
     let live=true;
     const refresh=()=>{void sensorStatus().then(x=>{if(live)setDevice(x)})};
-    refresh();
+    let reading=false;
+    const refreshHealth=()=>{
+      if(reading)return;
+      reading=true;
+      void getNativePerformanceSnapshot().then(x=>{if(live)setHealth(x)}).finally(()=>{reading=false});
+    };
+    refresh();refreshHealth();
+    const timer=window.setInterval(refreshHealth,15000);
     const off=observeActualRouteChanges(refresh);
-    return ()=>{live=false;off()};
+    return ()=>{live=false;window.clearInterval(timer);off()};
   },[]);
   return (
     <>
@@ -56,7 +66,8 @@ function SettingsPage() {
 
         <Section title="Воспроизведение">
           <ToggleRow title="Продолжать после звонка" desc="Для сохранённых WAV применяется при кратковременном прерывании звонком. Для генерации новой музыки заработает после подключения движка" checked={s.afterCallAutoResume} onChange={(v) => set("afterCallAutoResume", v)} />
-          <ToggleRow title="Без анализа окружения" desc="Только музыка по настройкам Studio, без микрофона и шагов" checked={s.musicOnlyMode} onChange={(v) => set("musicOnlyMode", v)} />
+          <ToggleRow title="Без анализа окружения" desc="Автоматический анализ и проверка микрофона и шагов отключаются до выключения режима" checked={s.musicOnlyMode}
+            onChange={(v) => {set("musicOnlyMode",v);if(v)void stopSensorDiagnostics();}} />
         </Section>
 
         <Section title="Экономия заряда">
@@ -64,6 +75,10 @@ function SettingsPage() {
             <Segmented label="Экономия заряда" value={s.batteryMode} onChange={(v) => set("batteryMode", v)}
               options={[{ value: "auto", label: "Автоматически" }, { value: "maxPerformance", label: "Максимальная производительность" }]} />
             <p className="text-xs text-muted-foreground">Режим уже управляет частотой распознавания окружения YAMNet с учётом нагрева и заряда. Для будущей генерации Fermata управление нагрузкой ещё не подключено.</p>
+            <p className="text-xs text-muted-foreground" role="status">Данные Android: {deviceHealthReadout(health)}</p>
+            {warnings.length>0 && <ul aria-label="Предупреждения Android о нагрузке" className="space-y-1 text-xs" role="list">
+              {warnings.map(w=><li key={w.id} className={w.severity==="critical"?"text-destructive":w.severity==="warning"?"text-warning":"text-muted-foreground"}>{w.message}</li>)}
+            </ul>}
           </div>
         </Section>
 
