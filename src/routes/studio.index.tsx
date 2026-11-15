@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { HelpDot, NavRow, PageHeader, Section, Segmented } from "@/components/sw/ui";
 import { Slider } from "@/components/ui/slider";
 import { updateSettings, useSettings, effectiveDirections, type Settings } from "@/lib/sw/settings";
+import {effectivePreferences} from "@/lib/sw/effective-preferences";
 
 export const Route = createFileRoute("/studio/")({
   head: () => ({
@@ -42,6 +43,7 @@ function Studio() {
   const favCount = s.favoriteInstrumentIds.length;
   const disCount = Object.keys(s.dislikes).length;
   const dirs = effectiveDirections(s).length;
+  const resolved=effectivePreferences(s);
 
   return (
     <>
@@ -95,6 +97,22 @@ function Studio() {
           </Item>
         </Section>
 
+        <Section title="Разрешённые музыкальные предпочтения">
+          <div className="space-y-1 p-3 text-xs">
+            <p>Доступно поджанров: <b>{resolved.allowedSubgenres.length}</b></p>
+            <p>Исключено из выбранных: <b>{resolved.blockedSelectedSubgenres}</b></p>
+            <p>Любимых инструментов без исключений: <b>{resolved.allowedFavoriteInstruments.length}</b></p>
+            {resolved.blockedFavoriteInstruments>0 && <p role="status">
+              Исключения имеют приоритет над {resolved.blockedFavoriteInstruments} любимыми инструментами.
+            </p>}
+            {!resolved.hasPlayablePreferences && <p role="alert" className="text-destructive">
+              Нет доступных поджанров. Проверьте музыкальные вкусы и исключения.
+            </p>}
+            <p className="text-muted-foreground">
+              Это результат ваших сохранённых настроек, не уже созданная музыка.
+            </p>
+          </div>
+        </Section>
         <Section title="Дополнительно">
           <NavRow to="/studio/director" title="Музыкальный режиссёр" value={`${s.directorRules.filter((r) => r.enabled).length} правил`} icon={<Wand2 className="size-5" />} />
         </Section>
