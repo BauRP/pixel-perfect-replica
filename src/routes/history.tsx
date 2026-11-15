@@ -85,7 +85,9 @@ function HistoryPage(){
   // Never estimate playback time from a timer or a saved clip's metadata.
   useEffect(()=>{
     setMeasured(null);setSeekDraft(null);
-    if(!playback.clipId || (playback.state!=="playing"&&playback.state!=="paused"))return;
+    // Also watch a genuinely preparing WAV: the asynchronous native
+    // "playing" event may be missed during WebView recreation.
+    if(!playback.clipId || (playback.state!=="playing"&&playback.state!=="paused"&&playback.state!=="preparing"))return;
     let alive=true,reading=false;
     const refresh=async()=>{
       if(reading)return;
