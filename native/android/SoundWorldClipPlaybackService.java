@@ -249,8 +249,9 @@ public final class SoundWorldClipPlaybackService extends Service {
       long rate = uint32(h, 24), bytesPerSecond = uint32(h, 28), data = uint32(h, 40);
       if (riff != file.length() - 8 || data != file.length() - 44 ||
           format != 1 || channels != 2 || rate != 48000 || bytesPerSecond != 192000 ||
-          uint32(h, 16) != 16 || uint16(h, 34) != 16 || uint16(h, 32) != 4 || data % 4 != 0)
-        throw new IllegalArgumentException("WAV имеет неверный формат или размер");
+          uint32(h, 16) != 16 || uint16(h, 34) != 16 || uint16(h, 32) != 4 ||
+          !SoundWorldClipLengthPolicy.canFinish(data))
+        throw new IllegalArgumentException("WAV имеет неверный формат или должен длиться 60–120 секунд");
     }
     return file;
   }

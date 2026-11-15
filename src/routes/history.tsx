@@ -81,12 +81,16 @@ function HistoryPage(){
     const interval=window.setInterval(()=>void refresh(),1000);
     return ()=>{alive=false;window.clearInterval(interval)};
   },[playback.clipId,playback.state]);
-  const execute=async<T,>(action:()=>Promise<import("@/lib/sw/engine").Result<T>>,message:string,refreshAfter=true)=>{
+  const execute=async<T,>(action:()=>Promise<import("@/lib/sw/engine").Result<T>>,
+    message:string,refreshAfter=true,timeoutMs=5000)=>{
     if(busyRef.current)return;
     busyRef.current=true;
     setBusy(true);
     try{
-      const result=await withTimeout(action());
+      // Native MediaStore export hashes and reads back up to 120 seconds of
+      // 48kHz stereo PCM. The normal 5s action timeout is far too short:
+      // it caused false failures followed by duplicate export requests.
+      const result=await withTimeout(action(),timeoutMs);
       if(!result.ok){notify.result(result,"");setError(result.message);}
       else{if(message)notify.saved(message);if(refreshAfter)await reload();}
     }catch(e){const m=e instanceof Error?e.message:"Неизвестная ошибка";setError(m);notify.error(m);}
@@ -121,7 +125,7 @@ function HistoryPage(){
             <Heart className={c.favorite?"size-4 fill-current text-rose-500":"size-4"}/>{c.favorite?"В избранном":"Нравится"}
           </button>
           <button disabled={busy} className="flex min-h-11 items-center gap-1 rounded-lg border border-border px-3 disabled:opacity-50"
-            onClick={()=>void execute(()=>library.exportRealAudio(c.id),"Файл сохранён на телефон")}>
+            onClick={()=>void execute(()=>library.exportRealAudio(c.id),"Файл сохранён на телефон",true,120000)}>
             <Download className="size-4"/>Сохранить
           </button>
         </div>

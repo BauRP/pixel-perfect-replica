@@ -92,6 +92,19 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
     }
   }
 
+  /** An interrupted WebView request may have successfully exported already.
+   * Reuse only the same verified MediaStore copy, never duplicate it because
+   * the UI waited five seconds and then retried. A size match ALONE is unsafe.
+   * All digest work runs on the existing serial file executor. */
+  private boolean exportedCopyMatches(File source, String uriText) {
+    if (!exportedCopyExists(uriText, source.length())) return false;
+    try (InputStream original=new FileInputStream(source);
+         InputStream saved=getContext().getContentResolver().openInputStream(Uri.parse(uriText))) {
+      SoundWorldWavExportPolicy.verifyExactCopy(original,saved,source.length());
+      return true;
+    } catch (Exception ignored) { return false; }
+  }
+
   @PluginMethod public void beginClip(PluginCall call) {
     writer.execute(() -> {
       if (recording != null) {call.reject("Другой музыкальный фрагмент ещё записывается");return;}
@@ -314,6 +327,15 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
           if(index.getJSONObject(i).getString("id").equals(id)){record=index.getJSONObject(i);break;}
         }
         if(record==null)throw new IOException("Фрагмент не зарегистрирован");
+        // A retry after a UI timeout must NOT produce two copies in MediaStore.
+        // Reuse only when the existing export is still present and byte-identical.
+        String previousUri=record.optString("exportedUri","");
+        if (exportedCopyMatches(file,previousUri)) {
+          JSObject existing=new JSObject();
+          existing.put("uri",previousUri);
+          call.resolve(existing);
+          return;
+        }
         ContentValues values=new ContentValues();
         values.put(MediaStore.Audio.Media.DISPLAY_NAME,"SoundWorld-"+id+".wav");
         values.put(MediaStore.Audio.Media.MIME_TYPE,"audio/wav");

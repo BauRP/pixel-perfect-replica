@@ -28,7 +28,7 @@ jobs:
       - name: Validate Android test scripts before expensive emulator setup
         run: |
           bash -n scripts/check_android_startup.sh
-          python3 -m unittest scripts.test_ui_accessibility_target scripts.test_ui_measured_onboarding scripts.test_android_lifecycle_contract scripts.test_ui_route_status
+          python3 -m unittest scripts.test_ui_accessibility_target scripts.test_ui_measured_onboarding scripts.test_android_lifecycle_contract scripts.test_ui_route_status scripts.test_wav_completion_contract
       - name: Validate Android CSS compatibility transform
         run: node --test scripts/legacy-css.test.mjs
       - name: Validate native thermal and battery policy (real Java)
