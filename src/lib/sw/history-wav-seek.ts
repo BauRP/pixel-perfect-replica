@@ -66,3 +66,23 @@ export class PlaybackEventOrder {
     return Number.isSafeInteger(ticket) && ticket>=0 && ticket===this.revision;
   }
 }
+
+// Different History reloads may overlap when the user changes a favorite
+// while a previous four-tab list operation is still in Android's disk queue.
+// The *newest* request wins; older results/errors must not overwrite it.
+export class LatestHistoryRequest {
+  private version=0;
+  begin():number {return ++this.version;}
+  accepts(version: number): boolean {
+    return Number.isSafeInteger(version) && version>0 && version===this.version;
+  }
+  cancel():void {this.version++;}
+}
+
+export function historyClipCanStop(
+  clipId: string,
+  state: HistoryPlaybackState,
+): boolean {
+  return !!clipId && state.clipId===clipId &&
+    (state.state==="playing" || state.state==="paused" || state.state==="preparing");
+}

@@ -26,6 +26,21 @@ class WavCompletionIntegration(unittest.TestCase):
         self.assertIn("player.seekTo((int)ms)",service)
         self.assertNotIn("player.seekTo((int)Math.min(ms, (long)duration))",service)
 
+    def test_export_is_not_visible_before_sha256_verification(self):
+        src=(ROOT/"native/android/SoundWorldMusicLibraryPlugin.java").read_text()
+        export=src.split("@PluginMethod public void export(PluginCall call)",1)[1].split(
+            "@PluginMethod public void deleteTemporary",1
+        )[0]
+        verify=export.index("SoundWorldWavExportPolicy.verifyExactCopy(source,saved,file.length())")
+        publish=export.index("MediaStore.Audio.Media.IS_PENDING,0")
+        self.assertLess(verify,publish)
+        self.assertIn("getContentResolver().delete(outputUri,null,null)",export)
+
+    def test_history_may_stop_during_native_prepare(self):
+        history=(ROOT/"src/routes/history.tsx").read_text()
+        self.assertIn("historyClipCanStop(c.id,playback)",history)
+        self.assertIn('Android подготавливает WAV. Можно остановить воспроизведение.',history)
+
     def test_history_export_does_not_use_short_default_timeout(self):
         history=(ROOT/"src/routes/history.tsx").read_text()
         self.assertIn('execute(()=>library.exportRealAudio(c.id),"Файл сохранён на телефон",true,120000)',history)

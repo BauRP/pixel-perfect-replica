@@ -350,18 +350,19 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
           // MediaStore item is deleted instead of appearing in Exports.
           SoundWorldWavExportPolicy.copyExactly(input,output,file.length());
         }
-        ContentValues done=new ContentValues();done.put(MediaStore.Audio.Media.IS_PENDING,0);
-        if(getContext().getContentResolver().update(outputUri,done,null,null)<1)
-          throw new IOException("Не удалось подтвердить сохранение файла");
-        // Byte count is not enough: confirm the Android-exposed copy is
-        // byte-for-byte identical to the private, verified WAV. Keep this
-        // work on the existing disk executor, never block the UI thread.
+        // Keep IS_PENDING=1 until the entire read-back verification passes:
+        // Android must never publish an incomplete WAV into the user's Music.
+        // The inserting app may open its own pending MediaStore item for
+        // verification before making it visible.
         if (!exportedCopyExists(outputUri.toString(), file.length()))
           throw new IOException("Android не подтвердил полный размер экспортированного WAV");
         try (InputStream source=new FileInputStream(file);
              InputStream saved=getContext().getContentResolver().openInputStream(outputUri)) {
           SoundWorldWavExportPolicy.verifyExactCopy(source,saved,file.length());
         }
+        ContentValues done=new ContentValues();done.put(MediaStore.Audio.Media.IS_PENDING,0);
+        if(getContext().getContentResolver().update(outputUri,done,null,null)<1)
+          throw new IOException("Не удалось подтвердить сохранение файла");
         record.put("exportedUri",outputUri.toString());
         saveIndex(index);
         JSObject r=new JSObject();r.put("uri",outputUri.toString());call.resolve(r);

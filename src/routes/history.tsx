@@ -9,7 +9,7 @@ import { notify } from "@/lib/sw/notify";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 import { groupRealJourney } from "@/lib/sw/journey";
 import { wavTimestamp, type WavProgress } from "@/lib/sw/wav-progress";
-import { verifiedHistoryProgress, verifiedHistorySeek, reconcileHistoryPlayback, PlaybackEventOrder } from "@/lib/sw/history-wav-seek";
+import { verifiedHistoryProgress, verifiedHistorySeek, reconcileHistoryPlayback, PlaybackEventOrder, LatestHistoryRequest, historyClipCanStop } from "@/lib/sw/history-wav-seek";
 
 export const Route = createFileRoute("/history")({
   head: () => ({ meta: [{ title: "История и избранное — SoundWorld AR" }, { name: "description", content: "Настоящие сохранённые фрагменты SoundWorld AR" }] }),
@@ -31,16 +31,19 @@ function HistoryPage(){
   const [busy,setBusy]=useState(false);
   const busyRef=useRef(false);
   const playbackOrder=useRef(new PlaybackEventOrder());
+  const loadOrder=useRef(new LatestHistoryRequest());
   const [error,setError]=useState("");
   const [playback,setPlayback]=useState<Playback>({state:"stopped",clipId:""});
   const [measured,setMeasured]=useState<{clipId:string;progress:WavProgress}|null>(null);
   const [seekDraft,setSeekDraft]=useState<{clipId:string;positionMs:number}|null>(null);
   const library=getAdapters().library;
   const reload=useCallback(async()=>{
+    const ticket=loadOrder.current.begin();
     const results=await Promise.all([
       withTimeout(library.listLastThreeCompleted()),withTimeout(library.listFavorites()),
       withTimeout(library.listExports()),withTimeout(library.listJourney()),
     ]);
+    if(!loadOrder.current.accepts(ticket))return;
     const errorResult=results.find(r=>!r.ok);
     if(errorResult && !errorResult.ok){setError(errorResult.message);return;}
     const [a,b,c,d]=results;
@@ -63,7 +66,7 @@ function HistoryPage(){
         if(state.error){setError(state.error);notify.error(state.error)}
       }
     });
-    return ()=>{mounted=false;unsubscribe();};
+    return ()=>{mounted=false;loadOrder.current.cancel();unsubscribe();};
   },[library,reload]);
   // Poll only while the History page is open and a real native WAV is active.
   // Never estimate playback time from a timer or a saved clip's metadata.
@@ -113,8 +116,9 @@ function HistoryPage(){
   const clipList=(items:ClipMeta[])=><ul className="space-y-2">
     {items.map(c=>{
       const playing=playback.clipId===c.id&&playback.state==="playing";
-      const active=playback.clipId===c.id&&(playing||playback.state==="paused");
-      const progress=active&&measured?.clipId===c.id?measured.progress:null;
+      const active=historyClipCanStop(c.id,playback);
+      const preparing=active && playback.state==="preparing";
+      const progress=active && !preparing && measured?.clipId===c.id?measured.progress:null;
       const draft=seekDraft?.clipId===c.id?seekDraft.positionMs:null;
       const seekTarget=verifiedHistorySeek(c.id,playback.clipId,draft,progress);
       return <li key={c.id} className="rounded-xl border border-border bg-surface p-3 text-sm">
@@ -165,7 +169,7 @@ function HistoryPage(){
                     void execute(()=>library.seekStoredClip(c.id,seekTarget),"",false);
                   }}>Перемотать</button>
               </>
-            : <p className="text-xs text-muted-foreground">Позиция WAV не подтверждена Android</p>}
+            : <p className="text-xs text-muted-foreground">{preparing?"Android подготавливает WAV. Можно остановить воспроизведение.":"Позиция WAV не подтверждена Android"}</p>}
         </div>}
       </li>;
     })}

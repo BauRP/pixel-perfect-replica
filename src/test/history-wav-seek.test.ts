@@ -1,8 +1,25 @@
 import {describe,expect,it} from "vitest";
-import {verifiedHistoryProgress,verifiedHistorySeek,reconcileHistoryPlayback,PlaybackEventOrder} from "../lib/sw/history-wav-seek";
+import {verifiedHistoryProgress,verifiedHistorySeek,reconcileHistoryPlayback,PlaybackEventOrder,LatestHistoryRequest,historyClipCanStop} from "../lib/sw/history-wav-seek";
 
 describe("real Android WAV history slider",()=>{
   const reading={clipId:"first-real-wav",state:"playing",positionMs:28000,durationMs:120000};
+  it("keeps only the newest four-tab history reload and rejects responses after unmount",()=>{
+    const requests=new LatestHistoryRequest();
+    const first=requests.begin();
+    const second=requests.begin();
+    expect(requests.accepts(first)).toBe(false);
+    expect(requests.accepts(second)).toBe(true);
+    requests.cancel();
+    expect(requests.accepts(second)).toBe(false);
+    expect(requests.accepts(0)).toBe(false);
+  });
+  it("lets users stop a genuine WAV even while MediaPlayer is still preparing",()=>{
+    expect(historyClipCanStop("file",{state:"preparing",clipId:"file"})).toBe(true);
+    expect(historyClipCanStop("file",{state:"paused",clipId:"file"})).toBe(true);
+    expect(historyClipCanStop("file",{state:"playing",clipId:"file"})).toBe(true);
+    expect(historyClipCanStop("other",{state:"preparing",clipId:"file"})).toBe(false);
+    expect(historyClipCanStop("file",{state:"stopped",clipId:"file"})).toBe(false);
+  });
   it("drops late native poll results after a newer pause, stop or track event",()=>{
     const order=new PlaybackEventOrder();
     const initial=order.snapshot();
