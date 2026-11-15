@@ -10,6 +10,7 @@ import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 import { groupRealJourney } from "@/lib/sw/journey";
 import { wavTimestamp, type WavProgress } from "@/lib/sw/wav-progress";
 import { verifiedHistoryProgress, verifiedHistorySeek, reconcileHistoryPlayback, PlaybackEventOrder, LatestHistoryRequest, historyClipCanStop } from "@/lib/sw/history-wav-seek";
+import { HISTORY_DISK_SCAN_TIMEOUT_MS, historyIsEmpty, type HistoryLoadPhase } from "@/lib/sw/history-loading";
 
 export const Route = createFileRoute("/history")({
   head: () => ({ meta: [{ title: "История и избранное — SoundWorld AR" }, { name: "description", content: "Настоящие сохранённые фрагменты SoundWorld AR" }] }),
@@ -28,6 +29,7 @@ function Empty({ icon:I,title,text }: {icon:typeof Clock;title:string;text:strin
 
 function HistoryPage(){
   const [data,setData]=useState<LibraryData>({last:[],fav:[],exp:[],journey:[]});
+  const [loadPhase,setLoadPhase]=useState<HistoryLoadPhase>("loading");
   const [busy,setBusy]=useState(false);
   const busyRef=useRef(false);
   const playbackOrder=useRef(new PlaybackEventOrder());
@@ -39,20 +41,31 @@ function HistoryPage(){
   const library=getAdapters().library;
   const reload=useCallback(async()=>{
     const ticket=loadOrder.current.begin();
+    setLoadPhase("loading");
+    // All four native list requests use ONE serial disk queue. The exported
+    // list checks actual MediaStore content hashes. A 5s deadline causes
+    // false errors on larger genuine WAV libraries.
     const results=await Promise.all([
-      withTimeout(library.listLastThreeCompleted()),withTimeout(library.listFavorites()),
-      withTimeout(library.listExports()),withTimeout(library.listJourney()),
+      withTimeout(library.listLastThreeCompleted(),HISTORY_DISK_SCAN_TIMEOUT_MS),
+      withTimeout(library.listFavorites(),HISTORY_DISK_SCAN_TIMEOUT_MS),
+      withTimeout(library.listExports(),HISTORY_DISK_SCAN_TIMEOUT_MS),
+      withTimeout(library.listJourney(),HISTORY_DISK_SCAN_TIMEOUT_MS),
     ]);
     if(!loadOrder.current.accepts(ticket))return;
     const errorResult=results.find(r=>!r.ok);
-    if(errorResult && !errorResult.ok){setError(errorResult.message);return;}
+    if(errorResult && !errorResult.ok){
+      setError(errorResult.message);
+      setLoadPhase("error");
+      return;
+    }
     const [a,b,c,d]=results;
     setData({last:a.ok?a.value:[],fav:b.ok?b.value:[],exp:c.ok?c.value:[],journey:d.ok?d.value:[]});
     setError("");
+    setLoadPhase("ready");
   },[library]);
   useEffect(()=>{
     let mounted=true;
-    void withTimeout(library.recoverLocalMetadata()).then(r=>{if(mounted){if(!r.ok)setError(r.message);void reload();}});
+    void withTimeout(library.recoverLocalMetadata(),HISTORY_DISK_SCAN_TIMEOUT_MS).then(r=>{if(mounted){if(!r.ok)setError(r.message);void reload();}});
     // Capture the event revision BEFORE the async native read. A newer
     // MediaPlayer callback always wins over a late initial snapshot.
     const initialRevision=playbackOrder.current.snapshot();
@@ -180,6 +193,9 @@ function HistoryPage(){
     }/>
     <div className="px-4 py-4">
       {error&&<p role="alert" className="mb-3 rounded-lg border border-destructive/40 p-3 text-sm text-destructive">{error}</p>}
+      {loadPhase==="loading" && <p role="status" className="mb-3 text-sm text-muted-foreground">
+        Проверяем настоящие WAV и сохранённые файлы Android. История не считается пустой до завершения проверки.
+      </p>}
       <Tabs defaultValue="last">
         <TabsList className="sw-history-tabs grid h-auto min-h-12 w-full grid-cols-4">
           <TabsTrigger className="sw-history-tab min-w-0 px-1 text-[11px] whitespace-normal leading-tight" value="last">Последние 3</TabsTrigger>
@@ -188,13 +204,13 @@ function HistoryPage(){
           <TabsTrigger className="sw-history-tab min-w-0 px-1 text-[11px] whitespace-normal leading-tight" value="trip">Путешествие</TabsTrigger>
         </TabsList>
         <TabsContent value="last" className="pt-4">
-          {data.last.length?clipList(data.last):<Empty icon={Clock} title="Пока пусто" text="Здесь появятся последние три действительно созданных музыкальных фрагмента."/>}
+          {data.last.length?clipList(data.last):historyIsEmpty(loadPhase,data.last.length)?<Empty icon={Clock} title="Пока пусто" text="Здесь появятся последние три действительно созданных музыкальных фрагмента."/>:null}
         </TabsContent>
         <TabsContent value="fav" className="pt-4">
-          {data.fav.length?clipList(data.fav):<Empty icon={Heart} title="Нет избранного" text="Добавляйте существующие записи сердечком."/>}
+          {data.fav.length?clipList(data.fav):historyIsEmpty(loadPhase,data.fav.length)?<Empty icon={Heart} title="Нет избранного" text="Добавляйте существующие записи сердечком."/>:null}
         </TabsContent>
         <TabsContent value="exp" className="pt-4">
-          {data.exp.length?clipList(data.exp):<Empty icon={FolderDown} title="Нет сохранённых файлов" text="После настоящего экспорта файлы будут здесь."/>}
+          {data.exp.length?clipList(data.exp):historyIsEmpty(loadPhase,data.exp.length)?<Empty icon={FolderDown} title="Нет сохранённых файлов" text="После настоящего экспорта файлы будут здесь."/>:null}
         </TabsContent>
         <TabsContent value="trip" className="pt-4">
           {data.journey.length ?
@@ -207,7 +223,7 @@ function HistoryPage(){
                 </section>
               ))}
             </div>
-            : <Empty icon={RouteIcon} title="История музыкального путешествия" text="Настоящих сохранённых записей пока нет. GPS и разговоры не записываются."/>}
+            : historyIsEmpty(loadPhase,data.journey.length) ? <Empty icon={RouteIcon} title="История музыкального путешествия" text="Настоящих сохранённых записей пока нет. GPS и разговоры не записываются."/> : null}
         </TabsContent>
       </Tabs>
     </div>
