@@ -50,7 +50,7 @@ describe("real Studio preferences after exclusions",()=>{
   });
 
   it("preserves newer settings and exclusions when a favorite click follows an older render",()=>{
-    const [a,b,c]=INSTRUMENTS[0]!.items.slice(0,3).map(x=>x.id);
+    const a=INSTRUMENTS[0]!.items[0]!.id,b=INSTRUMENTS[0]!.items[1]!.id,c=INSTRUMENTS[0]!.items[2]!.id;
     const before=getSettingsSnapshot();
     try {
       updateSettings(()=>({...DEFAULT_SETTINGS,favoriteInstrumentIds:[a]}));
