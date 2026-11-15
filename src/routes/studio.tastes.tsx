@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
 import { GenrePicker } from "@/components/sw/GenrePicker";
 import { PageHeader } from "@/components/sw/ui";
 import { ALL_SUBGENRE_IDS } from "@/lib/sw/catalog";
 import { updateSettings, useSettings } from "@/lib/sw/settings";
+import { studioSelectedGenres } from "@/lib/sw/effective-preferences";
 import { notify } from "@/lib/sw/notify";
 
 export const Route = createFileRoute("/studio/tastes")({
@@ -13,10 +13,10 @@ export const Route = createFileRoute("/studio/tastes")({
 
 function Tastes() {
   const s = useSettings();
-  const [sel, setSel] = useState(() => new Set(s.allowedAllGenres ? ALL_SUBGENRE_IDS : s.chosenGenreIds));
+  // Re-read the live shared settings after every change, reset, or navigation.
+  const sel = studioSelectedGenres(s);
   const change = (next: Set<string>) => {
     if (next.size === 0) { notify.error("Нужен хотя бы один жанр"); return; }
-    setSel(next);
     updateSettings((x) => ({ ...x, chosenGenreIds: [...next], allowedAllGenres: next.size === ALL_SUBGENRE_IDS.length }));
   };
   const excludedParentCount = Object.keys(s.dislikes).filter(id=>/^g[0-9]{2}$/.test(id)&&s.dislikes[id]==="excluded").length;

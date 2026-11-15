@@ -11,6 +11,7 @@ import { groupRealJourney } from "@/lib/sw/journey";
 import { wavTimestamp, type WavProgress } from "@/lib/sw/wav-progress";
 import { verifiedHistoryProgress, verifiedHistorySeek, reconcileHistoryPlayback, PlaybackEventOrder, LatestHistoryRequest, historyClipCanStop } from "@/lib/sw/history-wav-seek";
 import { HISTORY_DISK_SCAN_TIMEOUT_MS, historyIsEmpty, type HistoryLoadPhase } from "@/lib/sw/history-loading";
+import { normalizeHistoryClips } from "@/lib/sw/history-metadata";
 
 export const Route = createFileRoute("/history")({
   head: () => ({ meta: [{ title: "История и избранное — SoundWorld AR" }, { name: "description", content: "Настоящие сохранённые фрагменты SoundWorld AR" }] }),
@@ -59,9 +60,15 @@ function HistoryPage(){
       return;
     }
     const [a,b,c,d]=results;
-    setData({last:a.ok?a.value:[],fav:b.ok?b.value:[],exp:c.ok?c.value:[],journey:d.ok?d.value:[]});
-    setError("");
-    setLoadPhase("ready");
+    const last = normalizeHistoryClips(a.ok ? a.value : []);
+    const fav = normalizeHistoryClips(b.ok ? b.value : []);
+    const exp = normalizeHistoryClips(c.ok ? c.value : []);
+    const journey = normalizeHistoryClips(d.ok ? d.value : []);
+    setData({last:last.clips,fav:fav.clips,exp:exp.clips,journey:journey.clips});
+    // A corrupt native row must not crash the whole screen or be called "empty".
+    const skipped = last.skipped + fav.skipped + exp.skipped + journey.skipped;
+    setError(skipped ? `Не удалось показать ${skipped} записей с повреждёнными идентификаторами. Файлы не удалены.` : "");
+    setLoadPhase(skipped ? "error" : "ready");
   },[library]);
   useEffect(()=>{
     let mounted=true;
@@ -137,7 +144,7 @@ function HistoryPage(){
       const draft=seekDraft?.clipId===c.id?seekDraft.positionMs:null;
       const seekTarget=verifiedHistorySeek(c.id,playback.clipId,draft,progress);
       return <li key={c.id} className="rounded-xl border border-border bg-surface p-3 text-sm">
-        <p>{new Date(c.createdAt).toLocaleString("ru")} · {Math.round(c.durationSec)} с</p>
+        <p>{c.createdAt > 0 ? new Date(c.createdAt).toLocaleString("ru") : "Дата неизвестна"} · {c.durationSec > 0 ? `${Math.round(c.durationSec)} с` : "Длительность неизвестна"}</p>
         <p className="mt-1 text-xs text-muted-foreground">
           {c.genreIds.map(g=>genreNameById[g]??g).join(", ")||"Жанр не записан"}
           {c.recoveredProtected?" · Восстановленная запись":""}
@@ -189,6 +196,9 @@ function HistoryPage(){
       </li>;
     })}
   </ul>;
+  const journeyDays = groupRealJourney(data.journey);
+  const datedJourneyIds = new Set(journeyDays.flatMap(day => day.clips.map(clip => clip.id)));
+  const ungroupedJourney = data.journey.filter(clip => !datedJourneyIds.has(clip.id));
   return <>
     <PageHeader title="История и избранное" back right={
       <button aria-label="Обновить записи" disabled={busy} onClick={()=>void reload()} className="grid size-11 place-items-center rounded-full hover:bg-secondary disabled:opacity-50"><RefreshCw className="size-5"/></button>
@@ -218,12 +228,18 @@ function HistoryPage(){
           {data.journey.length ?
             <div className="space-y-4">
               <p className="text-xs text-muted-foreground">Настоящие сохранённые фрагменты по датам. Показаны до 100 последних записей, без GPS.</p>
-              {groupRealJourney(data.journey).map(day=>(
+              {journeyDays.map(day=>(
                 <section key={day.dayKey} className="space-y-2" aria-label={day.heading}>
                   <h2 className="font-semibold text-sm">{day.heading} · {day.count} фрагм. · {day.minutes} мин</h2>
                   {clipList(day.clips)}
                 </section>
               ))}
+              {ungroupedJourney.length > 0 && (
+                <section className="space-y-2" aria-label="Записи с неполными сведениями">
+                  <h2 className="font-semibold text-sm">Записи с неполными сведениями · {ungroupedJourney.length}</h2>
+                  {clipList(ungroupedJourney)}
+                </section>
+              )}
             </div>
             : historyIsEmpty(loadPhase,data.journey.length) ? <Empty icon={RouteIcon} title="История музыкального путешествия" text="Настоящих сохранённых записей пока нет. GPS и разговоры не записываются."/> : null}
         </TabsContent>

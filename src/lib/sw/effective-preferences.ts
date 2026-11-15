@@ -4,6 +4,11 @@
 import {ALL_SUBGENRE_IDS,GENRES,INSTRUMENTS} from "./catalog";
 import type {Settings} from "./settings";
 
+/** Resolve the current saved selection every render; never cache it in a separate UI state. */
+export function studioSelectedGenres(s:Pick<Settings,"allowedAllGenres"|"chosenGenreIds">):Set<string> {
+  return new Set(s.allowedAllGenres ? ALL_SUBGENRE_IDS : s.chosenGenreIds);
+}
+
 export interface EffectivePreferences {
   allowedSubgenres:readonly string[];
   blockedSelectedSubgenres:number;
@@ -14,7 +19,7 @@ export interface EffectivePreferences {
 export function effectivePreferences(
   s:Pick<Settings,"allowedAllGenres"|"chosenGenreIds"|"dislikes"|"favoriteInstrumentIds">,
 ):EffectivePreferences {
-  const selected=new Set(s.allowedAllGenres?ALL_SUBGENRE_IDS:s.chosenGenreIds);
+  const selected=studioSelectedGenres(s);
   const allowedSubgenres:string[]=[];
   let blockedSelectedSubgenres=0;
   for(const group of GENRES){

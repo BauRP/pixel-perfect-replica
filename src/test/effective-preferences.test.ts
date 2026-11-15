@@ -1,9 +1,18 @@
 import {describe,it,expect} from "vitest";
 import {GENRES,INSTRUMENTS,ALL_SUBGENRE_IDS} from "../lib/sw/catalog";
 import {DEFAULT_SETTINGS} from "../lib/sw/settings";
-import {effectivePreferences} from "../lib/sw/effective-preferences";
+import {effectivePreferences,studioSelectedGenres} from "../lib/sw/effective-preferences";
 
 describe("real Studio preferences after exclusions",()=>{
+  it("derives selected genres from current settings after an external edit or reset",()=>{
+    const first=ALL_SUBGENRE_IDS[0]!,second=ALL_SUBGENRE_IDS[1]!;
+    const initial={...DEFAULT_SETTINGS,allowedAllGenres:false,chosenGenreIds:[first]};
+    const changed={...initial,chosenGenreIds:[second]};
+    expect([...studioSelectedGenres(initial)]).toEqual([first]);
+    expect([...studioSelectedGenres(changed)]).toEqual([second]);
+    expect(studioSelectedGenres({...changed,allowedAllGenres:true}).size).toBe(ALL_SUBGENRE_IDS.length);
+    expect(studioSelectedGenres({...changed,chosenGenreIds:[]}).size).toBe(0);
+  });
   it("parent excluded group blocks its subgenres but keeps other choices",()=>{
     const a=GENRES[0]!,b=GENRES[1]!;
     const s={...DEFAULT_SETTINGS,chosenGenreIds:[
