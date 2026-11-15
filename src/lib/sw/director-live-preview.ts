@@ -55,10 +55,10 @@ export class BirdEvidenceGate {
        !Number.isFinite(confidence)||confidence<.53||confidence>1||
        typeof timestamp!=="number"||!Number.isSafeInteger(timestamp)||timestamp<=0)return false;
     const bird=/\b(?:bird|birds|birdsong|chirping)\b/i.test(label);
-    if(!bird){
-      if(timestamp>this.lastBirdAt+650)this.lastBirdAt=0;
-      return false;
-    }
+    // Each inference window can contain several unrelated top-5 labels.
+    // A car/wind label arriving before the next bird label must not erase
+    // genuine bird evidence; the 3.5s maximum gap limits continuity.
+    if(!bird)return false;
     if(this.lastBirdAt>0 && timestamp<=this.lastBirdAt)return false;
     const repeated=this.lastBirdAt>0 &&
       timestamp-this.lastBirdAt>=650 && timestamp-this.lastBirdAt<=3500;
