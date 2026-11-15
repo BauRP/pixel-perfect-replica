@@ -106,6 +106,19 @@ describe("real-world signals to future music directives", () => {
     expect(x.regenerate).toBe(false);
     expect(x.stepPulseBpm).toBeNull();
   });
+  it("ignores wind/insects for bird melody without recent bird evidence",()=>{
+    const p=new MusicControlPlanner();
+    const settings={...DEFAULT_SETTINGS,directorRules:DEFAULT_SETTINGS.directorRules.map(x=>({
+      ...x,enabled:x.id==="birds-melody",
+    }))};
+    expect(p.observeAmbient({atmosphere:"nature",confidence:.9,timestamp:1000},settings)).toBe(true);
+    expect(p.plan(settings,1100).directorEffects).not.toContain("brighter-melody");
+    expect(p.observeConfirmedBird(2000)).toBe(true);
+    expect(p.plan(settings,2001).directorEffects).toContain("brighter-melody");
+    expect(p.plan(settings,12001).directorEffects).not.toContain("brighter-melody");
+    expect(p.observeAmbient({atmosphere:"rain",confidence:.9,timestamp:25000},settings)).toBe(true);
+    expect(p.plan(settings,25001).directorEffects).not.toContain("brighter-melody");
+  });
   it("Studio quiet-sparse director rule uses confirmed Silence, not absence of steps",()=>{
     const planner=new MusicControlPlanner();
     const s={...DEFAULT_SETTINGS,directorRules:DEFAULT_SETTINGS.directorRules.map(r=>({

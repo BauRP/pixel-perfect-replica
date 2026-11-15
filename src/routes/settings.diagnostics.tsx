@@ -9,6 +9,7 @@ import {
 import { AmbientStabilizer, StepPaceEstimator } from "@/lib/sw/environment-smoothing";
 import { MusicControlPlanner, type ControlPlan } from "@/lib/sw/music-control";
 import { RealStepSession } from "@/lib/sw/real-step-session";
+import {BirdEvidenceGate} from "@/lib/sw/director-live-preview";
 import {buildSafeDiagnosticsReport,copySafeDiagnosticsReport} from "@/lib/sw/safe-diagnostics-report";
 import { YamnetObservationLog, type YamnetObservation } from "@/lib/sw/yamnet-observation-log";
 import { useSettings } from "@/lib/sw/settings";
@@ -53,6 +54,7 @@ function Diagnostics() {
     const estimator = new StepPaceEstimator();
     const stabilizer = new AmbientStabilizer();
     const planner = new MusicControlPlanner();
+    const birds=new BirdEvidenceGate();
     const updatePlan = () => setPlan(planner.plan(settingsRef.current,Date.now()));
     let mounted=true;
     void sensorStatus().then(s=>{if(mounted)setStatus(s)});
@@ -79,11 +81,14 @@ function Diagnostics() {
       if (!collectingSound.current || settingsRef.current.musicOnlyMode) return;
       const received=soundLog.current.ingest(e,Date.now());
       if (received!==null) setSoundEvents(received);
+      const birdConfirmed=birds.ingest(e.label,e.confidence,e.timestamp);
       const stable=stabilizer.update(e);
-      if(!stable)return;
-      setEnvironment(stable.atmosphere+" · "+Math.round(stable.confidence*100)+"%");
-      planner.observeAmbient(stable, settingsRef.current);
-      updatePlan();
+      if(stable) {
+        setEnvironment(stable.atmosphere+" · "+Math.round(stable.confidence*100)+"%");
+        planner.observeAmbient(stable,settingsRef.current);
+      }
+      if(birdConfirmed)planner.observeConfirmedBird(e.timestamp);
+      if(stable||birdConfirmed)updatePlan();
     });
     const removeMic=observeMicrophoneLevel(e=>{setMicInput(e.input);setMicRms(e.rms)});
     const interval=setInterval(()=>{

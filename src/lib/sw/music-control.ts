@@ -32,6 +32,7 @@ export class MusicControlPlanner {
   private lastMajorChangeAt = -Infinity;
   private lastPace: ActivityEstimate | null = null;
   private regenerationDue = false;
+  private birdVerifiedAt = 0;
 
   setAtmosphereLock(value: boolean) { this.locked = value; }
   /** Consent revocation invalidates every sensor-derived planning signal.
@@ -42,6 +43,14 @@ export class MusicControlPlanner {
     this.lastPace=null;
     this.lastMajorChangeAt=-Infinity;
     this.regenerationDue=false;
+    this.birdVerifiedAt=0;
+  }
+  /** Confirmed bird-only YAMNet evidence, never generic wind/nature. */
+  observeConfirmedBird(timestamp:number):boolean {
+    if(this.atmosphere!=="nature"||!Number.isSafeInteger(timestamp)||
+       timestamp<=0||timestamp<=this.birdVerifiedAt)return false;
+    this.birdVerifiedAt=timestamp;
+    return true;
   }
   observeAmbient(input: StableAmbientEvent, settings: Settings): boolean {
     if (settings.musicOnlyMode) {
@@ -59,6 +68,7 @@ export class MusicControlPlanner {
       settings.environmentReaction==="strong" ? 12000 : 20000;
     if (this.atmosphere !== "unknown" && input.timestamp - this.lastMajorChangeAt < minimumMajorInterval) return false;
     this.atmosphere = input.atmosphere;
+    if(input.atmosphere!=="nature")this.birdVerifiedAt=0;
     this.lastMajorChangeAt = input.timestamp;
     this.regenerationDue = true;
     return true;
@@ -101,7 +111,9 @@ export class MusicControlPlanner {
     if (stepPulseBpm !== null && enabled.has("steps-drums")) directorEffects.push("accent-step-percussion");
     if (env === "rain" && enabled.has("rain-soft")) directorEffects.push("soften-arrangement");
     if (env === "traffic" && enabled.has("transport-pads")) directorEffects.push("deeper-pads");
-    if (env === "nature" && enabled.has("birds-melody")) directorEffects.push("brighter-melody");
+    if (env === "nature" && enabled.has("birds-melody") &&
+        this.birdVerifiedAt>0 && now>=this.birdVerifiedAt &&
+        now-this.birdVerifiedAt<=10000) directorEffects.push("brighter-melody");
     if (env === "quiet" && enabled.has("quiet-sparse")) directorEffects.push("sparser-arrangement");
     const regenerate = !settings.musicOnlyMode && !this.locked && this.regenerationDue;
     this.regenerationDue = false;

@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import {DEFAULT_SETTINGS,DIRECTOR_RULES} from "../lib/sw/settings";
-import {directorLivePreview,type DirectorEvidence} from "../lib/sw/director-live-preview";
+import {directorLivePreview,BirdEvidenceGate,type DirectorEvidence} from "../lib/sw/director-live-preview";
 
 const enabled=(...ids:string[])=>({...DEFAULT_SETTINGS,directorRules:DIRECTOR_RULES.map(x=>({
   id:x.id,enabled:ids.includes(x.id),
@@ -46,5 +46,30 @@ describe("Studio live director rule preview from real sensor events",()=>{
     for(const step of [{at:13000,bpm:100},{at:9000,bpm:NaN},{at:9000,bpm:300},{at:3000,bpm:100}]) {
       expect(state(directorLivePreview(s,{ambient:null,step},10000),"steps-drums")).toBe("waiting");
     }
+  });
+});
+
+describe("bird-only YAMNet proof",()=>{
+  it("requires separate high-confidence bird windows, not wind",()=>{
+    const gate=new BirdEvidenceGate();
+    expect(gate.ingest("Wind",.9,1000)).toBe(false);
+    expect(gate.ingest("Bird vocalization, bird call, bird song",.9,2000)).toBe(false);
+    expect(gate.ingest("Birdsong",.9,2000)).toBe(false);
+    expect(gate.ingest("Birdsong",.9,2200)).toBe(false);
+    expect(gate.ingest("Birdsong",.9,3000)).toBe(true);
+    expect(gate.isRecent(3001)).toBe(true);
+    expect(gate.isRecent(14001)).toBe(false);
+  });
+  it("rejects noise, low confidence and long gaps",()=>{
+    const gate=new BirdEvidenceGate();
+    expect(gate.ingest("Window",.9,1000)).toBe(false);
+    expect(gate.ingest("Birdsong",.1,2000)).toBe(false);
+    expect(gate.ingest("Birdsong",.9,3000)).toBe(false);
+    expect(gate.ingest("Wind",.9,4000)).toBe(false);
+    expect(gate.ingest("Birdsong",.9,5000)).toBe(false);
+    expect(gate.ingest("Birdsong",.9,10000)).toBe(false);
+    expect(gate.isRecent(10000)).toBe(false);
+    gate.reset();
+    expect(gate.isRecent(10000)).toBe(false);
   });
 });

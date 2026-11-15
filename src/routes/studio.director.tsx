@@ -5,7 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import {DIRECTOR_RULES,updateSettings,useSettings,getSettingsSnapshot} from "@/lib/sw/settings";
 import {androidSensorsAvailable,observeRawSound,observeRawSteps} from "@/lib/sw/native-sensors";
 import {AmbientStabilizer,StepPaceEstimator} from "@/lib/sw/environment-smoothing";
-import {directorLivePreview,type DirectorEvidence} from "@/lib/sw/director-live-preview";
+import {directorLivePreview,BirdEvidenceGate,type DirectorEvidence} from "@/lib/sw/director-live-preview";
 
 export const Route = createFileRoute("/studio/director")({
   head: () => ({ meta: [{ title: "Музыкальный режиссёр — Studio" }, { name: "description", content: "Правила реакции музыки на звуки." }, { property: "og:title", content: "Музыкальный режиссёр" }, { property: "og:description", content: "Правила реакции музыки." }] }),
@@ -21,15 +21,17 @@ function Director() {
     // microphone permission and never starts a recording or YAMNet session.
     const stabilizer=new AmbientStabilizer();
     const pace=new StepPaceEstimator();
+    const birds=new BirdEvidenceGate();
     const offSound=observeRawSound(event=>{
       if(getSettingsSnapshot().musicOnlyMode)return;
       if(!Number.isSafeInteger(event.timestamp) ||
         Math.abs(Date.now()-event.timestamp)>10_000)return;
+      const confirmedBird=birds.ingest(event.label,event.confidence,event.timestamp);
       const stable=stabilizer.update(event);
-      if(!stable)return;
-      const bird=/\b(?:bird|birds|birdsong|chirping)\b/i.test(event.label);
+      if(!stable && !(confirmedBird && stabilizer.stable==="nature"))return;
+      const atmosphere=stable?.atmosphere??stabilizer.stable;
       setEvidence(prev=>({...prev,ambient:{
-        at:Date.now(),atmosphere:stable.atmosphere,birdLabel:bird,
+        at:Date.now(),atmosphere,birdLabel:atmosphere==="nature"&&birds.isRecent(event.timestamp),
       }}));
     });
     const offSteps=observeRawSteps(event=>{

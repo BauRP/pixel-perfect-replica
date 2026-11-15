@@ -43,3 +43,32 @@ export function directorLivePreview(
     };
   });
 }
+
+/** Two separate, genuine YAMNet bird windows are required.
+ * Generic nature (wind/insects) must never trigger the birds rule.
+ * No microphone access and no persistent storage. */
+export class BirdEvidenceGate {
+  private lastBirdAt=0;
+  private confirmedAt=0;
+  ingest(label:unknown,confidence:unknown,timestamp:unknown):boolean {
+    if(typeof label!=="string"||typeof confidence!=="number"||
+       !Number.isFinite(confidence)||confidence<.53||confidence>1||
+       typeof timestamp!=="number"||!Number.isSafeInteger(timestamp)||timestamp<=0)return false;
+    const bird=/\b(?:bird|birds|birdsong|chirping)\b/i.test(label);
+    if(!bird){
+      if(timestamp>this.lastBirdAt+650)this.lastBirdAt=0;
+      return false;
+    }
+    if(this.lastBirdAt>0 && timestamp<=this.lastBirdAt)return false;
+    const repeated=this.lastBirdAt>0 &&
+      timestamp-this.lastBirdAt>=650 && timestamp-this.lastBirdAt<=3500;
+    this.lastBirdAt=timestamp;
+    if(repeated){this.confirmedAt=timestamp;return true;}
+    return false;
+  }
+  isRecent(now:number):boolean {
+    return this.confirmedAt>0&&Number.isSafeInteger(now)&&
+      now>=this.confirmedAt&&now-this.confirmedAt<=10000;
+  }
+  reset():void {this.lastBirdAt=0;this.confirmedAt=0;}
+}
