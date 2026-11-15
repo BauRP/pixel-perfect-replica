@@ -9,7 +9,7 @@ import { notify } from "@/lib/sw/notify";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 import { groupRealJourney } from "@/lib/sw/journey";
 import { wavTimestamp, type WavProgress } from "@/lib/sw/wav-progress";
-import { verifiedHistoryProgress, verifiedHistorySeek, reconcileHistoryPlayback } from "@/lib/sw/history-wav-seek";
+import { verifiedHistoryProgress, verifiedHistorySeek, reconcileHistoryPlayback, PlaybackEventOrder } from "@/lib/sw/history-wav-seek";
 
 export const Route = createFileRoute("/history")({
   head: () => ({ meta: [{ title: "История и избранное — SoundWorld AR" }, { name: "description", content: "Настоящие сохранённые фрагменты SoundWorld AR" }] }),
@@ -30,6 +30,7 @@ function HistoryPage(){
   const [data,setData]=useState<LibraryData>({last:[],fav:[],exp:[],journey:[]});
   const [busy,setBusy]=useState(false);
   const busyRef=useRef(false);
+  const playbackOrder=useRef(new PlaybackEventOrder());
   const [error,setError]=useState("");
   const [playback,setPlayback]=useState<Playback>({state:"stopped",clipId:""});
   const [measured,setMeasured]=useState<{clipId:string;progress:WavProgress}|null>(null);
@@ -49,8 +50,19 @@ function HistoryPage(){
   useEffect(()=>{
     let mounted=true;
     void withTimeout(library.recoverLocalMetadata()).then(r=>{if(mounted){if(!r.ok)setError(r.message);void reload();}});
-    void currentStoredPlayback().then(x=>{if(mounted&&x)setPlayback(x)});
-    const unsubscribe=library.observeStoredPlayback(state=>{if(mounted){setPlayback(state);if(state.error){setError(state.error);notify.error(state.error)}}});
+    // Capture the event revision BEFORE the async native read. A newer
+    // MediaPlayer callback always wins over a late initial snapshot.
+    const initialRevision=playbackOrder.current.snapshot();
+    void currentStoredPlayback().then(x=>{
+      if(mounted && playbackOrder.current.accepts(initialRevision) && x)setPlayback(x);
+    });
+    const unsubscribe=library.observeStoredPlayback(state=>{
+      if(mounted){
+        playbackOrder.current.onNativeEvent();
+        setPlayback(state);
+        if(state.error){setError(state.error);notify.error(state.error)}
+      }
+    });
     return ()=>{mounted=false;unsubscribe();};
   },[library,reload]);
   // Poll only while the History page is open and a real native WAV is active.
@@ -62,9 +74,11 @@ function HistoryPage(){
     const refresh=async()=>{
       if(reading)return;
       reading=true;
+      const revision=playbackOrder.current.snapshot();
       try{
         const status=await currentStoredPlayback();
-        if(!alive||!status)return;
+        // Never let a slow Android callback undo a newer Pause/Stop/Play.
+        if(!alive || !playbackOrder.current.accepts(revision) || !status)return;
         // An event may be lost while the History page is backgrounded.
         // Accept live native pause/stop/clip-change, but do not let an old
         // poll overwrite a newer native event delivered in the meantime.

@@ -55,3 +55,14 @@ export function reconcileHistoryPlayback(
   if(reported.state===previous.state && reported.clipId===previous.clipId)return null;
   return {state:reported.state,clipId:reported.clipId};
 }
+
+// A native snapshot is asynchronous. Audio service events may arrive
+// while the WebView waits, and they must always take precedence.
+export class PlaybackEventOrder {
+  private revision=0;
+  snapshot():number {return this.revision;}
+  onNativeEvent():void {this.revision++;}
+  accepts(ticket:number):boolean {
+    return Number.isSafeInteger(ticket) && ticket>=0 && ticket===this.revision;
+  }
+}

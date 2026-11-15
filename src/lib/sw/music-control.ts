@@ -34,8 +34,21 @@ export class MusicControlPlanner {
   private regenerationDue = false;
 
   setAtmosphereLock(value: boolean) { this.locked = value; }
+  /** Consent revocation invalidates every sensor-derived planning signal.
+   * Keep the user's explicit atmosphere lock selection, but never replay
+   * an earlier environment or step rate when analysis is re-enabled. */
+  private clearSensorEvidence():void {
+    this.atmosphere="unknown";
+    this.lastPace=null;
+    this.lastMajorChangeAt=-Infinity;
+    this.regenerationDue=false;
+  }
   observeAmbient(input: StableAmbientEvent, settings: Settings): boolean {
-    if (settings.musicOnlyMode || this.locked || input.atmosphere === "unknown") return false;
+    if (settings.musicOnlyMode) {
+      this.clearSensorEvidence();
+      return false;
+    }
+    if (this.locked || input.atmosphere === "unknown") return false;
     const threshold = settings.environmentReaction==="weak" ? .8 : settings.environmentReaction==="strong" ? .53 : .65;
     if (!Number.isFinite(input.confidence) || input.confidence > 1 || input.confidence < threshold ||
         !Number.isFinite(input.timestamp) || input.timestamp <= 0 ||
@@ -64,6 +77,7 @@ export class MusicControlPlanner {
     return true;
   }
   plan(settings: Settings, now: number): ControlPlan {
+    if (settings.musicOnlyMode) this.clearSensorEvidence();
     const tempoBpm = 94 + clamp(settings.speed, -3, 3) * 10;
     const fresh = !settings.musicOnlyMode && this.lastPace && now >= this.lastPace.timestamp &&
       now - this.lastPace.timestamp <= 4500 ? this.lastPace : null;
@@ -103,7 +117,7 @@ export class MusicControlPlanner {
     };
   }
   reset() {
-    this.atmosphere = "unknown"; this.locked = false;
-    this.lastPace = null; this.lastMajorChangeAt = -Infinity; this.regenerationDue = false;
+    this.clearSensorEvidence();
+    this.locked=false;
   }
 }

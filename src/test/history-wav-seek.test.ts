@@ -1,8 +1,21 @@
 import {describe,expect,it} from "vitest";
-import {verifiedHistoryProgress,verifiedHistorySeek,reconcileHistoryPlayback} from "../lib/sw/history-wav-seek";
+import {verifiedHistoryProgress,verifiedHistorySeek,reconcileHistoryPlayback,PlaybackEventOrder} from "../lib/sw/history-wav-seek";
 
 describe("real Android WAV history slider",()=>{
   const reading={clipId:"first-real-wav",state:"playing",positionMs:28000,durationMs:120000};
+  it("drops late native poll results after a newer pause, stop or track event",()=>{
+    const order=new PlaybackEventOrder();
+    const initial=order.snapshot();
+    expect(order.accepts(initial)).toBe(true);
+    order.onNativeEvent();
+    expect(order.accepts(initial)).toBe(false);
+    const fresh=order.snapshot();
+    expect(order.accepts(fresh)).toBe(true);
+    order.onNativeEvent();
+    expect(order.accepts(fresh)).toBe(false);
+    expect(order.accepts(-1)).toBe(false);
+    expect(order.accepts(NaN)).toBe(false);
+  });
   it("renders only measured position of the actively playing or paused clip",()=>{
     expect(verifiedHistoryProgress("first-real-wav",reading)?.percent).toBe(23);
     expect(verifiedHistoryProgress("other",reading)).toBeNull();

@@ -68,6 +68,35 @@ describe("real-world signals to future music directives", () => {
     expect(x.directorEffects).toContain("accent-step-percussion");
     expect(x.regenerate).toBe(false);
   });
+  it("does not reuse old YAMNet weather or step cadence after toggling music-only privacy",()=>{
+    const p=new MusicControlPlanner();
+    const rule={...DEFAULT_SETTINGS,directorRules:DEFAULT_SETTINGS.directorRules.map(x=>({...x,enabled:x.id==="rain-soft"}))};
+    expect(p.observeAmbient({atmosphere:"rain",confidence:.95,timestamp:1000},rule)).toBe(true);
+    expect(p.observePace({bpm:120,confidence:.9,timestamp:1000})).toBe(true);
+    const before=p.plan(rule,1001);
+    expect(before.atmosphere).toBe("rain");
+    expect(before.stepPulseBpm).toBe(120);
+    const disabled=p.plan({...rule,musicOnlyMode:true},1002);
+    expect(disabled.atmosphere).toBe("unknown");
+    expect(disabled.stepPulseBpm).toBeNull();
+    expect(disabled.directorEffects).not.toContain("soften-arrangement");
+    // No new live sensor callback: the old data MUST remain cleared.
+    const resumed=p.plan(rule,1003);
+    expect(resumed.atmosphere).toBe("unknown");
+    expect(resumed.stepPulseBpm).toBeNull();
+    expect(resumed.regenerate).toBe(false);
+    expect(p.observeAmbient({atmosphere:"traffic",confidence:.95,timestamp:1100},rule)).toBe(true);
+    expect(p.plan(rule,1101).atmosphere).toBe("traffic");
+  });
+  it("keeps explicit manual atmosphere lock after privacy revocation",()=>{
+    const p=new MusicControlPlanner();
+    p.setAtmosphereLock(true);
+    p.plan({...DEFAULT_SETTINGS,musicOnlyMode:true},2000);
+    expect(p.plan(DEFAULT_SETTINGS,2001).lockedAtmosphere).toBe(true);
+    expect(p.observeAmbient({atmosphere:"rain",confidence:1,timestamp:2002},DEFAULT_SETTINGS)).toBe(false);
+    p.setAtmosphereLock(false);
+    expect(p.observeAmbient({atmosphere:"rain",confidence:1,timestamp:2003},DEFAULT_SETTINGS)).toBe(true);
+  });
   it("music-only mode does not capture or use environment events in control plan", () => {
     const p=new MusicControlPlanner();
     p.observeAmbient({atmosphere:"rain",confidence:1,timestamp:2000},DEFAULT_SETTINGS);
