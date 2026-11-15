@@ -61,3 +61,26 @@ export function significantPlayerHealthAlerts(
 ):DeviceHealthAlert[] {
   return deviceHealthAlerts(s).filter(alert=>alert.severity!=="notice");
 }
+
+/** Explicit Android YAMNet throttling state. Only an actual classifier
+ * session with real microphone capture may be labelled active. A plain
+ * microphone test is NOT proof YAMNet inference is running. */
+export interface YamnetPowerSnapshot {
+  analysisActive?:boolean;
+  recording?:boolean;
+  analysisStride?:number;
+  inferenceThrottled?:number;
+}
+export function realYamnetPowerReadout(s:YamnetPowerSnapshot|null|undefined):string {
+  if(!s)return "Данных Android пока нет";
+  if(s.analysisActive!==true || s.recording!==true)
+    return "Анализ YAMNet сейчас не запущен";
+  if(!Number.isSafeInteger(s.analysisStride) || s.analysisStride!<1 || s.analysisStride!>32)
+    return "Android не подтвердил частоту анализа";
+  const cadence=s.analysisStride===1?"Проверяется каждое окно звука":
+    "Проверяется каждое "+s.analysisStride+"-е окно звука";
+  const skipped=Number.isSafeInteger(s.inferenceThrottled) &&
+    s.inferenceThrottled!>=0 && s.inferenceThrottled!<=100_000_000
+      ?" · пропущено для экономии "+s.inferenceThrottled:"";
+  return cadence+skipped;
+}

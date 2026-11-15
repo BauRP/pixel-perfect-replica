@@ -601,6 +601,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     result.put("inferenceSkipped", skippedInferenceWindows);
     result.put("inferenceThrottled", batteryThrottledWindows);
     result.put("analysisStride", analysisStride);
+    result.put("analysisActive", analysisActive);
     result.put("captureRateHz", captureRateHz);
     result.put("batteryMode", batteryMode);
     result.put("recording", capturing.get());

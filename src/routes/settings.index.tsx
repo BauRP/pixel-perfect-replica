@@ -9,7 +9,7 @@ import {
 import { resetSettings, updateSettings, useSettings, type Settings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
 import { androidSensorsAvailable, sensorStatus, observeActualRouteChanges, getNativePerformanceSnapshot, stopSensorDiagnostics, type SensorsStatus } from "@/lib/sw/native-sensors";
-import { deviceHealthAlerts, deviceHealthReadout } from "@/lib/sw/device-health";
+import { deviceHealthAlerts, deviceHealthReadout, realYamnetPowerReadout } from "@/lib/sw/device-health";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 import { describeSavedWavRoute } from "@/lib/sw/saved-wav-output-route";
 
@@ -98,6 +98,9 @@ function SettingsPage() {
               options={[{ value: "auto", label: "Автоматически" }, { value: "maxPerformance", label: "Максимальная производительность" }]} />
             <p className="text-xs text-muted-foreground">Режим уже управляет частотой распознавания окружения YAMNet с учётом нагрева и заряда. Для будущей генерации Fermata управление нагрузкой ещё не подключено.</p>
             <p className="text-xs text-muted-foreground" role="status">Данные Android: {deviceHealthReadout(health)}</p>
+            <p className="text-xs text-muted-foreground" role="status">
+              Реальная экономия YAMNet: {realYamnetPowerReadout(health)}
+            </p>
             {warnings.length>0 && <ul aria-label="Предупреждения Android о нагрузке" className="space-y-1 text-xs" role="list">
               {warnings.map(w=><li key={w.id} className={w.severity==="critical"?"text-destructive":w.severity==="warning"?"text-warning":"text-muted-foreground"}>{w.message}</li>)}
             </ul>}

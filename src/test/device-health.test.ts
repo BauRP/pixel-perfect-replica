@@ -1,7 +1,22 @@
 import {describe,it,expect} from "vitest";
-import {deviceHealthAlerts,deviceHealthReadout,significantPlayerHealthAlerts} from "../lib/sw/device-health";
+import {deviceHealthAlerts,deviceHealthReadout,significantPlayerHealthAlerts,realYamnetPowerReadout} from "../lib/sw/device-health";
 
 describe("real Android battery, memory and thermal diagnostics",()=>{
+  it("shows actual YAMNet frequency only when capture AND inference are active",()=>{
+    expect(realYamnetPowerReadout(null)).toContain("нет");
+    expect(realYamnetPowerReadout({analysisActive:false,recording:true,analysisStride:3}))
+      .toContain("не запущен");
+    expect(realYamnetPowerReadout({analysisActive:true,recording:false,analysisStride:3}))
+      .toContain("не запущен");
+    expect(realYamnetPowerReadout({analysisActive:true,recording:true,analysisStride:1}))
+      .toContain("каждое окно");
+    expect(realYamnetPowerReadout({analysisActive:true,recording:true,analysisStride:3,inferenceThrottled:15}))
+      .toContain("каждое 3-е окно");
+    expect(realYamnetPowerReadout({analysisActive:true,recording:true,analysisStride:3,inferenceThrottled:15}))
+      .toContain("15");
+    expect(realYamnetPowerReadout({analysisActive:true,recording:true,analysisStride:0}))
+      .toContain("не подтвердил");
+  });
   it("shows only important real Android warnings directly in Player",()=>{
     expect(significantPlayerHealthAlerts(null)).toEqual([]);
     expect(significantPlayerHealthAlerts({thermalStatus:1,battery:90,lowMemory:false})).toEqual([]);

@@ -40,7 +40,7 @@ interface SensorsPlugin {
   startSteps(): Promise<NativeResult>;
   stopSteps(): Promise<NativeResult>;
   actualMicrophone(): Promise<{ name: string; kind: string; active: boolean; output: string }>;
-  performanceSnapshot(): Promise<{ramMb?:number;battery?:number;elapsedSec:number;thermalStatus?:number;lowMemory?:boolean;inferenceSkipped:number;inferenceThrottled:number;analysisStride:number;captureRateHz:number;batteryMode:string;recording:boolean}>;
+  performanceSnapshot(): Promise<{ramMb?:number;battery?:number;elapsedSec:number;thermalStatus?:number;lowMemory?:boolean;inferenceSkipped:number;inferenceThrottled:number;analysisStride:number;analysisActive:boolean;captureRateHz:number;batteryMode:string;recording:boolean}>;
   addListener(event: "yamnet" | "step" | "analysisError" | "micLevel" | "audioRouteChanged", callback: (value: any) => void): Promise<PluginListenerHandle>;
 }
 const native = registerPlugin<SensorsPlugin>("SoundWorldSensors");

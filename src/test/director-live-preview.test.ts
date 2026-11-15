@@ -1,0 +1,50 @@
+import {describe,expect,it} from "vitest";
+import {DEFAULT_SETTINGS,DIRECTOR_RULES} from "../lib/sw/settings";
+import {directorLivePreview,type DirectorEvidence} from "../lib/sw/director-live-preview";
+
+const enabled=(...ids:string[])=>({...DEFAULT_SETTINGS,directorRules:DIRECTOR_RULES.map(x=>({
+  id:x.id,enabled:ids.includes(x.id),
+}))});
+const empty:DirectorEvidence={ambient:null,step:null};
+const state=(items:ReturnType<typeof directorLivePreview>,id:string)=>
+  items.find(x=>x.id===id)?.state;
+
+describe("Studio live director rule preview from real sensor events",()=>{
+  it("never manufactures triggers when no native event arrives",()=>{
+    const x=directorLivePreview(enabled("rain-soft","steps-drums"),empty,10000);
+    expect(state(x,"rain-soft")).toBe("waiting");
+    expect(state(x,"steps-drums")).toBe("waiting");
+    expect(state(x,"transport-pads")).toBe("off");
+  });
+  it("only uses recent stable native signals and respects switches",()=>{
+    const s=enabled("rain-soft","steps-drums","birds-melody");
+    const evidence:DirectorEvidence={
+      ambient:{at:10000,atmosphere:"rain",birdLabel:false},
+      step:{at:11000,bpm:115},
+    };
+    expect(state(directorLivePreview(s,evidence,12000),"rain-soft")).toBe("detected");
+    expect(state(directorLivePreview(s,evidence,12000),"steps-drums")).toBe("detected");
+    expect(state(directorLivePreview(s,evidence,12000),"birds-melody")).toBe("waiting");
+    expect(state(directorLivePreview(s,evidence,25001),"rain-soft")).toBe("waiting");
+    expect(state(directorLivePreview(s,evidence,25001),"steps-drums")).toBe("waiting");
+  });
+  it("never treats wind or generic nature as confirmed birds",()=>{
+    const s=enabled("birds-melody");
+    expect(state(directorLivePreview(s,{ambient:{at:12000,atmosphere:"nature",birdLabel:false},step:null},12500),
+      "birds-melody")).toBe("waiting");
+    expect(state(directorLivePreview(s,{ambient:{at:12000,atmosphere:"nature",birdLabel:true},step:null},12500),
+      "birds-melody")).toBe("detected");
+  });
+  it("privacy mode disables detection without altering user switches",()=>{
+    const s={...enabled("rain-soft"),musicOnlyMode:true};
+    expect(state(directorLivePreview(s,{ambient:{at:10000,atmosphere:"rain",birdLabel:false},step:null},10001),
+      "rain-soft")).toBe("waiting");
+    expect(s.directorRules.find(x=>x.id==="rain-soft")?.enabled).toBe(true);
+  });
+  it("rejects future, invalid and stale step events",()=>{
+    const s=enabled("steps-drums");
+    for(const step of [{at:13000,bpm:100},{at:9000,bpm:NaN},{at:9000,bpm:300},{at:3000,bpm:100}]) {
+      expect(state(directorLivePreview(s,{ambient:null,step},10000),"steps-drums")).toBe("waiting");
+    }
+  });
+});
