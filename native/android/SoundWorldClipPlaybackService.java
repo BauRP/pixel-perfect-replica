@@ -458,8 +458,13 @@ public final class SoundWorldClipPlaybackService extends Service {
       }
       try {
         int duration=player.getDuration();
-        if (duration <= 0) { done.accept(false); return; }
-        player.seekTo((int)Math.min(ms, (long)duration));
+        if (duration <= 0 || ms > duration) {
+          // A stale slider must not silently clamp and claim its requested
+          // position was accepted for a different/shorter file.
+          done.accept(false);
+          return;
+        }
+        player.seekTo((int)ms);
         updateMediaState();
         done.accept(true);
       } catch (RuntimeException ex) {

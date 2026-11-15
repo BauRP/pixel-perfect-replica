@@ -20,6 +20,12 @@ class WavCompletionIntegration(unittest.TestCase):
         self.assertIn("SoundWorldWavExportPolicy.verifyExactCopy(source,saved,file.length())",library)
         self.assertIn("getContentResolver().delete(outputUri,null,null)",library)
 
+    def test_android_rejects_out_of_range_seek_instead_of_silent_clamping(self):
+        service=(ROOT/"native/android/SoundWorldClipPlaybackService.java").read_text()
+        self.assertIn("duration <= 0 || ms > duration",service)
+        self.assertIn("player.seekTo((int)ms)",service)
+        self.assertNotIn("player.seekTo((int)Math.min(ms, (long)duration))",service)
+
     def test_history_export_does_not_use_short_default_timeout(self):
         history=(ROOT/"src/routes/history.tsx").read_text()
         self.assertIn('execute(()=>library.exportRealAudio(c.id),"Файл сохранён на телефон",true,120000)',history)
