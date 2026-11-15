@@ -52,3 +52,12 @@ export function deviceHealthReadout(s:DeviceHealthSnapshot|null|undefined):strin
     fields.push("тепловой статус Android "+s.thermalStatus);
   return fields.length?fields.join(" · "):"Android не предоставил показатели";
 }
+
+/** Only actionable Android warnings appear on the Player screen.
+ * Informational heat notices stay in Settings to avoid constant UI noise.
+ * Missing native measurements produce an empty list, never fake danger. */
+export function significantPlayerHealthAlerts(
+  s:DeviceHealthSnapshot|null|undefined,
+):DeviceHealthAlert[] {
+  return deviceHealthAlerts(s).filter(alert=>alert.severity!=="notice");
+}

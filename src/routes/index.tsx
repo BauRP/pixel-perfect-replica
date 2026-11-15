@@ -12,7 +12,10 @@ import { cn } from "@/lib/utils";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 import { latestRealClip, previousRealClip, nextRealClip } from "@/lib/sw/stored-clips";
 import { verifiedWavProgress, wavTimestamp, type WavProgress } from "@/lib/sw/wav-progress";
-import { observeRawSound, observeRawSteps, observeMicrophoneLevel, sensorStatus } from "@/lib/sw/native-sensors";
+import { observeRawSound, observeRawSteps, observeMicrophoneLevel, sensorStatus, getNativePerformanceSnapshot } from "@/lib/sw/native-sensors";
+import { significantPlayerHealthAlerts } from "@/lib/sw/device-health";
+import { HISTORY_DISK_SCAN_TIMEOUT_MS } from "@/lib/sw/history-loading";
+import { PlaybackEventOrder, reconcileHistoryPlayback } from "@/lib/sw/history-wav-seek";
 import { AmbientStabilizer, StepPaceEstimator, type Atmosphere } from "@/lib/sw/environment-smoothing";
 
 export const Route = createFileRoute("/")({
@@ -39,6 +42,8 @@ function Player() {
   const [recentClips,setRecentClips]=useState<ClipMeta[]>([]);
   const [storedPlayback,setStoredPlayback]=useState<{state:"playing"|"paused"|"stopped"|"preparing";clipId:string}>({state:"stopped",clipId:""});
   const busyRef = useRef(false);
+  const playbackOrder = useRef(new PlaybackEventOrder());
+  const [health,setHealth]=useState<Awaited<ReturnType<typeof getNativePerformanceSnapshot>>>(null);
   const [wavProgress,setWavProgress]=useState<WavProgress|null>(null);
   const [seekDraft,setSeekDraft]=useState<number|null>(null);
   useEffect(()=>setSeekDraft(null),[storedPlayback.clipId]);
@@ -48,18 +53,42 @@ function Player() {
 
   useEffect(() => getAdapters().engine.observeEngineState(setState), []);
   useEffect(()=>{
+    let mounted=true,reading=false;
+    const refresh=()=>{
+      if(reading)return;
+      reading=true;
+      void getNativePerformanceSnapshot().then(x=>{if(mounted)setHealth(x)}).finally(()=>{reading=false});
+    };
+    refresh();
+    // Only while the Player page is open. Android readings, not invented
+    // temperatures or inferred battery states; no notifications or mic use.
+    const timer=window.setInterval(refresh,20_000);
+    return ()=>{mounted=false;window.clearInterval(timer)};
+  },[]);
+  useEffect(()=>{
     const lib=getAdapters().library;
     let mounted=true;
     // Recover completed WAVs whose catalog update was interrupted by a crash.
     // Native recovery runs on the disk worker, never on the Android UI thread.
     void (async()=>{
-      await withTimeout(lib.recoverLocalMetadata());
+      // Android uses a serial disk worker; validating large genuine WAV
+      // libraries must not time out after 5 seconds on the home Player.
+      await withTimeout(lib.recoverLocalMetadata(),HISTORY_DISK_SCAN_TIMEOUT_MS);
       if(!mounted)return;
-      const r=await withTimeout(lib.listJourney());
+      const r=await withTimeout(lib.listJourney(),HISTORY_DISK_SCAN_TIMEOUT_MS);
       if(mounted&&r.ok)setRecentClips(r.value);
     })();
-    void currentStoredPlayback().then(x=>{if(mounted&&x)setStoredPlayback(x)});
-    const off=lib.observeStoredPlayback(v=>{if(mounted){setStoredPlayback(v);if(v.error)notify.error(v.error)}});
+    const revision=playbackOrder.current.snapshot();
+    void currentStoredPlayback().then(x=>{
+      if(mounted && playbackOrder.current.accepts(revision) && x)setStoredPlayback(x);
+    });
+    const off=lib.observeStoredPlayback(v=>{
+      if(mounted){
+        playbackOrder.current.onNativeEvent();
+        setStoredPlayback(v);
+        if(v.error)notify.error(v.error);
+      }
+    });
     return ()=>{mounted=false;off()};
   },[]);
   useEffect(()=>{
@@ -71,13 +100,18 @@ function Player() {
     const refresh=async()=>{
       if(reading)return;
       reading=true;
+      const revision=playbackOrder.current.snapshot();
       try {
         const status=await currentStoredPlayback();
-        if(!active||!status)return;
-        if(status.state==="stopped"){
-          setWavProgress(null);
-          setStoredPlayback(status);
-        } else if(status.clipId===storedPlayback.clipId) {
+        if(!active || !playbackOrder.current.accepts(revision) || !status)return;
+        const changed=reconcileHistoryPlayback(storedPlayback,status);
+        if(changed) {
+          setStoredPlayback(previous=>
+            previous.state===storedPlayback.state && previous.clipId===storedPlayback.clipId
+              ? changed : previous);
+          return;
+        }
+        if(status.clipId===storedPlayback.clipId) {
           setWavProgress(verifiedWavProgress(status.positionMs,status.durationMs));
         }
       } finally {reading=false;}
@@ -134,6 +168,7 @@ function Player() {
   const visibleEnvironment = s.musicOnlyMode ? null : lastEnvironment;
   const visibleActivity = s.musicOnlyMode ? null : lastActivity;
   const visibleMicrophone = !s.musicOnlyMode && microphone.active;
+  const healthWarnings = significantPlayerHealthAlerts(health);
 
   const onPlay = () => run(async () => {
     const playSaved = !playing && storedPlayback.state==="stopped" &&
@@ -169,7 +204,10 @@ function Player() {
   });
   const onExport = () => run(async () => {
     if(!currentClip)return;
-    const r = await withTimeout(library.exportRealAudio(currentClip.id));
+    // The native MediaStore read-back may hash up to two minutes of WAV.
+    // The old 5-second timeout falsely reported export failures and invited
+    // duplicate user taps even when Android completed the file correctly.
+    const r = await withTimeout(library.exportRealAudio(currentClip.id),120_000);
     if (r.ok) notify.saved("Файл сохранён на телефон"); else notify.result(r, "");
   });
 
@@ -205,6 +243,14 @@ function Player() {
           {storedPlayback.state==="playing"?"Воспроизведение WAV":storedPlayback.state==="paused"?"Пауза WAV":storedPlayback.state==="preparing"?"Подготовка WAV…":STATE_LABEL[state]}
         </span>
       </div>
+
+      {healthWarnings.length>0 && <section role="status" aria-label="Состояние устройства Android"
+        className="mt-2 rounded-xl border border-warning/40 p-2 text-xs">
+        {healthWarnings.map(w=><p key={w.id}
+          className={w.severity==="critical"?"text-destructive":"text-warning"}>
+          {w.message}
+        </p>)}
+      </section>}
 
       {/* Mic activity: truthful inactive state */}
       <div className="mt-2 flex min-h-9 items-center gap-2 rounded-lg border border-dashed border-border px-3 text-xs text-muted-foreground">

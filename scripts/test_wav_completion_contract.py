@@ -49,6 +49,18 @@ class WavCompletionIntegration(unittest.TestCase):
         self.assertIn("historyClipCanStop(c.id,playback)",history)
         self.assertIn('Android подготавливает WAV. Можно остановить воспроизведение.',history)
 
+    def test_player_export_uses_long_native_verification_timeout(self):
+        player=(ROOT/"src/routes/index.tsx").read_text()
+        self.assertIn("withTimeout(library.exportRealAudio(currentClip.id),120_000)",player)
+        self.assertIn("withTimeout(lib.listJourney(),HISTORY_DISK_SCAN_TIMEOUT_MS)",player)
+        self.assertIn("withTimeout(lib.recoverLocalMetadata(),HISTORY_DISK_SCAN_TIMEOUT_MS)",player)
+
+    def test_player_shows_only_real_android_health_warnings(self):
+        player=(ROOT/"src/routes/index.tsx").read_text()
+        self.assertIn("significantPlayerHealthAlerts(health)",player)
+        self.assertIn("getNativePerformanceSnapshot()",player)
+        self.assertIn('aria-label="Состояние устройства Android"',player)
+
     def test_history_export_does_not_use_short_default_timeout(self):
         history=(ROOT/"src/routes/history.tsx").read_text()
         self.assertIn('execute(()=>library.exportRealAudio(c.id),"Файл сохранён на телефон",true,120000)',history)

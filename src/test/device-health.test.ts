@@ -1,7 +1,17 @@
 import {describe,it,expect} from "vitest";
-import {deviceHealthAlerts,deviceHealthReadout} from "../lib/sw/device-health";
+import {deviceHealthAlerts,deviceHealthReadout,significantPlayerHealthAlerts} from "../lib/sw/device-health";
 
 describe("real Android battery, memory and thermal diagnostics",()=>{
+  it("shows only important real Android warnings directly in Player",()=>{
+    expect(significantPlayerHealthAlerts(null)).toEqual([]);
+    expect(significantPlayerHealthAlerts({thermalStatus:1,battery:90,lowMemory:false})).toEqual([]);
+    expect(significantPlayerHealthAlerts({thermalStatus:2,battery:90})).toEqual([]);
+    expect(significantPlayerHealthAlerts({thermalStatus:3,battery:90}).map(x=>x.id)).toEqual(["heat"]);
+    expect(significantPlayerHealthAlerts({battery:4,lowMemory:true}).map(x=>x.id))
+      .toEqual(["battery","memory"]);
+    expect(significantPlayerHealthAlerts({thermalStatus:5,battery:10,lowMemory:true})
+      .map(x=>x.severity)).toEqual(["critical","warning","warning"]);
+  });
   it("reports real readings but never invents a temperature",()=>{
     expect(deviceHealthReadout({battery:87,ramMb:3490,thermalStatus:1}))
       .toBe("заряд 87% · свободная память 3490 МБ · тепловой статус Android 1");
