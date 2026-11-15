@@ -14,6 +14,9 @@ export function normalizeHistoryClips(value: unknown): HistoryClipBatch {
   if (!Array.isArray(value)) return { clips: [], skipped: 1 };
   const clips: ClipMeta[] = [];
   const seen = new Set<string>();
+  // The Android WAV library accepts only lowercase UUID recording identifiers.
+  // A nonempty but invalid ID would render a clip that cannot play or export.
+  const nativeRecordingId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
   let skipped = 0;
   for (const entry of value) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
@@ -22,7 +25,7 @@ export function normalizeHistoryClips(value: unknown): HistoryClipBatch {
     }
     const raw = entry as Record<string, unknown>;
     // An absent ID cannot be used safely for Play/Favorite/Export.
-    if (typeof raw.id !== "string" || !raw.id.trim() || seen.has(raw.id)) {
+    if (typeof raw.id !== "string" || !nativeRecordingId.test(raw.id) || seen.has(raw.id)) {
       skipped++;
       continue;
     }

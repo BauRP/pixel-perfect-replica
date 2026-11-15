@@ -15,9 +15,13 @@ function Tastes() {
   const s = useSettings();
   // Re-read the live shared settings after every change, reset, or navigation.
   const sel = studioSelectedGenres(s);
-  const change = (next: Set<string>) => {
-    if (next.size === 0) { notify.error("Нужен хотя бы один жанр"); return; }
-    updateSettings((x) => ({ ...x, chosenGenreIds: [...next], allowedAllGenres: next.size === ALL_SUBGENRE_IDS.length }));
+  const change = (updateSelection: (current: Set<string>) => Set<string>) => {
+    updateSettings((x) => {
+      // Resolve a tap against the latest saved genres, not the prior render.
+      const next = updateSelection(studioSelectedGenres(x));
+      if (next.size === 0) { notify.error("Нужен хотя бы один жанр"); return x; }
+      return { ...x, chosenGenreIds: [...next], allowedAllGenres: next.size === ALL_SUBGENRE_IDS.length };
+    });
   };
   const excludedParentCount = Object.keys(s.dislikes).filter(id=>/^g[0-9]{2}$/.test(id)&&s.dislikes[id]==="excluded").length;
   return (

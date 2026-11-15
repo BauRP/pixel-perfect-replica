@@ -5,7 +5,7 @@ import { groupState } from "@/lib/sw/settings";
 import { cn } from "@/lib/utils";
 import { TriCheck } from "./ui";
 
-export function GenrePicker({ selected, onChange }: { selected: Set<string>; onChange: (next: Set<string>) => void }) {
+export function GenrePicker({ selected, onChange }: { selected: Set<string>; onChange: (update: (current: Set<string>) => Set<string>) => void }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
   const query = q.trim().toLowerCase();
@@ -23,15 +23,20 @@ export function GenrePicker({ selected, onChange }: { selected: Set<string>; onC
 
   const toggleGroup = (gid: string) => {
     const g = GENRES.find((x) => x.id === gid)!;
-    const next = new Set(selected);
-    const st = groupState(gid, selected);
-    for (const s of g.subgenres) st === "all" ? next.delete(s.id) : next.add(s.id);
-    onChange(next);
+    // Functional updates preserve both taps when React batches rapid changes.
+    onChange((current) => {
+      const next = new Set(current);
+      const st = groupState(gid, current);
+      for (const s of g.subgenres) st === "all" ? next.delete(s.id) : next.add(s.id);
+      return next;
+    });
   };
   const toggleSub = (id: string) => {
-    const next = new Set(selected);
-    next.has(id) ? next.delete(id) : next.add(id);
-    onChange(next);
+    onChange((current) => {
+      const next = new Set(current);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   };
 
   return (
