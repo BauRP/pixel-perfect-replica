@@ -48,7 +48,8 @@ export class MusicControlPlanner {
   /** Confirmed bird-only YAMNet evidence, never generic wind/nature. */
   observeConfirmedBird(timestamp:number):boolean {
     if(this.atmosphere!=="nature"||!Number.isSafeInteger(timestamp)||
-       timestamp<=0||timestamp<=this.birdVerifiedAt)return false;
+       timestamp<=0||timestamp<=this.birdVerifiedAt||
+       timestamp<this.lastMajorChangeAt)return false;
     this.birdVerifiedAt=timestamp;
     return true;
   }

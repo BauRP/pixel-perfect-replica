@@ -66,10 +66,12 @@ describe("bird-only YAMNet proof",()=>{
     expect(gate.ingest("Birdsong",.1,2000)).toBe(false);
     expect(gate.ingest("Birdsong",.9,3000)).toBe(false);
     expect(gate.ingest("Wind",.9,4000)).toBe(false);
-    expect(gate.ingest("Birdsong",.9,5000)).toBe(false);
-    expect(gate.ingest("Birdsong",.9,10000)).toBe(false);
-    expect(gate.isRecent(10000)).toBe(false);
+    // Unrelated labels can be among the top-five classes of the same
+    // inference window. They must not erase the preceding bird window.
+    expect(gate.ingest("Birdsong",.9,5000)).toBe(true);
+    expect(gate.isRecent(5000)).toBe(true);
     gate.reset();
+    expect(gate.ingest("Birdsong",.9,10000)).toBe(false);
     expect(gate.isRecent(10000)).toBe(false);
   });
 });

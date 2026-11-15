@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {useEffect,useState} from "react";
+import {useEffect,useRef,useState} from "react";
 import { PageHeader, PendingBadge, Section } from "@/components/sw/ui";
 import { Switch } from "@/components/ui/switch";
 import {DIRECTOR_RULES,updateSettings,useSettings,getSettingsSnapshot} from "@/lib/sw/settings";
@@ -16,12 +16,15 @@ function Director() {
   const s = useSettings();
   const [evidence,setEvidence]=useState<DirectorEvidence>({ambient:null,step:null});
   const [now,setNow]=useState(Date.now());
+  const stabilizerRef=useRef(new AmbientStabilizer());
+  const paceRef=useRef(new StepPaceEstimator());
+  const birdsRef=useRef(new BirdEvidenceGate());
   useEffect(()=>{
     // Observe already-running Android sensors. Opening Studio never requests
     // microphone permission and never starts a recording or YAMNet session.
-    const stabilizer=new AmbientStabilizer();
-    const pace=new StepPaceEstimator();
-    const birds=new BirdEvidenceGate();
+    const stabilizer=stabilizerRef.current;
+    const pace=paceRef.current;
+    const birds=birdsRef.current;
     const offSound=observeRawSound(event=>{
       if(getSettingsSnapshot().musicOnlyMode)return;
       if(!Number.isSafeInteger(event.timestamp) ||
@@ -46,7 +49,12 @@ function Director() {
     return ()=>{offSound();offSteps();window.clearInterval(timer)};
   },[]);
   useEffect(()=>{
-    if(s.musicOnlyMode)setEvidence({ambient:null,step:null});
+    // Invalidate ALL sensor history on privacy toggles. Re-enabling requires
+    // two new actual windows rather than mixing pre-toggle samples.
+    stabilizerRef.current.reset();
+    paceRef.current.reset();
+    birdsRef.current.reset();
+    setEvidence({ambient:null,step:null});
   },[s.musicOnlyMode]);
   const liveRules=directorLivePreview(s,evidence,now);
   return (
