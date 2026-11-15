@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {GENRES,INSTRUMENTS,ALL_SUBGENRE_IDS} from "../lib/sw/catalog";
-import {DEFAULT_SETTINGS} from "../lib/sw/settings";
+import {DEFAULT_SETTINGS,getSettingsSnapshot,updateSettings,toggleFavoriteInstrument,setDislike} from "../lib/sw/settings";
 import {effectivePreferences,studioSelectedGenres} from "../lib/sw/effective-preferences";
 
 describe("real Studio preferences after exclusions",()=>{
@@ -47,5 +47,25 @@ describe("real Studio preferences after exclusions",()=>{
       dislikes:{[group.id]:"excluded" as const}};
     expect(effectivePreferences(s).hasPlayablePreferences).toBe(false);
     expect(s.chosenGenreIds).toHaveLength(1);
+  });
+
+  it("preserves newer settings and exclusions when a favorite click follows an older render",()=>{
+    const [a,b,c]=INSTRUMENTS[0]!.items.slice(0,3).map(x=>x.id);
+    const before=getSettingsSnapshot();
+    try {
+      updateSettings(()=>({...DEFAULT_SETTINGS,favoriteInstrumentIds:[a]}));
+      const oldRender=getSettingsSnapshot();
+      updateSettings(s=>({...s,mood:4,favoriteInstrumentIds:[...s.favoriteInstrumentIds,b]}));
+      updateSettings(current=>toggleFavoriteInstrument(current,c).next);
+      expect(getSettingsSnapshot().favoriteInstrumentIds).toEqual([a,b,c]);
+      expect(getSettingsSnapshot().mood).toBe(4);
+      expect(oldRender.favoriteInstrumentIds).toEqual([a]);
+      updateSettings(current=>setDislike(current,c,"excluded"));
+      updateSettings(current=>toggleFavoriteInstrument(current,c).next);
+      expect(getSettingsSnapshot().favoriteInstrumentIds).toEqual([a,b]);
+      expect(getSettingsSnapshot().dislikes[c]).toBe("excluded");
+    } finally {
+      updateSettings(()=>before);
+    }
   });
 });

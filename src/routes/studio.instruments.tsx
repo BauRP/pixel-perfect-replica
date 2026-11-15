@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { PageHeader, Section } from "@/components/sw/ui";
 import { INSTRUMENTS, capitalize } from "@/lib/sw/catalog";
-import { toggleFavoriteInstrument, updateSettings, useSettings } from "@/lib/sw/settings";
+import { getSettingsSnapshot, toggleFavoriteInstrument, updateSettings, useSettings } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
 import { cn } from "@/lib/utils";
 
@@ -14,9 +14,11 @@ export const Route = createFileRoute("/studio/instruments")({
 function Instruments() {
   const s = useSettings();
   const toggle = (id: string) => {
-    const r = toggleFavoriteInstrument(s, id);
+    // A render-time settings snapshot may be stale if another Studio screen
+    // changed favorites or exclusions immediately before this click.
+    const r = toggleFavoriteInstrument(getSettingsSnapshot(), id);
     if (r.conflict) { notify.error("Этот инструмент исключён в пункте 4 — сначала снимите исключение"); return; }
-    updateSettings(() => r.next);
+    updateSettings((current) => toggleFavoriteInstrument(current, id).next);
   };
   return (
     <>
