@@ -26,6 +26,14 @@ class WavCompletionIntegration(unittest.TestCase):
         self.assertIn("player.seekTo((int)ms)",service)
         self.assertNotIn("player.seekTo((int)Math.min(ms, (long)duration))",service)
 
+    def test_saved_exports_do_not_show_same_size_corrupt_media(self):
+        library=(ROOT/"native/android/SoundWorldMusicLibraryPlugin.java").read_text()
+        listing=library.split("@PluginMethod public void list(PluginCall call)",1)[1].split(
+            "@PluginMethod public void favorite",1
+        )[0]
+        self.assertIn("exportedCopyMatches(clipFile(id)",listing)
+        self.assertNotIn("exportedCopyExists(item.optString",listing)
+
     def test_export_is_not_visible_before_sha256_verification(self):
         src=(ROOT/"native/android/SoundWorldMusicLibraryPlugin.java").read_text()
         export=src.split("@PluginMethod public void export(PluginCall call)",1)[1].split(

@@ -280,8 +280,8 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
           if("favorites".equals(filter) && !item.optBoolean("favorite")) continue;
           if("exports".equals(filter) && (
                !item.has("exportedUri") ||
-               !exportedCopyExists(item.optString("exportedUri", ""),
-                                    clipFile(id).length()))) continue;
+               !exportedCopyMatches(clipFile(id),
+                                    item.optString("exportedUri", "")))) continue;
           output.put(item);
           if ("recent".equals(filter) && output.length() >= 3) break;
           if ("journey".equals(filter) && output.length() >= 100) break;
