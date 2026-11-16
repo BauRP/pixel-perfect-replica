@@ -15,7 +15,7 @@ def shell_step_bodies(text: str) -> list[str]:
     lines = text.splitlines(keepends=True)
     bodies: list[str] = []
     for at, line in enumerate(lines):
-        marker = re.match(r"^( *)run: \\|\\s*$", line)
+        marker = re.match(r"^( *)run: \|\s*$", line)
         if not marker:
             continue
         indent = len(marker.group(1))
