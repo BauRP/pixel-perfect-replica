@@ -3,7 +3,15 @@ name: SoundWorld Android native sensors (Phase 2)
 on:
   push:
     branches: [chatgpt/soundworld-phase2-android-20261108]
+    # A progress-only update must not consume scarce private-repo runner minutes.
+    paths-ignore:
+      - "PROGRESS.md"
   workflow_dispatch:
+
+# Keep only the latest build per branch. Older APKs remain in Releases.
+concurrency:
+  group: soundworld-android-${{ github.ref }}
+  cancel-in-progress: true
 
 # Required only for writing the test APK as a GitHub Release.
 # The repository stays private; no source code is made public.
@@ -28,7 +36,7 @@ jobs:
       - name: Validate Android test scripts before expensive emulator setup
         run: |
           bash -n scripts/check_android_startup.sh
-          python3 -m unittest scripts.test_ui_accessibility_target scripts.test_ui_measured_onboarding scripts.test_android_lifecycle_contract scripts.test_ui_route_status scripts.test_wav_completion_contract
+          python3 -m unittest scripts.test_ui_accessibility_target scripts.test_ui_measured_onboarding scripts.test_android_lifecycle_contract scripts.test_ui_route_status scripts.test_wav_completion_contract scripts.test_android_workflow_release_contract
       - name: Validate Android CSS compatibility transform
         run: node --test scripts/legacy-css.test.mjs
       - name: Validate native thermal and battery policy (real Java)
@@ -269,7 +277,8 @@ jobs:
             echo "- **Сборка:** диагностическая APK, Android 12+, запуск ещё не проверен"
             echo "- **SHA-256:** \`${sha256}\`"
             echo "- **Исходный коммит:** \`${GITHUB_SHA:0:12}\`"
-            echo "- **ВНИМАНИЕ:** APK может аварийно закрываться. Не считать проверенной до завершения эмулятора."\n            echo "- У debug-сборок может отличаться подпись; это не Play Store-релиз."
+            echo "- **ВНИМАНИЕ:** APK может аварийно закрываться. Не считать проверенной до завершения эмулятора."
+            echo "- У debug-сборок может отличаться подпись; это не Play Store-релиз."
             echo "- Музыкальная нейросеть Fermata пока не подключена."
           } >> "$GITHUB_STEP_SUMMARY"
       # If Releases is unavailable, keep a short-lived APK artifact as a

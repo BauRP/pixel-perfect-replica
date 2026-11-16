@@ -31,7 +31,7 @@ describe("Studio genre picker preserves rapid selection", () => {
     const first = screen.getByRole("checkbox", { name: group.subgenres[0]!.name });
     act(() => {
       fireEvent.click(first);
-      fireEvent.click(screen.getByRole("button", { name: `Выбрать весь жанр ${another.name}` }));
+      fireEvent.click(screen.getByRole("checkbox", { name: `Выбрать весь жанр ${another.name}` }));
     });
     expect(first).toBeChecked();
     expect(screen.getByText(new RegExp(`Выбрано ${1 + another.subgenres.length} из`))).toBeInTheDocument();
