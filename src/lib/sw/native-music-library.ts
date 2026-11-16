@@ -6,6 +6,7 @@ import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor
 import { registerAdapters, type Adapters, type ClipMeta, type Result } from "./engine";
 import { getSettingsSnapshot, type Settings } from "./settings";
 import { pcmToBase64 } from "./pcm-base64";
+import { manageNativeListener } from "./native-listener";
 import { confirmedFinishedClip } from "./clip-verification";
 interface LibraryPlugin {
   beginClip(args:{genreIdsJson:string;instrumentIdsJson:string;mood:number;speed:number}):Promise<{id:string}>;
@@ -89,8 +90,8 @@ export function installNativeMusicLibraryAdapter():void {
     stopStoredClip:async()=>{try {const x=await native.stopClip();return x.state==="requested"||x.state==="stopped"?{ok:true,value:undefined}:unavailable("Android не подтвердил запрос остановки WAV");}catch(e){return error(e);}},
     observeStoredPlayback:cb=>{
       let closed=false;
-      const handle=native.addListener("clipPlayback",e=>{if(!closed)cb(e)});
-      return ()=>{closed=true;void handle.then(h=>h.remove()).catch(()=>{});};
+      const unsubscribe=manageNativeListener(()=>native.addListener("clipPlayback",e=>{if(!closed)cb(e)}));
+      return ()=>{closed=true;unsubscribe();};
     },
   };
   registerAdapters({library});

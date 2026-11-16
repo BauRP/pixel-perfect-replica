@@ -9,6 +9,7 @@ import {
 import { AmbientStabilizer, StepPaceEstimator, type Atmosphere } from "./environment-smoothing";
 import { getSettingsSnapshot, type Settings } from "./settings";
 import { sensorsAllowed, SENSOR_MODE_BLOCKED } from "./sensor-mode";
+import { manageNativeListener } from "./native-listener";
 
 type NativeResult = { started?: boolean; stopped?: boolean; granted?: boolean; active?: boolean; name?: string; kind?: string; input?: string; output?: string };
 export interface SensorsStatus {
@@ -159,8 +160,8 @@ export async function stopSensorDiagnostics(): Promise<void> {
 function subscribe<T>(event: "yamnet"|"step"|"analysisError"|"micLevel"|"audioRouteChanged", cb: (data:T)=>void):Unsubscribe {
   if (!androidSensorsAvailable()) return () => {};
   let closed = false;
-  const handle = native.addListener(event, data=>{if(!closed) cb(data as T);});
-  return () => {closed=true; void handle.then(h=>h.remove()).catch(()=>{});};
+  const unsubscribe = manageNativeListener(() => native.addListener(event, data=>{if(!closed) cb(data as T);}));
+  return () => {closed=true;unsubscribe();};
 }
 export function observeRawSound(cb:(sound:RawSound)=>void):Unsubscribe { return subscribe("yamnet",cb); }
 export function observeMicrophoneLevel(cb:(level:{rms:number;timestamp:number;input:string})=>void):Unsubscribe {return subscribe("micLevel",cb);}
