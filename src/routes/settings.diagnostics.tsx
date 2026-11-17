@@ -94,7 +94,9 @@ function Diagnostics() {
         setSteps("Шаги обнаружены · ритм определяется");
       }
     });
-    const removeErrors=observeSensorErrors(setError);
+    const removeErrors=observeSensorErrors(message=>{
+      if(countingSteps.current || collectingSound.current)setError(message);
+    });
     const removeSounds=observeRawSound(e=>{
       if (!collectingSound.current || settingsRef.current.musicOnlyMode) return;
       const received=soundLog.current.ingest(e,Date.now());
@@ -108,7 +110,10 @@ function Diagnostics() {
       if(birdConfirmed)planner.observeConfirmedBird(e.timestamp);
       if(stable||birdConfirmed)updatePlan();
     });
-    const removeMic=observeMicrophoneLevel(e=>{setMicInput(e.input);setMicRms(e.rms)});
+    const removeMic=observeMicrophoneLevel(e=>{
+      if(!collectingSound.current || settingsRef.current.musicOnlyMode)return;
+      setMicInput(e.input);setMicRms(e.rms);
+    });
     const interval=setInterval(()=>{
       if (!mounted) return;
       void refreshSnapshots();
@@ -130,7 +135,7 @@ function Diagnostics() {
       if(!result.ok) {notify.result(result,"");setError(result.message);}
       else {
         // Every explicitly started test begins with fresh evidence only.
-        resetEvidence.current();setPlan(null);
+        resetEvidence.current();setPlan(null);setMicInput("");setMicRms(null);
         stepCounter.current.start(Date.now());
         countingSteps.current=true;
         lastRealStep.current=0;
@@ -169,7 +174,8 @@ function Diagnostics() {
     resetEvidence.current();
     setSoundEvents([]);
     try {
-      await stopSensorDiagnostics();setActive(false);setMicRms(null);setPlan(null);
+      await stopSensorDiagnostics();setActive(false);setMicRms(null);setMicInput("");setPlan(null);
+      setEnvironment("Обстановка не определена");
       setSteps("Проверка остановлена");
       setStatus(await sensorStatus());setHardware(await getNativePerformanceSnapshot());
     } finally {pendingRef.current=false;setPending(false);}
