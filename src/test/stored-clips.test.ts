@@ -10,6 +10,12 @@ describe("real saved recording selection",()=>{
   it("chooses newest genuinely completed recording",()=>{
     expect(latestRealClip([mk(a,100),mk(b,200)])?.id).toBe(b);
   });
+  it("matches native lowercase UUID policy and rejects impossible timestamps",()=>{
+    expect(latestRealClip([mk(a.toUpperCase(),300),mk(b,200)])?.id).toBe(b);
+    expect(latestRealClip([mk(a,8.64e15+1),mk(b,200)])?.id).toBe(b);
+    expect(nextRealClip([mk(a.toUpperCase(),400),mk(b,200)])?.id).toBe(b);
+    expect(latestRealClip([mk(a,Number.POSITIVE_INFINITY)])).toBeNull();
+  });
   it("never selects a fabricated current ID or an incomplete recording",()=>{
     expect(latestRealClip([mk("current",300),{...mk(a,400),uri:""},mk(b,200)])?.id).toBe(b);
     expect(latestRealClip([mk(a,100,{durationSec:0})])).toBeNull();

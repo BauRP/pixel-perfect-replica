@@ -3,8 +3,10 @@ import type { ClipMeta } from "./engine";
 /** Only return a completed, persisted file. No guessed "current" ID. */
 function verifiedMetadataCandidates(clips: readonly ClipMeta[]): ClipMeta[] {
   return clips.filter(c => (
-    /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(c.id)
-    && Number.isFinite(c.createdAt) && c.createdAt > 0
+    /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(c.id)
+    // Android stores lowercase UUIDs only; its file-access checks reject
+    // uppercase aliases. Avoid offering Play for a clip that will fail there.
+    && Number.isFinite(c.createdAt) && c.createdAt > 0 && c.createdAt <= 8.64e15
     && Number.isFinite(c.durationSec) && c.durationSec >= 60 && c.durationSec <= 120
     && typeof c.uri === "string" && c.uri.startsWith("file:")
   ));

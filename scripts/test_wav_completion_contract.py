@@ -44,6 +44,18 @@ class WavCompletionIntegration(unittest.TestCase):
         self.assertLess(verify,publish)
         self.assertIn("getContentResolver().delete(outputUri,null,null)",export)
 
+    def test_native_index_reads_survive_malformed_legacy_rows(self):
+        library=(ROOT/"native/android/SoundWorldMusicLibraryPlugin.java").read_text()
+        loader=library.split("private JSONArray loadIndex() throws Exception",1)[1].split(
+            "private void saveIndex",1
+        )[0]
+        self.assertIn("stored.optJSONObject(i)",loader)
+        self.assertIn('validId(item.optString("id", ""))',loader)
+        self.assertIn("return usable;",loader)
+        # Reading must not silently overwrite the persisted index or delete WAVs.
+        self.assertNotIn("saveIndex(",loader)
+        self.assertNotIn(".delete(",loader)
+
     def test_history_may_stop_during_native_prepare(self):
         history=(ROOT/"src/routes/history.tsx").read_text()
         self.assertIn("historyClipCanStop(c.id,playback)",history)

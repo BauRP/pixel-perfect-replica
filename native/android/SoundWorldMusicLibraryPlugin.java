@@ -63,7 +63,18 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   }
   private JSONArray loadIndex() throws Exception {
     SharedPreferences prefs = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-    return new JSONArray(prefs.getString("clips", "[]"));
+    // A single malformed legacy row must not break History, Favorites,
+    // Export or recovery for every genuinely completed WAV. Never overwrite
+    // the persisted index during a read: keeping the original allows manual
+    // recovery if some metadata is damaged. Only valid native recording IDs
+    // can refer to files that this plugin is allowed to access.
+    JSONArray stored = new JSONArray(prefs.getString("clips", "[]"));
+    JSONArray usable = new JSONArray();
+    for (int i = 0; i < stored.length(); i++) {
+      JSONObject item = stored.optJSONObject(i);
+      if (item != null && validId(item.optString("id", ""))) usable.put(item);
+    }
+    return usable;
   }
   private void saveIndex(JSONArray entries) throws Exception {
     boolean ok = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
