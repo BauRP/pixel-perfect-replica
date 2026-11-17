@@ -75,8 +75,12 @@ export class MusicControlPlanner {
     return true;
   }
   observePace(input: ActivityEstimate): boolean {
-    if (!Number.isFinite(input.timestamp) || !Number.isFinite(input.bpm) ||
-        !Number.isFinite(input.confidence) || input.confidence < 0.55 ||
+    // Do not accept NaN/Infinity or an impossible sensor confidence as
+    // evidence of real steps. A value over 1 previously passed the threshold.
+    if (!Number.isSafeInteger(input.timestamp) || input.timestamp <= 0 ||
+        input.timestamp > 8.64e15 || !Number.isFinite(input.bpm) ||
+        !Number.isFinite(input.confidence) ||
+        input.confidence < 0.55 || input.confidence > 1 ||
         input.bpm < 40 || input.bpm > 225) return false;
     if (this.lastPace && input.timestamp <= this.lastPace.timestamp) return false;
     // An old cadence is not evidence for the user's new walking speed.

@@ -49,6 +49,18 @@ describe("real-world signals to future music directives", () => {
     expect(p.plan(DEFAULT_SETTINGS,8000).stepPulseBpm).toBeNull();
     expect(p.plan(DEFAULT_SETTINGS,8000).activity).toBe("unknown");
   });
+  it("rejects broken and impossible sensor confidence instead of triggering step reactions",()=>{
+    const planner=new MusicControlPlanner();
+    for(const confidence of [Number.NaN,Number.POSITIVE_INFINITY,-1,1.01]){
+      expect(planner.observePace({bpm:120,confidence,timestamp:1000})).toBe(false);
+    }
+    for(const timestamp of [0,-1000,1.5,Number.POSITIVE_INFINITY,8.64e15+1]){
+      expect(planner.observePace({bpm:120,confidence:.95,timestamp})).toBe(false);
+    }
+    expect(planner.plan(DEFAULT_SETTINGS,1000).stepPulseBpm).toBeNull();
+    expect(planner.observePace({bpm:120,confidence:.95,timestamp:1000})).toBe(true);
+    expect(planner.plan(DEFAULT_SETTINGS,1000).stepPulseBpm).toBe(120);
+  });
   it("does not blend fresh steps with an obsolete pace after a long pause", () => {
     const p = new MusicControlPlanner();
     expect(p.observePace({bpm:80,confidence:.9,timestamp:1000})).toBe(true);

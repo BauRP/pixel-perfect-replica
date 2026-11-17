@@ -17,6 +17,7 @@ import { notify } from "@/lib/sw/notify";
 import { buildMusicRequest } from "@/lib/sw/music-preferences";
 import { currentAudioSinkStatus } from "@/lib/sw/native-pcm";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
+import { resetDiagnosticEvidence } from "@/lib/sw/diagnostic-evidence";
 
 export const Route = createFileRoute("/settings/diagnostics")({
   head: () => ({ meta: [{ title: "Диагностика — SoundWorld AR" }] }),
@@ -50,17 +51,34 @@ function Diagnostics() {
   const [output,setOutput] = useState<Awaited<ReturnType<typeof currentAudioSinkStatus>>>(null);
   const [wavOutput,setWavOutput] = useState<Awaited<ReturnType<typeof currentStoredPlayback>>>(null);
   const [hardware,setHardware] = useState<{ramMb?:number;battery?:number;thermalStatus?:number;inferenceSkipped:number;inferenceThrottled?:number;analysisStride?:number;batteryMode?:string;lowMemory?:boolean;captureRateHz?:number}|null>(null);
+  const resetEvidence = useRef<()=>void>(()=>{});
   useEffect(()=>{
     const estimator = new StepPaceEstimator();
     const stabilizer = new AmbientStabilizer();
     const planner = new MusicControlPlanner();
     const birds=new BirdEvidenceGate();
-    const updatePlan = () => setPlan(planner.plan(settingsRef.current,Date.now()));
-    let mounted=true;
+    resetEvidence.current=()=>resetDiagnosticEvidence({estimator,stabilizer,planner,birds});
+    const updatePlan = () => {
+      if (!countingSteps.current && !collectingSound.current) {setPlan(null);return;}
+      setPlan(planner.plan(settingsRef.current,Date.now()));
+    };
+    let mounted=true, readingSnapshots=false;
+    // Serial Android polling prevents slow bridge calls from piling up every 3s.
+    const refreshSnapshots=async()=>{
+      if(!mounted || readingSnapshots)return;
+      readingSnapshots=true;
+      try {
+        const [hardwareResult,outputResult,wavResult]=await Promise.allSettled([
+          getNativePerformanceSnapshot(),currentAudioSinkStatus(),currentStoredPlayback(),
+        ]);
+        if(!mounted)return;
+        if(hardwareResult.status==="fulfilled")setHardware(hardwareResult.value);
+        if(outputResult.status==="fulfilled")setOutput(outputResult.value);
+        if(wavResult.status==="fulfilled")setWavOutput(wavResult.value);
+      }finally{readingSnapshots=false;}
+    };
     void sensorStatus().then(s=>{if(mounted)setStatus(s)});
-    void getNativePerformanceSnapshot().then(s=>{if(mounted)setHardware(s)});
-    void currentAudioSinkStatus().then(s=>{if(mounted)setOutput(s)});
-    void currentStoredPlayback().then(s=>{if(mounted)setWavOutput(s)});
+    void refreshSnapshots();
     const removeSteps=observeRawSteps(e=>{
       if (!countingSteps.current) return;
       const accepted=stepCounter.current.ingest(e,Date.now());
@@ -93,9 +111,7 @@ function Diagnostics() {
     const removeMic=observeMicrophoneLevel(e=>{setMicInput(e.input);setMicRms(e.rms)});
     const interval=setInterval(()=>{
       if (!mounted) return;
-      void getNativePerformanceSnapshot().then(x=>{if(mounted)setHardware(x)});
-      void currentAudioSinkStatus().then(x=>{if(mounted)setOutput(x)});
-      void currentStoredPlayback().then(x=>{if(mounted)setWavOutput(x)});
+      void refreshSnapshots();
       // Lack of fresh steps is "unknown", not proof that the user is resting.
       if (countingSteps.current && lastRealStep.current > 0 &&
           Date.now()-lastRealStep.current>5000)
@@ -103,7 +119,7 @@ function Diagnostics() {
       updatePlan();
     },3000);
     return ()=>{mounted=false;countingSteps.current=false;stepCounter.current.stop();
-      collectingSound.current=false;soundLog.current.stop();
+      collectingSound.current=false;soundLog.current.stop();resetEvidence.current();resetEvidence.current=()=>{};
       clearInterval(interval);removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
   },[]);
   const start=async(mode:"all"|"steps"="all")=>{
@@ -113,6 +129,8 @@ function Diagnostics() {
       const result=mode==="steps"?await startStepOnlyDiagnostics():await startSensorDiagnostics(true);
       if(!result.ok) {notify.result(result,"");setError(result.message);}
       else {
+        // Every explicitly started test begins with fresh evidence only.
+        resetEvidence.current();setPlan(null);
         stepCounter.current.start(Date.now());
         countingSteps.current=true;
         lastRealStep.current=0;
@@ -148,6 +166,7 @@ function Diagnostics() {
     stepCounter.current.stop();
     collectingSound.current=false;
     soundLog.current.stop();
+    resetEvidence.current();
     setSoundEvents([]);
     try {
       await stopSensorDiagnostics();setActive(false);setMicRms(null);setPlan(null);
