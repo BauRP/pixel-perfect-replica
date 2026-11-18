@@ -18,6 +18,9 @@ import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -49,6 +52,18 @@ public final class SoundWorldPlaybackService extends Service {
   private MediaSession session;
   private Thread writer;
   private BroadcastReceiver unplug;
+  // A foreground service that never receives real generated samples should
+  // not consume power and display an indefinite "waiting for audio" notice.
+  private static final long NEVER_FED_TIMEOUT_MS = 120_000L;
+  private static final long STALLED_STREAM_TIMEOUT_MS = 120_000L;
+  private final Handler idleHandler = new Handler(Looper.getMainLooper());
+  private final Runnable noFirstPcm = () -> {
+    if (foregroundReady.get() && !writerActive.get()) {
+      lastAudioError = "Генератор не передал настоящие PCM за две минуты";
+      pauseAudio();
+      stopSelf();
+    }
+  };
 
   public static SoundWorldPlaybackService current() { return active; }
 
@@ -63,7 +78,7 @@ public final class SoundWorldPlaybackService extends Service {
     audioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
     session = new MediaSession(this, "SoundWorld AR");
     session.setCallback(new MediaSession.Callback() {
-      @Override public void onPause() { pauseAudio(); }
+      @Override public void onPause() { pauseAudio(); stopSelf(); }
       @Override public void onStop() { pauseAudio(); stopSelf(); }
     });
     session.setActive(true);
@@ -71,7 +86,11 @@ public final class SoundWorldPlaybackService extends Service {
     unplug = new BroadcastReceiver() {
       @Override public void onReceive(Context context, Intent intent) {
         // Never switch from headphones to loudspeaker unexpectedly.
-        if (AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) pauseAudio();
+        if (AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) {
+          pauseAudio();
+          // A disconnected headset must not leave a silent foreground service.
+          stopSelf();
+        }
       }
     };
     IntentFilter filter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
@@ -112,7 +131,11 @@ public final class SoundWorldPlaybackService extends Service {
       stopSelf(startId);
       return START_NOT_STICKY;
     }
-    if (ACTION_PAUSE.equals(action)) { pauseAudio(); return START_NOT_STICKY; }
+    if (ACTION_PAUSE.equals(action)) {
+      pauseAudio();
+      stopSelf(startId);
+      return START_NOT_STICKY;
+    }
     if (!ACTION_START.equals(action)) { pauseAudio(); stopSelf(startId); return START_NOT_STICKY; }
     // A second START request must never pause an already active PCM writer.
     if (SoundWorldPcmLifecyclePolicy.ignoreDuplicateStart(foregroundReady.get(),paused.get()))
@@ -125,6 +148,8 @@ public final class SoundWorldPlaybackService extends Service {
       lastUnderruns = -1;
       paused.set(false);
       foregroundReady.set(true);
+      idleHandler.removeCallbacks(noFirstPcm);
+      idleHandler.postDelayed(noFirstPcm, NEVER_FED_TIMEOUT_MS);
     } catch (RuntimeException ex) {
       lastAudioError = "Android отказал в запуске фонового звука: " + ex.getMessage();
       pauseAudio();
@@ -150,18 +175,26 @@ public final class SoundWorldPlaybackService extends Service {
       writer.setDaemon(true);
       writer.start();
     } else if (!running.get() || !chunks.offer(pcm)) return false;
+    // This service is now backed by real PCM from an actual producer.
+    idleHandler.removeCallbacks(noFirstPcm);
     return true; // queued, not necessarily audible yet
   }
 
   private void writeAudio() {
     try {
       if (audioManager == null) { lastAudioError = "Аудиосистема Android недоступна"; return; }
+      long lastRealPcmAt = SystemClock.elapsedRealtime();
       focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
         .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
           .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
         .setOnAudioFocusChangeListener(change -> {
           if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
-              change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) pauseAudio();
+              change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
+            pauseAudio();
+            // A phone call or another app wins focus; no silent background
+            // notification, no automatic restart after the interruption.
+            stopSelf();
+          }
         }).build();
       if (audioManager.requestAudioFocus(focusRequest) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
         lastAudioError = "Android не предоставил аудиофокус";return;
@@ -180,6 +213,14 @@ public final class SoundWorldPlaybackService extends Service {
       while (running.get() && !paused.get()) {
         byte[] pcm = chunks.poll(500, TimeUnit.MILLISECONDS);
         if (pcm == null) {
+          if (SoundWorldPcmLifecyclePolicy.idleExpired(
+              lastRealPcmAt, SystemClock.elapsedRealtime(), STALLED_STREAM_TIMEOUT_MS)) {
+            lastAudioError = "Поток настоящего PCM не поступал две минуты";
+            foregroundReady.set(false);
+            running.set(false);
+            stopSelf();
+            break;
+          }
           // Do not claim real music when no generated samples exist.
           if (actualPlayback) {
             actualPlayback = false; publishState(false);
@@ -188,6 +229,7 @@ public final class SoundWorldPlaybackService extends Service {
           }
           continue;
         }
+        lastRealPcmAt = SystemClock.elapsedRealtime();
         if (audioTrack.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) audioTrack.play();
         int at = 0;
         while (at < pcm.length && running.get() && !paused.get()) {
@@ -232,6 +274,7 @@ public final class SoundWorldPlaybackService extends Service {
   }
 
   public synchronized void pauseAudio() {
+    idleHandler.removeCallbacks(noFirstPcm);
     foregroundReady.set(false);
     paused.set(true);
     running.set(false);
@@ -267,6 +310,7 @@ public final class SoundWorldPlaybackService extends Service {
   }
 
   @Override public void onDestroy() {
+    idleHandler.removeCallbacks(noFirstPcm);
     pauseAudio();
     if (unplug != null) { try { unregisterReceiver(unplug); } catch(Exception ignored) {} }
     MediaSession oldSession = session; session = null;

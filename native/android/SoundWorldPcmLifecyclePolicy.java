@@ -13,4 +13,9 @@ public final class SoundWorldPcmLifecyclePolicy {
       boolean running, boolean writerActive) {
     return foregroundReady && !paused && (running || !writerActive);
   }
+  /** Real PCM starvation is bounded without making up samples or music. */
+  public static boolean idleExpired(long lastRealPcmMs, long nowMs, long limitMs) {
+    return lastRealPcmMs > 0 && nowMs >= lastRealPcmMs && limitMs > 0 &&
+      nowMs - lastRealPcmMs >= limitMs;
+  }
 }

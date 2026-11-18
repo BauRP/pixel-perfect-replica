@@ -25,6 +25,16 @@ public final class SoundWorldPcmLifecyclePolicyTest {
       SoundWorldPcmLifecyclePolicy.canAccept(true,false,false,true));
     check("foreground startup refused",false,
       SoundWorldPcmLifecyclePolicy.canAccept(false,true,false,false));
+    check("active generated PCM window is not stale", false,
+      SoundWorldPcmLifecyclePolicy.idleExpired(1000, 120999, 120000));
+    check("two-minute silent foreground session expires", true,
+      SoundWorldPcmLifecyclePolicy.idleExpired(1000, 121000, 120000));
+    check("clock reset is not an expiry", false,
+      SoundWorldPcmLifecyclePolicy.idleExpired(121000, 1000, 120000));
+    check("zero or negative last sample is unknown", false,
+      SoundWorldPcmLifecyclePolicy.idleExpired(0, 121000, 120000));
+    check("invalid timeout does not stop playback", false,
+      SoundWorldPcmLifecyclePolicy.idleExpired(1000, 100000, 0));
     System.out.println("PASS: PCM lifecycle rejects early, stopped and stale audio");
   }
 }
