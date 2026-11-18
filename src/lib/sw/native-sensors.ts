@@ -178,6 +178,7 @@ export function installNativeSensorAdapters(): void {
   if (!androidSensorsAvailable()) return;
   const stability = new AmbientStabilizer();
   const pace = new StepPaceEstimator();
+  let lastConfirmedMicSource: RawSound["source"] | null = null;
   const adapters: Partial<Adapters> = {
     permissions: {
       microphone: async () => {
@@ -216,11 +217,15 @@ export function installNativeSensorAdapters(): void {
         }catch(e){return safeError(e);}
       },
       stopCapture: async () => {
-        try {await native.stopAnalysis();stability.reset();return {ok:true,value:undefined};}
+        try {await native.stopAnalysis();stability.reset();lastConfirmedMicSource=null;return {ok:true,value:undefined};}
         catch(e){return safeError(e);}
       },
       observeEnvironment: cb => observeRawSound(e=>{
         if (!sensorsAllowed(getSettingsSnapshot())) return;
+        // Different physical source types need independent YAMNet evidence.
+        if (lastConfirmedMicSource !== null && lastConfirmedMicSource !== e.source)
+          stability.reset();
+        lastConfirmedMicSource = e.source;
         const stable=stability.update(e);
         if (!stable) return;
         const mapped:EnvironmentEvent={label:stable.atmosphere,confidence:stable.confidence,timestamp:stable.timestamp,source:e.source};

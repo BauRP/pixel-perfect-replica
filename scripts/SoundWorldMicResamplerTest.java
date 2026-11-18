@@ -23,6 +23,18 @@ public final class SoundWorldMicResamplerTest {
     return Math.sqrt(sum/count);
   }
   public static void main(String[] args) {
+    SoundWorldMicResampler freshAfterSwitch = new SoundWorldMicResampler();
+    for (int i=0;i<500;i++) freshAfterSwitch.push((short)14000);
+    freshAfterSwitch.reset();
+    SoundWorldMicResampler pristine = new SoundWorldMicResampler();
+    for (int i=0;i<180;i++) {
+      short sample=(short)(i%2==0?7000:-7000);
+      float actual=freshAfterSwitch.push(sample);
+      float expected=pristine.push(sample);
+      if(Float.isNaN(actual) != Float.isNaN(expected) ||
+         (!Float.isNaN(actual) && Math.abs(actual-expected)>0.00001f))
+        throw new AssertionError("Microphone route reset must clear FIR history");
+    }
     float[] pass=generate(1000,48000);
     float[] stop=generate(12000,48000);
     double passRms=rms(pass),stopRms=rms(stop);

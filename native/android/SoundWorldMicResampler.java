@@ -16,6 +16,14 @@ public final class SoundWorldMicResampler {
   private int cursor = 0;
   private long received = 0;
 
+  /** A changed physical microphone must never share FIR sample history with
+   * the old device. Filter coefficients stay intact; only live PCM is erased. */
+  public void reset() {
+    java.util.Arrays.fill(history, (short)0);
+    cursor = 0;
+    received = 0;
+  }
+
   public SoundWorldMicResampler() {
     double sum=0;
     for (int i=0; i<TAPS; i++) {

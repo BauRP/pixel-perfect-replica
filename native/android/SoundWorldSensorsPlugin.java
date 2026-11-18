@@ -455,6 +455,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     // 15600 samples = 975 ms, the input window required by YAMNet.
     final float[] soundWindow = new float[15600];
     int soundFilled = 0;
+    int priorInputType = -1;
     try {
       while (currentCapture(rec, epoch)) {
         int n = rec.read(samples, 0, samples.length);
@@ -464,6 +465,16 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
           if (n < 0) break;
           continue;
         }
+        // Do not combine samples from two distinct microphones into one
+        // YAMNet window. A headset hotplug can happen during AudioRecord.read.
+        AudioDeviceInfo inputNow = rec.getRoutedDevice();
+        int newInputType = inputNow != null ? inputNow.getType() : -1;
+        if (newInputType >= 0 && priorInputType >= 0 &&
+            newInputType != priorInputType) {
+          soundFilled = 0;
+          if (resampler != null) resampler.reset();
+        }
+        if (newInputType >= 0) priorInputType = newInputType;
         long now = SystemClock.elapsedRealtime();
         AudioClassifier cls = analyzer;
         if (cls != null && healthy.get()) {
