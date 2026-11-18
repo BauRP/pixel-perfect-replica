@@ -74,6 +74,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private volatile int skippedInferenceWindows = 0;
   private final long appStartedAt = SystemClock.elapsedRealtime();
   private volatile int actualInputType = -1;
+  // Reject queued YAMNet classification from a previous physical mic.
+  private volatile long micRouteGeneration = 0;
   private volatile int captureRateHz = 0;
   private Thread captureThread;
   private SensorManager sensorManager;
@@ -379,8 +381,34 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         AudioDeviceInfo best = preferredInputDevice();
         if (best != null) rec.setPreferredDevice(best);
         if (epoch != captureEpoch.get()) throw new IllegalStateException("Запуск отменён");
-        rec.startRecording();
-        if (rec.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IllegalStateException("Захват микрофона не начался");
+        try {
+          rec.startRecording();
+          if (rec.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING)
+            throw new IllegalStateException("Захват микрофона не начался");
+        } catch (RuntimeException initialError) {
+          if (captureRate != 16000 || initialError instanceof SecurityException)
+            throw initialError;
+          // Some HALs report valid 16kHz but fail only at startRecording().
+          // Retry genuine 48kHz PCM with the existing local FIR resampler.
+          try { rec.release(); } catch (RuntimeException ignored) {}
+          rec = null;
+          captureRate = 48000;
+          min = AudioRecord.getMinBufferSize(captureRate,
+            AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+          if (min <= 0)
+            throw new IllegalStateException("Резервные 48 кГц не поддерживаются", initialError);
+          rec = new AudioRecord(MediaRecorder.AudioSource.MIC, captureRate,
+            AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+            Math.max(min * 2, captureRate / 5));
+          if (rec.getState() != AudioRecord.STATE_INITIALIZED)
+            throw new IllegalStateException("Резервный микрофон 48 кГц не инициализирован", initialError);
+          AudioDeviceInfo fallback = preferredInputDevice();
+          if (fallback != null) rec.setPreferredDevice(fallback);
+          if (epoch != captureEpoch.get()) throw new IllegalStateException("Запуск отменён");
+          rec.startRecording();
+          if (rec.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING)
+            throw new IllegalStateException("Резервный микрофон 48 кГц не начал запись", initialError);
+        }
         recorder = rec;
         captureRateHz = captureRate;
         analyzer = preparedClassifier;
@@ -392,6 +420,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         actualInput = routed != null ? String.valueOf(routed.getProductName()) : "Маршрут ещё не определён";
         actualKind = routed != null ? String.valueOf(routed.getType()) : "unknown";
         actualInputType = routed != null ? routed.getType() : -1;
+        micRouteGeneration++;
         skippedInferenceWindows = 0;
         inferenceHealthy = new AtomicBoolean(true);
         inferenceBusy = new AtomicBoolean(false);
@@ -456,6 +485,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     final float[] soundWindow = new float[15600];
     int soundFilled = 0;
     int priorInputType = -1;
+    int priorInputDeviceId = -1;
     try {
       while (currentCapture(rec, epoch)) {
         int n = rec.read(samples, 0, samples.length);
@@ -469,12 +499,18 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         // YAMNet window. A headset hotplug can happen during AudioRecord.read.
         AudioDeviceInfo inputNow = rec.getRoutedDevice();
         int newInputType = inputNow != null ? inputNow.getType() : -1;
-        if (newInputType >= 0 && priorInputType >= 0 &&
-            newInputType != priorInputType) {
+        int newInputDeviceId = inputNow != null ? inputNow.getId() : -1;
+        if (newInputDeviceId >= 0 && priorInputDeviceId >= 0 &&
+            (newInputDeviceId != priorInputDeviceId || newInputType != priorInputType)) {
+          micRouteGeneration++;
           soundFilled = 0;
+          java.util.Arrays.fill(soundWindow, 0f);
           if (resampler != null) resampler.reset();
         }
-        if (newInputType >= 0) priorInputType = newInputType;
+        if (newInputDeviceId >= 0) {
+          priorInputType = newInputType;
+          priorInputDeviceId = newInputDeviceId;
+        }
         long now = SystemClock.elapsedRealtime();
         AudioClassifier cls = analyzer;
         if (cls != null && healthy.get()) {
@@ -497,13 +533,23 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
               ExecutorService worker = inferenceWorker;
               if (worker != null && busy.compareAndSet(false, true)) {
                 float[] windowCopy = soundWindow.clone();
+                final long scheduledGeneration = micRouteGeneration;
+                final int scheduledInputType = priorInputType;
                 try { worker.execute(() -> {
                   try {
-                    if (currentCapture(rec, epoch))
-                      classifyWindow(cls, windowCopy, rec, epoch, healthy);
-                  } finally { busy.set(false); }
+                    if (currentCapture(rec, epoch) &&
+                        scheduledGeneration == micRouteGeneration)
+                      classifyWindow(cls, windowCopy, rec, epoch, healthy,
+                        scheduledGeneration, scheduledInputType);
+                  } finally {
+                    java.util.Arrays.fill(windowCopy, 0f);
+                    busy.set(false);
+                  }
                 }); }
-                catch (java.util.concurrent.RejectedExecutionException ex) { busy.set(false); }
+                catch (java.util.concurrent.RejectedExecutionException ex) {
+                  java.util.Arrays.fill(windowCopy, 0f);
+                  busy.set(false);
+                }
               } else skippedInferenceWindows++;
             }
           }
@@ -528,6 +574,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     } catch (Exception ex) {
       if (capturing.get()) sendError("Сбой микрофона: " + ex.getMessage());
     } finally {
+      java.util.Arrays.fill(samples, (short)0);
+      java.util.Arrays.fill(soundWindow, 0f);
       // A read failure must not leave a recorder/microphone owned indefinitely.
       synchronized (captureLock) {
         if (recorder == rec) stopProbeInternal();
@@ -536,19 +584,20 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   }
 
   private void classifyWindow(AudioClassifier cls, float[] samples,
-                              AudioRecord rec, long epoch, AtomicBoolean healthy) {
+                              AudioRecord rec, long epoch, AtomicBoolean healthy,
+                              long scheduledGeneration, int scheduledInputType) {
     try {
       if (!currentCapture(rec, epoch)) return;
       AudioDataFormat format = AudioDataFormat.builder().setSampleRate(16000f).build();
       AudioData audioData = AudioData.create(format, samples.length);
       audioData.load(samples);
       AudioClassifierResult result = cls.classify(audioData);
-      if (!currentCapture(rec, epoch)) return;
+      if (!currentCapture(rec, epoch) || scheduledGeneration != micRouteGeneration) return;
       int sent = 0;
       for (ClassificationResult window : result.classificationResults()) {
         for (Classifications head : window.classifications()) {
           for (Category category : head.categories()) {
-            if (!currentCapture(rec, epoch)) return;
+            if (!currentCapture(rec, epoch) || scheduledGeneration != micRouteGeneration) return;
             if (sent >= 3 || category.score() < 0.18f) return;
             String label = category.categoryName();
             if (label == null || label.isEmpty()) continue;
@@ -556,9 +605,10 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
             data.put("label", label);
             data.put("confidence", category.score());
             data.put("timestamp", System.currentTimeMillis());
-            int t = actualInputType;
-            String source = (t == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || t == AudioDeviceInfo.TYPE_BLE_HEADSET)
-              ? "bluetoothMic" : (t == AudioDeviceInfo.TYPE_WIRED_HEADSET || t == AudioDeviceInfo.TYPE_USB_HEADSET)
+            String source = (scheduledInputType == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+              scheduledInputType == AudioDeviceInfo.TYPE_BLE_HEADSET)
+              ? "bluetoothMic" : (scheduledInputType == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+              scheduledInputType == AudioDeviceInfo.TYPE_USB_HEADSET)
               ? "headsetMic" : "phoneMic";
             data.put("source", source);
             notifyListeners("yamnet", data);
@@ -582,6 +632,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     synchronized (captureLock) {
       capturing.set(false);
       activeCaptureEpoch = -1;
+      micRouteGeneration++;
       AudioRecord rec = recorder; recorder = null;
       AudioClassifier cls = analyzer; analyzer = null;
       analysisActive = false;

@@ -40,7 +40,14 @@ public class SoundWorldPlaybackPlugin extends Plugin {
   @PluginMethod public void pause(PluginCall call) {
     SoundWorldPlaybackService s=SoundWorldPlaybackService.current();
     if(s!=null)s.pauseAudio();
-    JSObject r=new JSObject();r.put("audible",false);call.resolve(r);
+    try {
+      // Pause is terminal for this foreground service. Explicit Play starts
+      // a fresh session, rather than leaving a silent persistent notification.
+      getContext().stopService(new Intent(getContext(), SoundWorldPlaybackService.class));
+      JSObject r=new JSObject();r.put("audible",false);call.resolve(r);
+    } catch (Exception ex) {
+      call.reject("Не удалось остановить фоновую музыку: " + ex.getMessage());
+    }
   }
 
   @PluginMethod public void stop(PluginCall call) {
