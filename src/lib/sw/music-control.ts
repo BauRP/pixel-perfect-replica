@@ -81,7 +81,7 @@ export class MusicControlPlanner {
         input.timestamp > 8.64e15 || !Number.isFinite(input.bpm) ||
         !Number.isFinite(input.confidence) ||
         input.confidence < 0.55 || input.confidence > 1 ||
-        input.bpm < 40 || input.bpm > 225) return false;
+        input.bpm < 40 || input.bpm > 300) return false;
     if (this.lastPace && input.timestamp <= this.lastPace.timestamp) return false;
     // An old cadence is not evidence for the user's new walking speed.
     // After a long sensor gap, adopt the fresh measured pace without blending

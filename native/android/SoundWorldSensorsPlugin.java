@@ -88,6 +88,61 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private volatile int batteryThrottledWindows = 0;
   private AudioManager routingManager;
   private AudioDeviceCallback audioDeviceObserver;
+  // Serial rerouting is done off the Capacitor/Android UI thread. A device
+  // disappearing never restarts the microphone or requests new permissions.
+  private final ExecutorService routeWorker = Executors.newSingleThreadExecutor(r -> {
+    Thread t = new Thread(r, "SoundWorld-Input-Route");
+    t.setDaemon(true);
+    return t;
+  });
+
+  private static boolean headsetInput(AudioDeviceInfo device) {
+    int type = device.getType();
+    return type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+      type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+      type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+      type == AudioDeviceInfo.TYPE_BLE_HEADSET;
+  }
+
+  private AudioDeviceInfo preferredInputDevice() {
+    AudioManager manager = routingManager;
+    if (manager == null)
+      manager = (AudioManager)getContext().getSystemService(Context.AUDIO_SERVICE);
+    if (manager == null) return null;
+    AudioDeviceInfo headset = null;
+    AudioDeviceInfo builtIn = null;
+    for (AudioDeviceInfo device : manager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
+      if (!device.isSource()) continue;
+      if (headsetInput(device) && headset == null) headset = device;
+      if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC && builtIn == null)
+        builtIn = device;
+    }
+    // "headset" is a preference, not a promise that unplugged hardware exists.
+    // "auto" retains existing headset-first behavior and "phone" favors built-in.
+    return "phone".equals(inputPreference)
+      ? (builtIn != null ? builtIn : headset)
+      : (headset != null ? headset : builtIn);
+  }
+
+  private void updateActiveInputRoute() {
+    try {
+      routeWorker.execute(() -> {
+        synchronized (captureLock) {
+          AudioRecord active = recorder;
+          if (active == null || !capturing.get()) return;
+          try {
+            // The route is only a requested preference. getRoutedDevice()
+            // in the capture loop remains the authoritative actual route.
+            active.setPreferredDevice(preferredInputDevice());
+          } catch (RuntimeException ex) {
+            sendError("Android не смог переключить микрофон: " + ex.getMessage());
+          }
+        }
+      });
+    } catch (java.util.concurrent.RejectedExecutionException ignored) {
+      // Activity was destroyed; never restart capture for a stale device event.
+    }
+  }
   // Battery/thermal/LMK binder queries must never block AudioRecord.read().
   // Power policy is always enabled; it only runs on its own bounded worker.
   private volatile ExecutorService powerWorker;
@@ -138,6 +193,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       call.reject("Неизвестный режим нагрузки"); return;
     }
     batteryMode = requested;
+    // Apply the newly chosen mode to an ALREADY RUNNING YAMNet session,
+    // not only after the next six analysis windows.
+    if (capturing.get() && analysisActive) schedulePowerRefresh(activeCaptureEpoch);
     JSObject out = new JSObject();
     out.put("mode", requested);
     out.put("configured", true);
@@ -153,6 +211,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
           JSObject event = new JSObject();
           event.put("changed", true);
           notifyListeners("audioRouteChanged", event);
+          updateActiveInputRoute();
         }
         @Override public void onAudioDevicesAdded(AudioDeviceInfo[] devices) { changed(); }
         @Override public void onAudioDevicesRemoved(AudioDeviceInfo[] devices) { changed(); }
@@ -181,6 +240,12 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     o.put("stepsSupported", sm != null && sm.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR) != null);
     o.put("recording", capturing.get());
     o.put("actualInput", actualInput);
+    o.put("preferredInput", inputPreference);
+    o.put("actualInputCategory", actualInputType == AudioDeviceInfo.TYPE_BUILTIN_MIC ? "phone" :
+      (actualInputType == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+       actualInputType == AudioDeviceInfo.TYPE_USB_HEADSET ||
+       actualInputType == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+       actualInputType == AudioDeviceInfo.TYPE_BLE_HEADSET) ? "headset" : "unknown");
     o.put("captureRateHz", captureRateHz);
     o.put("skippedInferenceWindows", skippedInferenceWindows);
     o.put("inferenceThrottled", batteryThrottledWindows);
@@ -209,6 +274,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       call.reject("Неизвестный режим микрофона"); return;
     }
     inputPreference = requested;
+    // A preference selected DURING an existing diagnostic is effective
+    // immediately. Previously it was used only on the next Start.
+    updateActiveInputRoute();
     JSObject result = new JSObject(); result.put("selected", requested);
     call.resolve(result);
   }
@@ -306,24 +374,10 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
             Math.max(min * 2, captureRate / 5));
         }
         if (rec.getState() != AudioRecord.STATE_INITIALIZED) throw new IllegalStateException("Микрофон не инициализирован");
-        AudioManager manager = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
-        if (manager != null) {
-          AudioDeviceInfo best = null;
-          for (AudioDeviceInfo d : manager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
-            if (!d.isSource()) continue;
-            int type = d.getType();
-            boolean headset = type == AudioDeviceInfo.TYPE_WIRED_HEADSET || type == AudioDeviceInfo.TYPE_USB_HEADSET
-              || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == AudioDeviceInfo.TYPE_BLE_HEADSET;
-            boolean phone = type == AudioDeviceInfo.TYPE_BUILTIN_MIC;
-            if (("phone".equals(inputPreference) && phone)
-              || (!"phone".equals(inputPreference) && headset)) {
-              best = d;
-              break;
-            }
-          }
-          // Android may reject the preference; always report the actual routed device.
-          if (best != null) rec.setPreferredDevice(best);
-        }
+        // Use the identical selection policy at Start and for hot-plug
+        // changes. No fallback from a genuine recorder to an invented device.
+        AudioDeviceInfo best = preferredInputDevice();
+        if (best != null) rec.setPreferredDevice(best);
         if (epoch != captureEpoch.get()) throw new IllegalStateException("Запуск отменён");
         rec.startRecording();
         if (rec.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IllegalStateException("Захват микрофона не начался");
@@ -678,6 +732,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       routingManager.unregisterAudioDeviceCallback(audioDeviceObserver);
       audioDeviceObserver = null;
     }
+    routeWorker.shutdownNow();
     stopForLifecycle("SoundWorld-Destroy-Stop");
     stopStepsInternal();
     super.handleOnDestroy();

@@ -23,6 +23,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (hydrated) void getAdapters().performance.applyBatteryMode(settings.batteryMode);
   }, [hydrated, settings.batteryMode]);
   useEffect(() => {
+    // Re-apply the user's actual route choice on app launch AND while the
+    // microphone is already active. No capture is opened by this call.
+    if (hydrated) void getAdapters().router.chooseBestSupportedRoute();
+  }, [hydrated, settings.autoAudioRouting, settings.microphonePreference]);
+  useEffect(() => {
     if (hydrated && !settings.onboardingCompleted && loc.pathname !== "/onboarding") {
       navigate({ to: "/onboarding", replace: true });
     }

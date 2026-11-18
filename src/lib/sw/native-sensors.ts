@@ -19,6 +19,8 @@ export interface SensorsStatus {
   stepsSupported: boolean;
   recording: boolean;
   actualInput: string;
+  preferredInput?: "auto" | "headset" | "phone";
+  actualInputCategory?: "headset" | "phone" | "unknown";
   captureRateHz?: number;
 }
 export interface RawSound {

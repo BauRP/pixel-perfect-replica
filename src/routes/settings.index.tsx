@@ -37,7 +37,12 @@ function SettingsPage() {
   const warnings=deviceHealthAlerts(health);
   useEffect(() => {
     let live=true;
-    const refresh=()=>{void sensorStatus().then(x=>{if(live)setDevice(x)})};
+    let readingStatus=false;
+    const refresh=()=>{
+      if(readingStatus)return;
+      readingStatus=true;
+      void sensorStatus().then(x=>{if(live)setDevice(x)}).finally(()=>{readingStatus=false});
+    };
     let reading=false;
     const refreshHealth=()=>{
       if(reading)return;
@@ -55,7 +60,7 @@ function SettingsPage() {
     // route is reported after preparation and may change when switching
     // between speaker, wired headphones and Bluetooth.
     const timer=window.setInterval(refreshHealth,15000);
-    const routeTimer=window.setInterval(refreshWavRoute,5000);
+    const routeTimer=window.setInterval(()=>{refresh();refreshWavRoute()},5000);
     const off=observeActualRouteChanges(()=>{refresh();refreshWavRoute()});
     return ()=>{live=false;window.clearInterval(timer);window.clearInterval(routeTimer);off()};
   },[]);
@@ -75,6 +80,12 @@ function SettingsPage() {
             <span className="flex-1 text-sm">Активный микрофон</span>
             <span className="text-right text-xs text-warning">{device?.recording ? device.actualInput || "Определяется" : "Микрофон не используется"}</span>
           </div>
+          {device?.recording && s.microphonePreference==="headset" &&
+            device.actualInputCategory==="phone" &&
+            <p role="status" className="px-3 pb-2 text-xs text-warning">
+              Наушники выбраны как предпочтение, но Android сейчас использует микрофон телефона.
+              Изменение предпочтения не означает, что устройство действительно переключилось.
+            </p>}
         </Section>
 
         <Section title="Воспроизведение">

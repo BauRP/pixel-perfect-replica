@@ -67,14 +67,14 @@ export class StepPaceEstimator {
     const ignored = {activity:"unknown" as const,bpm:0,confidence:0};
     if (prev != null && timestamp <= prev) return ignored;
     if (prev != null && timestamp - prev > 8000) this.times = [];
-    else if (prev != null && timestamp - prev < 260) return ignored;
+    else if (prev != null && timestamp - prev < 200) return ignored;
     this.times.push(timestamp);
     this.times = this.times.slice(-8);
     return this.estimate();
   }
   private estimate() {
     if (this.times.length < 4) return { activity: "unknown" as const, bpm: 0, confidence: 0 };
-    const intervals = this.times.slice(1).map((t,i) => t-this.times[i]!).filter(ms => ms >= 260 && ms <= 2200).sort((a,b)=>a-b);
+    const intervals = this.times.slice(1).map((t,i) => t-this.times[i]!).filter(ms => ms >= 200 && ms <= 2200).sort((a,b)=>a-b);
     if (intervals.length < 3) return { activity: "unknown" as const, bpm: 0, confidence: 0 };
     const median = intervals[Math.floor(intervals.length/2)]!;
     const bpm = Math.round(60000/median);

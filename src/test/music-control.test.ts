@@ -61,6 +61,13 @@ describe("real-world signals to future music directives", () => {
     expect(planner.observePace({bpm:120,confidence:.95,timestamp:1000})).toBe(true);
     expect(planner.plan(DEFAULT_SETTINGS,1000).stepPulseBpm).toBe(120);
   });
+  it("accepts genuine 250-step sprint cadence as future percussion evidence",()=>{
+    const p=new MusicControlPlanner();
+    expect(p.observePace({bpm:250,confidence:.9,timestamp:1000})).toBe(true);
+    const result=p.plan(DEFAULT_SETTINGS,1000);
+    expect(result.activity).toBe("running");
+    expect(result.stepPulseBpm).toBe(180); // musical accents remain bounded
+  });
   it("does not blend fresh steps with an obsolete pace after a long pause", () => {
     const p = new MusicControlPlanner();
     expect(p.observePace({bpm:80,confidence:.9,timestamp:1000})).toBe(true);

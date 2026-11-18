@@ -27,7 +27,7 @@ export function directorLivePreview(
   const step=!settings.musicOnlyMode && evidence.step &&
     recent(evidence.step.at,now,4_500) &&
     Number.isFinite(evidence.step.bpm) && evidence.step.bpm>=40 &&
-    evidence.step.bpm<=225?evidence.step:null;
+    evidence.step.bpm<=300?evidence.step:null;
   const enabled=new Set(settings.directorRules.filter(x=>x.enabled).map(x=>x.id));
   return DIRECTOR_RULES.map(rule=>{
     const on=enabled.has(rule.id);

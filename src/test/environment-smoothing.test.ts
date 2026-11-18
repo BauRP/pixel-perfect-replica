@@ -71,7 +71,7 @@ describe("real event filtering (no simulated detections)",()=>{
     // Old step, duplicate and near-duplicate are not new independent steps.
     expect(s.ingest(1800).activity).toBe("unknown");
     expect(s.ingest(3400).activity).toBe("unknown");
-    expect(s.ingest(3500).activity).toBe("unknown"); // debounce <260 ms
+    expect(s.ingest(3500).activity).toBe("unknown"); // rejected near-duplicate <200 ms
     // Returning "unknown" for rejected events prevents a stale hardware
     // callback from refreshing the player with a fictitious new step.
     expect(s.ingest(3800).activity).toBe("walking");
@@ -85,6 +85,14 @@ describe("real event filtering (no simulated detections)",()=>{
     expect(s.ingest(3400).activity).toBe("walking");
     s.reset();
     expect(s.ingest(9000).activity).toBe("unknown");
+  });
+  it("recognizes genuine high-cadence runner steps around 240ms apart",()=>{
+    const s=new StepPaceEstimator();
+    [1000,1240,1480,1720,1960,2200].forEach(t=>s.ingest(t));
+    const p=s.ingest(2440);
+    expect(p.activity).toBe("running");
+    expect(p.bpm).toBe(250);
+    expect(p.confidence).toBeGreaterThan(.55);
   });
   it("recognizes faster step tempo without accelerating already recorded audio",()=>{
     const s=new StepPaceEstimator();
