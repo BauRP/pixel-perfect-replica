@@ -40,6 +40,11 @@ class AndroidWorkflowReleaseContract(unittest.TestCase):
         self.assertIn('paths-ignore:\n      - "PROGRESS.md"', source)
         self.assertIn("cancel-in-progress: true", source)
         self.assertIn("workflow_dispatch:", source)
+        self.assertIn("verify_android_emulators:", source)
+        self.assertIn("default: false", source)
+        self.assertGreaterEqual(source.count("inputs.verify_android_emulators"), 11)
+        self.assertIn("Publish diagnostic APK to GitHub Releases", source)
+        self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators && steps.publish_diagnostic_apk.outcome == 'success'", source)
 
     def test_all_multiline_bash_steps_have_valid_syntax(self):
         source = WORKFLOW.read_text(encoding="utf-8")

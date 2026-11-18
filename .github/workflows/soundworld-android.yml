@@ -7,6 +7,12 @@ on:
     paths-ignore:
       - "PROGRESS.md"
   workflow_dispatch:
+    inputs:
+      verify_android_emulators:
+        description: "Optional Android 12–16 emulator tests after APK publication"
+        type: boolean
+        required: false
+        default: false
 
 # Keep only the latest build per branch. Older APKs remain in Releases.
 concurrency:
@@ -296,9 +302,10 @@ jobs:
           retention-days: 2
           if-no-files-found: error
 
-      # An APK can compile successfully yet crash immediately when opened.
-      # Do not publish a new user-facing APK without an actual Android launch.
+      # Publish the diagnostic debug APK without expensive emulators on push.
+      # Emulator checks are an OPTIONAL manually requested acceptance, not unfinished code.
       - name: Reclaim GitHub runner disk space for Android emulator
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators
         shell: bash
         run: |
           set -euo pipefail
@@ -317,11 +324,13 @@ jobs:
           assert free >= 10 * 1024**3, "Not enough free storage for Android emulator"
           PY
       - name: Enable KVM for Android emulator
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Verify actual Android 12 startup twice (crash gate)
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 31
@@ -334,7 +343,7 @@ jobs:
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -cores 4
           script: bash scripts/check_android_startup.sh
       - name: Reclaim emulator disk after Android 31
-        if: always()
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators
         shell: bash
         run: |
           set -euo pipefail
@@ -352,6 +361,7 @@ jobs:
             raise SystemExit("Runner disk too full for next emulator; APK build succeeded")
           PY
       - name: Verify Android 13 startup and screens (API 33)
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
@@ -364,7 +374,7 @@ jobs:
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -cores 4
           script: bash scripts/check_android_startup.sh
       - name: Reclaim emulator disk after Android 33
-        if: always()
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators
         shell: bash
         run: |
           set -euo pipefail
@@ -382,6 +392,7 @@ jobs:
             raise SystemExit("Runner disk too full for next emulator; APK build succeeded")
           PY
       - name: Verify Android 14 startup and screens (API 34)
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -394,7 +405,7 @@ jobs:
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -cores 4
           script: bash scripts/check_android_startup.sh
       - name: Reclaim emulator disk after Android 34
-        if: always()
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators
         shell: bash
         run: |
           set -euo pipefail
@@ -411,6 +422,7 @@ jobs:
             raise SystemExit("Runner disk too full for next emulator; APK build succeeded")
           PY
       - name: Verify Android 15 edge-to-edge and screen cutout (API 35)
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -423,7 +435,7 @@ jobs:
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: bash scripts/check_android_startup.sh
       - name: Reclaim emulator disk after Android 35
-        if: always()
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators
         shell: bash
         run: |
           set -euo pipefail
@@ -441,6 +453,7 @@ jobs:
             raise SystemExit("Runner disk too full for next emulator; APK build succeeded")
           PY
       - name: Verify actual Android 16 startup and screens (API 36)
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -458,14 +471,14 @@ jobs:
         run: |
           echo "::error::APK compiled, but GitHub Releases and Actions artifacts were both unavailable. This is a delivery failure, not an Android startup failure."
           exit 1
-      - name: Explain fallback APK download after Android verification
+      - name: Explain fallback APK download
         if: steps.publish_diagnostic_apk.outcome == 'failure' && steps.fallback_apk.outcome == 'success'
         run: |
-          echo "### APK passed Android checks; GitHub Releases had an API outage" >> "$GITHUB_STEP_SUMMARY"
+          echo "### APK built; GitHub Releases had an API outage" >> "$GITHUB_STEP_SUMMARY"
           echo "Download the APK and SHA-256 from the Artifacts section of this workflow run (repository access required; retained 2 days)." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Mark APK verified after Android 12, 13, 15 and 16 launch tests
-        if: steps.publish_diagnostic_apk.outcome == 'success'
+      - name: Mark APK verified only after optional Android 12–16 launch tests
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators && steps.publish_diagnostic_apk.outcome == 'success'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -473,7 +486,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="soundworld-ar-build-${{ github.run_id }}-${{ github.run_attempt }}"
-          # Metadata publication is best-effort AFTER both real emulator gates.
+          # Metadata publication is best-effort AFTER all optional emulator gates.
           # Do not turn a verified APK into a red Android job because GitHub's
           # Releases API temporarily returns HTTP 500 for release edits.
           marked=0
