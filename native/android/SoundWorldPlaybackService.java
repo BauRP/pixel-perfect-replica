@@ -307,6 +307,14 @@ public final class SoundWorldPlaybackService extends Service {
     paused.set(true);
     running.set(false);
     chunks.clear();
+    // Stopping the JS queue alone is insufficient: AudioTrack may still hold
+    // buffered real PCM that would otherwise spill into a phone call or the
+    // loudspeaker after a headset is disconnected.
+    AudioTrack activeTrack=audioTrack;
+    if(activeTrack!=null) {
+      try {activeTrack.pause();} catch(IllegalStateException ignored) {}
+      try {activeTrack.flush();} catch(IllegalStateException ignored) {}
+    }
     publishState(false);
     actualPlayback = false;
     // Never resume automatically after focus loss or an unplug event.
