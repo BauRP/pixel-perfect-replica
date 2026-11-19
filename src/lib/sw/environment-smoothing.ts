@@ -44,7 +44,12 @@ export class AmbientStabilizer {
       this.candidate = next; this.hits = 1;
     } else this.hits++;
     this.lastSeen = p.timestamp;
-    if (this.hits < this.requiredHits || next === this.current) return null;
+    if (this.hits < this.requiredHits) return null;
+    // Repeated, independent real YAMNet windows are a heartbeat confirming
+    // the SAME ongoing scene. Do not falsely expire uninterrupted rain after
+    // 30s just because the category did not change.
+    if (next === this.current)
+      return {atmosphere:next,confidence:p.confidence,timestamp:p.timestamp};
     if (this.current !== "unknown" && p.timestamp - this.lastTransition < this.minTransitionMs) return null;
     this.current = next;
     this.lastTransition = p.timestamp;

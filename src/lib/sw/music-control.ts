@@ -33,6 +33,7 @@ export class MusicControlPlanner {
   private atmosphere: Atmosphere = "unknown";
   private locked = false;
   private lastMajorChangeAt = -Infinity;
+  private lastAmbientEvidenceAt = -Infinity;
   private lastPace: ActivityEstimate | null = null;
   private regenerationDue = false;
   private birdVerifiedAt = 0;
@@ -45,6 +46,7 @@ export class MusicControlPlanner {
     this.atmosphere="unknown";
     this.lastPace=null;
     this.lastMajorChangeAt=-Infinity;
+    this.lastAmbientEvidenceAt=-Infinity;
     this.regenerationDue=false;
     this.birdVerifiedAt=0;
   }
@@ -65,8 +67,13 @@ export class MusicControlPlanner {
     const threshold = settings.environmentReaction==="weak" ? .8 : settings.environmentReaction==="strong" ? .53 : .65;
     if (!Number.isFinite(input.confidence) || input.confidence > 1 || input.confidence < threshold ||
         !Number.isFinite(input.timestamp) || input.timestamp <= 0 ||
-        input.timestamp <= this.lastMajorChangeAt) return false;
-    if (input.atmosphere === this.atmosphere) return false;
+        input.timestamp <= this.lastAmbientEvidenceAt) return false;
+    // A new CONFIRMED window from the same scene refreshes its validity,
+    // but must never force a full AI recomposition.
+    if (input.atmosphere === this.atmosphere) {
+      this.lastAmbientEvidenceAt=input.timestamp;
+      return false;
+    }
     // At least 20s before another full AI composition request; micro-adjustments do not use this.
     const minimumMajorInterval = settings.environmentReaction==="weak" ? 35000 :
       settings.environmentReaction==="strong" ? 12000 : 20000;
@@ -74,6 +81,7 @@ export class MusicControlPlanner {
     this.atmosphere = input.atmosphere;
     if(input.atmosphere!=="nature")this.birdVerifiedAt=0;
     this.lastMajorChangeAt = input.timestamp;
+    this.lastAmbientEvidenceAt = input.timestamp;
     this.regenerationDue = true;
     return true;
   }
@@ -114,9 +122,9 @@ export class MusicControlPlanner {
     const density = clamp(.36 + Math.max(0, settings.mood) * .035 +
       (activity === "running" ? .11 : 0) * strength / .28, .25, .7);
     const ambientFresh = !settings.musicOnlyMode &&
-      Number.isSafeInteger(now) && Number.isSafeInteger(this.lastMajorChangeAt) &&
-      this.lastMajorChangeAt > 0 && now >= this.lastMajorChangeAt &&
-      now - this.lastMajorChangeAt <= AMBIENT_EVIDENCE_MAX_AGE_MS;
+      Number.isSafeInteger(now) && Number.isSafeInteger(this.lastAmbientEvidenceAt) &&
+      this.lastAmbientEvidenceAt > 0 && now >= this.lastAmbientEvidenceAt &&
+      now - this.lastAmbientEvidenceAt <= AMBIENT_EVIDENCE_MAX_AGE_MS;
     // Old YAMNet scenes must not keep affecting arrangement after analysis
     // ends or Bluetooth switches. Do not synthesize a new "quiet" observation.
     const env: Atmosphere = ambientFresh ? this.atmosphere : "unknown";

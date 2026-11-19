@@ -30,6 +30,23 @@ describe("real-world signals to future music directives", () => {
     expect(p.observeAmbient({atmosphere:"traffic",confidence:.9,timestamp:35000},s)).toBe(true);
     expect(p.plan(s,35000).atmosphere).toBe("traffic");
   });
+  it("keeps 60+ seconds of continuously verified rain without expensive repeated regeneration",()=>{
+    const p=new MusicControlPlanner();
+    const settings={...DEFAULT_SETTINGS,directorRules:DEFAULT_SETTINGS.directorRules.map(x=>({
+      ...x,enabled:x.id==="rain-soft",
+    }))};
+    expect(p.observeAmbient({atmosphere:"rain",confidence:.9,timestamp:1000},settings)).toBe(true);
+    expect(p.plan(settings,1000).regenerate).toBe(true);
+    for(let at=11000;at<=71000;at+=10000) {
+      expect(p.observeAmbient({atmosphere:"rain",confidence:.9,timestamp:at},settings)).toBe(false);
+      const plan=p.plan(settings,at);
+      expect(plan.atmosphere).toBe("rain");
+      expect(plan.directorEffects).toContain("soften-arrangement");
+      expect(plan.regenerate).toBe(false);
+    }
+    expect(p.plan(settings,101001).atmosphere).toBe("unknown");
+    expect(p.plan(settings,101001).regenerate).toBe(false);
+  });
   it("does not regenerate stale scenes that have never been consumed",()=>{
     const p=new MusicControlPlanner();
     expect(p.observeAmbient({atmosphere:"rain",confidence:.9,timestamp:1000},DEFAULT_SETTINGS)).toBe(true);
