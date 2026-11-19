@@ -24,6 +24,7 @@ import android.os.SystemClock;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Real 48kHz stereo PCM output sink for a future LOCAL generative model.
@@ -37,6 +38,10 @@ public final class SoundWorldPlaybackService extends Service {
   private static final String CHANNEL = "soundworld_music";
   private static final int NOTIFICATION_ID = 412;
   private static volatile SoundWorldPlaybackService active;
+  // Session IDs are monotonically increasing for the lifetime of the process.
+  // A late PCM packet from an interrupted session cannot play after restart.
+  private static final AtomicInteger NEXT_SESSION_ID = new AtomicInteger();
+  private volatile int pcmSessionId = 0;
   private final ArrayBlockingQueue<byte[]> chunks = new ArrayBlockingQueue<>(16);
   private final AtomicBoolean running = new AtomicBoolean(false);
   private final AtomicBoolean writerActive = new AtomicBoolean(false);
@@ -68,6 +73,8 @@ public final class SoundWorldPlaybackService extends Service {
   public static SoundWorldPlaybackService current() { return active; }
 
   public enum EnqueueResult { ACCEPTED, BACKPRESSURE, UNAVAILABLE }
+
+  public int sessionId() { return pcmSessionId; }
 
 
   @Override public void onCreate() {
@@ -149,6 +156,7 @@ public final class SoundWorldPlaybackService extends Service {
       startForeground(NOTIFICATION_ID, notification("Ожидание настоящего аудио"));
       lastAudioError = "";
       lastUnderruns = -1;
+      pcmSessionId = NEXT_SESSION_ID.incrementAndGet();
       paused.set(false);
       foregroundReady.set(true);
       idleHandler.removeCallbacks(noFirstPcm);
@@ -164,8 +172,9 @@ public final class SoundWorldPlaybackService extends Service {
   /** A full queue is temporary backpressure, NOT evidence that the
    *  real generator, audio session or WAV data is broken. Rejection occurs
    *  without enqueuing, so a bounded producer retry cannot duplicate audio. */
-  public synchronized EnqueueResult offerPcm(byte[] pcm) {
-    if (!readyForPcm() || pcm == null || pcm.length == 0 ||
+  public synchronized EnqueueResult offerPcm(byte[] pcm, int requestedSessionId) {
+    if (requestedSessionId <= 0 || requestedSessionId != pcmSessionId ||
+        !readyForPcm() || pcm == null || pcm.length == 0 ||
         pcm.length % 4 != 0 || pcm.length > 192000)
       return EnqueueResult.UNAVAILABLE;
     if (!running.get() && writerActive.get())
@@ -291,6 +300,8 @@ public final class SoundWorldPlaybackService extends Service {
   }
 
   public synchronized void pauseAudio() {
+    // Invalidate all producer requests before releasing foreground audio.
+    pcmSessionId = 0;
     idleHandler.removeCallbacks(noFirstPcm);
     foregroundReady.set(false);
     paused.set(true);

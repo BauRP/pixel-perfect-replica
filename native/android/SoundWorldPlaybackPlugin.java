@@ -27,12 +27,18 @@ public class SoundWorldPlaybackPlugin extends Plugin {
 
   @PluginMethod public void appendPcm(PluginCall call) {
     String data = call.getString("base64");
+    Integer requestedSessionId = call.getInt("sessionId");
+    if (requestedSessionId == null || requestedSessionId <= 0) {
+      call.reject("Аудиосессия не подтверждена");
+      return;
+    }
     if (data == null || data.length() > 275000) {call.reject("Недопустимый PCM фрагмент");return;}
     SoundWorldPlaybackService service = SoundWorldPlaybackService.current();
     if (service == null) {call.reject("Музыкальная служба не запущена");return;}
     try {
       byte[] pcm = Base64.decode(data, Base64.DEFAULT);
-      SoundWorldPlaybackService.EnqueueResult result = service.offerPcm(pcm);
+      SoundWorldPlaybackService.EnqueueResult result =
+        service.offerPcm(pcm, requestedSessionId);
       if (result == SoundWorldPlaybackService.EnqueueResult.UNAVAILABLE) {
         call.reject("Аудиослужба остановлена или PCM недопустим");
         return;
@@ -83,6 +89,7 @@ public class SoundWorldPlaybackPlugin extends Plugin {
     r.put("queuedChunks",s==null?0:s.bufferedChunks());
     r.put("serviceActive",s!=null);
     r.put("readyForPcm",s!=null&&s.readyForPcm());
+    r.put("sessionId",s==null?0:s.sessionId());
     r.put("underruns",s==null?-1:s.measuredUnderruns());
     r.put("lastAudioError",s==null?"":s.audioError());
     call.resolve(r);

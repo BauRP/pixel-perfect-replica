@@ -10,12 +10,20 @@ import { pcmToBase64 } from "./pcm-base64";
 
 interface PCMPlugin {
   start(): Promise<{preparing:boolean}>;
-  appendPcm(args:{base64:string}): Promise<{queued:boolean;backpressure?:boolean}>;
+  appendPcm(args:{base64:string;sessionId:number}): Promise<{queued:boolean;backpressure?:boolean}>;
   pause(): Promise<{audible:boolean}>;
   stop(): Promise<{requested:boolean}>;
-  status(): Promise<{audible:boolean;queuedChunks:number;serviceActive:boolean;readyForPcm:boolean;underruns:number;lastAudioError:string}>;
+  status(): Promise<{audible:boolean;queuedChunks:number;serviceActive:boolean;readyForPcm:boolean;sessionId:number;underruns:number;lastAudioError:string}>;
 }
 const native = registerPlugin<PCMPlugin>("SoundWorldPlayback");
+// A process-wide PCM bridge is allowed to write only to the foreground
+// Android session that the user actually started and Android confirmed.
+let activeSessionId:number|null = null;
+let requestGeneration = 0;
+export function matchingPcmSession(active:number|null,requested:number):boolean {
+  return active !== null && Number.isSafeInteger(requested) &&
+    requested > 0 && active === requested;
+}
 const unavailable = (msg:string):{ok:false;code:"UNAVAILABLE";message:string} => ({ok:false,code:"UNAVAILABLE",message:msg});
 export async function currentAudioSinkStatus() {
   if(Capacitor.getPlatform()!=="android") return null;
@@ -28,25 +36,35 @@ export async function currentAudioSinkStatus() {
  */
 export async function requestNativeAudioSink():Promise<Result<"preparing">> {
   if(Capacitor.getPlatform()!=="android") return unavailable("Аудиослужба доступна только на Android");
+  const generation = ++requestGeneration;
+  activeSessionId=null;
   try {
     await native.start();
+    if(generation!==requestGeneration)
+      return unavailable("Музыкальная сессия уже остановлена");
     // ContextCompat.startForegroundService only REQUESTS startup; Android
     // invokes onStartCommand later. Do not send music to an unready service.
     for(let attempt=0;attempt<24;attempt++) {
       const status=await native.status();
-      if(status.readyForPcm) return {ok:true,value:"preparing"};
+      if(generation!==requestGeneration)
+        return unavailable("Музыкальная сессия уже остановлена");
+      if(status.readyForPcm && Number.isSafeInteger(status.sessionId) &&
+         status.sessionId > 0) {
+        activeSessionId=status.sessionId;
+        return {ok:true,value:"preparing"};
+      }
       if(status.lastAudioError) {
-        await native.stop().catch(()=>{});
+        if(generation===requestGeneration) await native.stop().catch(()=>{});
         return {ok:false,code:"ERROR",message:status.lastAudioError};
       }
       await new Promise<void>(resolve=>setTimeout(resolve,100));
     }
     // Do not keep an unused foreground service alive if Android never
     // confirms that it is able to accept generated PCM.
-    await native.stop().catch(()=>{});
+    if(generation===requestGeneration) await native.stop().catch(()=>{});
     return {ok:false,code:"TIMEOUT",message:"Android не подготовил аудиослужбу за 2,4 секунды"};
   } catch(e){
-    await native.stop().catch(()=>{});
+    if(generation===requestGeneration) await native.stop().catch(()=>{});
     return {ok:false,code:"ERROR",message:String(e)};
   }
 }
@@ -65,6 +83,8 @@ export function validatePcmChunk(pcm:Uint8Array):boolean {
 export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
   if(Capacitor.getPlatform()!=="android") return unavailable("Аудиовывод Android недоступен");
   if(!validatePcmChunk(pcm))return {ok:false,code:"ERROR",message:"Неверный размер или формат PCM"};
+  const sessionId=activeSessionId;
+  if(sessionId===null)return unavailable("Нет подтверждённой музыкальной аудиосессии");
   // Chunk <=1s prevents large JS -> native bridge payloads.
   try {
     // A genuine generator can briefly outrun AudioTrack. Only a NEGATIVE
@@ -72,7 +92,11 @@ export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
     // retried; successful packets must NEVER be sent twice.
     const encoded=pcmToBase64(pcm);
     for (let attempt=0;attempt<25;attempt++) {
-      const acknowledgment=await native.appendPcm({base64:encoded});
+      if(!matchingPcmSession(activeSessionId,sessionId))
+        return unavailable("Музыкальная сессия сменилась во время передачи PCM");
+      const acknowledgment=await native.appendPcm({base64:encoded,sessionId});
+      if(!matchingPcmSession(activeSessionId,sessionId))
+        return unavailable("Музыкальная сессия остановлена до подтверждения PCM");
       if (positivePcmAcknowledgment(acknowledgment))
         return {ok:true,value:"queued"};
       if (!retryablePcmBackpressure(acknowledgment))
@@ -85,12 +109,17 @@ export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
   }catch(e){return {ok:false,code:"ERROR",message:String(e)};}
 }
 export async function pauseNativeAudioSink():Promise<void>{
+  // Invalidate any in-flight append/retry before Android asynchronously stops.
+  activeSessionId=null;
+  requestGeneration++;
   if(Capacitor.getPlatform()==="android")await native.pause().catch(()=>{});
 }
 export function confirmedAudioStop(response:{requested?:boolean}|null|undefined):boolean {
   return response?.requested === true;
 }
 export async function stopNativeAudioSink():Promise<void>{
+  activeSessionId=null;
+  requestGeneration++;
   if(Capacitor.getPlatform()!=="android")return;
   const response=await native.stop();
   if(!confirmedAudioStop(response))throw new Error("Android не подтвердил остановку аудиослужбы");
