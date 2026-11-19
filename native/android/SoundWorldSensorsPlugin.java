@@ -75,7 +75,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private final long appStartedAt = SystemClock.elapsedRealtime();
   private volatile int actualInputType = -1;
   // Reject queued YAMNet classification from a previous physical mic.
-  private volatile long micRouteGeneration = 0;
+  private final AtomicLong micRouteGeneration = new AtomicLong();
   private volatile int captureRateHz = 0;
   private Thread captureThread;
   private SensorManager sensorManager;
@@ -420,7 +420,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         actualInput = routed != null ? String.valueOf(routed.getProductName()) : "Маршрут ещё не определён";
         actualKind = routed != null ? String.valueOf(routed.getType()) : "unknown";
         actualInputType = routed != null ? routed.getType() : -1;
-        micRouteGeneration++;
+        micRouteGeneration.incrementAndGet();
         skippedInferenceWindows = 0;
         inferenceHealthy = new AtomicBoolean(true);
         inferenceBusy = new AtomicBoolean(false);
@@ -502,7 +502,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         int newInputDeviceId = inputNow != null ? inputNow.getId() : -1;
         if (newInputDeviceId >= 0 && priorInputDeviceId >= 0 &&
             (newInputDeviceId != priorInputDeviceId || newInputType != priorInputType)) {
-          micRouteGeneration++;
+          micRouteGeneration.incrementAndGet();
           soundFilled = 0;
           java.util.Arrays.fill(soundWindow, 0f);
           if (resampler != null) resampler.reset();
@@ -533,7 +533,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
               ExecutorService worker = inferenceWorker;
               if (worker != null && busy.compareAndSet(false, true)) {
                 float[] windowCopy = soundWindow.clone();
-                final long scheduledGeneration = micRouteGeneration;
+                final long scheduledGeneration = micRouteGeneration.get();
                 final int scheduledInputType = priorInputType;
                 try { worker.execute(() -> {
                   try {
@@ -592,12 +592,12 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       AudioData audioData = AudioData.create(format, samples.length);
       audioData.load(samples);
       AudioClassifierResult result = cls.classify(audioData);
-      if (!currentCapture(rec, epoch) || scheduledGeneration != micRouteGeneration) return;
+      if (!currentCapture(rec, epoch) || scheduledGeneration != micRouteGeneration.get()) return;
       int sent = 0;
       for (ClassificationResult window : result.classificationResults()) {
         for (Classifications head : window.classifications()) {
           for (Category category : head.categories()) {
-            if (!currentCapture(rec, epoch) || scheduledGeneration != micRouteGeneration) return;
+            if (!currentCapture(rec, epoch) || scheduledGeneration != micRouteGeneration.get()) return;
             if (sent >= 3 || category.score() < 0.18f) return;
             String label = category.categoryName();
             if (label == null || label.isEmpty()) continue;
@@ -635,7 +635,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     synchronized (captureLock) {
       capturing.set(false);
       activeCaptureEpoch = -1;
-      micRouteGeneration++;
+      micRouteGeneration.incrementAndGet();
       AudioRecord rec = recorder; recorder = null;
       AudioClassifier cls = analyzer; analyzer = null;
       analysisActive = false;
