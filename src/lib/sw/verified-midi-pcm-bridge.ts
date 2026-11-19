@@ -57,7 +57,10 @@ export async function renderVerifiedMidiToPcm(
         const event=schedule.events[cursor]!;
         const frame=midiEventFrame(event.atUs,RATE);
         if(frame===null)return {ok:false,code:"ERROR",message:"Неверный момент MIDI-события"};
-        if(frame>=until)break;
+        // Note-offs exactly at the END of the final score must still reach
+        // the real native synth to release its voices. For intermediate chunk
+        // edges, events belong to the following chunk instead.
+        if(frame>until || (frame===until && until!==total))break;
         // Exact event time is retained so native synthesis can set sample
         // offsets; no note is duplicated at the next packet boundary.
         chunkEvents.push(event);

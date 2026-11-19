@@ -38,6 +38,22 @@ describe("genuine licensed MIDI synthesizer bridge (no fake production audio)",(
     expect(outcome.ok).toBe(false);
     expect(calls).toEqual([{fromFrame:0,frameCount:12000,events:1}]);
   });
+  it("delivers note-offs exactly at the terminal 60-second boundary",async()=>{
+    let lastEventTypes:string[]=[];
+    let chunks=0;
+    const result=await renderVerifiedMidiToPcm(valid(),{
+      ready:async()=>true,
+      render:async x=>{
+        chunks++;
+        if(x.fromFrame+x.frameCount===2_880_000)
+          lastEventTypes=x.events.map(e=>e.kind);
+        return new Uint8Array(x.frameCount*4);
+      },
+    },{submit:async bytes=>({ok:true,value:bytes.byteLength})});
+    expect(result).toEqual({ok:true,frames:2_880_000});
+    expect(chunks).toBe(240);
+    expect(lastEventTypes).toContain("noteOff");
+  });
   it("does not count a partial native PCM submission as completed",async()=>{
     const result=await renderVerifiedMidiToPcm(valid(),{
       ready:async()=>true,render:async x=>new Uint8Array(x.frameCount*4),
