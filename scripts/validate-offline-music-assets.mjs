@@ -1,0 +1,110 @@
+#!/usr/bin/env node
+/**
+ * Fail-closed local music bundle gate: Fermata/MNN and a licensed renderer are
+ * never accepted just because files happen to exist. Nothing is downloaded.
+ * A missing bundle is allowed because the current APK is shell-only.
+ *
+ * This verifies declared hashes, file inventory and license evidence
+ * completeness. It does NOT independently prove copyright ownership,
+ * model compatibility or actual audio generation.
+ */
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readFileSync, readdirSync, mkdirSync, copyFileSync } from "node:fs";
+import { join, resolve, relative, sep } from "node:path";
+
+const root = resolve("offline-music");
+const manifestFile = join(root, "manifest.json");
+const requiredRoles = new Set(["model", "tokenizer", "mnn-arm64", "synth-arm64", "soundbank", "notice"]);
+const binaryRoles = new Set(["mnn-arm64", "synth-arm64"]);
+const shaPattern = /^[a-f0-9]{64}$/;
+const safePath = value => typeof value === "string" &&
+  value.length > 0 && value.length <= 240 &&
+  !value.includes("\\") && !value.includes(":") &&
+  value.split("/").every(part => part !== "" && part !== "." && part !== "..") &&
+  !value.startsWith("/");
+
+function walk(folder) {
+  return readdirSync(folder, { withFileTypes: true }).flatMap(entry => {
+    const path = join(folder, entry.name);
+    if (entry.isSymbolicLink()) throw Error("Music bundle contains symlink: " + path);
+    if (entry.isDirectory()) return walk(path);
+    if (!entry.isFile()) throw Error("Unsupported music bundle entry: " + path);
+    return [relative(root, path).split(sep).join("/")];
+  });
+}
+
+function fail(reason) { throw new Error("Offline music package: " + reason); }
+const targetIndex = process.argv.indexOf("--stage");
+if (targetIndex !== -1 && (targetIndex !== process.argv.length - 2 || !process.argv[targetIndex + 1]))
+  fail("use --stage ANDROID_APP_MAIN_DIRECTORY");
+if (targetIndex === -1 && process.argv.length !== 2) fail("unknown command arguments");
+
+if (!existsSync(root)) {
+  if (targetIndex !== -1) console.log("SHELL_ONLY: No optional Fermata bundle to stage");
+  else console.log("SHELL_ONLY: Music weights, tokenizer and synthesizer are not installed");
+  process.exit(0);
+}
+if (!existsSync(manifestFile)) fail("files exist but manifest.json is missing");
+if (lstatSync(manifestFile).isSymbolicLink()) fail("manifest symlink forbidden");
+const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
+if (manifest.schemaVersion !== 1 ||
+    manifest.model !== "haster/Fermata-0.2B-v1" ||
+    manifest.runtime !== "Alibaba/MNN" ||
+    typeof manifest.reviewedBy !== "string" || !manifest.reviewedBy.trim() ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(manifest.reviewedAt) ||
+    !Array.isArray(manifest.files) || manifest.files.length < 6)
+  fail("missing pinned model/runtime, manifest review or complete asset inventory");
+
+const roleSet = new Set(), listed = new Set(), noticePaths = new Set();
+let totalBytes = 0;
+for (const item of manifest.files) {
+  if (!item || !safePath(item.path) || listed.has(item.path)) fail("unsafe or duplicate bundle path");
+  listed.add(item.path);
+  if (!requiredRoles.has(item.role)) fail("unknown artifact role " + item.role);
+  roleSet.add(item.role);
+  if (item.role === "notice") noticePaths.add(item.path);
+  if (item.license !== "Apache-2.0" ||
+      typeof item.owner !== "string" || !item.owner.trim() ||
+      typeof item.sourceUrl !== "string" || !item.sourceUrl.startsWith("https://") ||
+      !shaPattern.test(item.sha256) ||
+      !Number.isSafeInteger(item.sizeBytes) || item.sizeBytes < 1)
+    fail("incomplete strict-Apache-2.0 provenance for " + item.path);
+  if (binaryRoles.has(item.role)) {
+    if (!/^lib[A-Za-z0-9_]+\.so$/.test(item.path)) fail("JNI lib filename must be libNAME.so");
+  } else if (item.path.endsWith(".so")) fail("shared libraries must use native-arm64 role");
+  if (item.role !== "notice" && !safePath(item.noticePath))
+    fail("every binary/data artifact needs a local license evidence file");
+  const file = resolve(root, item.path);
+  if (!file.startsWith(root + sep) || !existsSync(file) || !lstatSync(file).isFile())
+    fail("missing local artifact " + item.path);
+  const bytes = readFileSync(file);
+  if (bytes.length !== item.sizeBytes ||
+      createHash("sha256").update(bytes).digest("hex") !== item.sha256)
+    fail("wrong size or SHA256 for " + item.path);
+  totalBytes += bytes.length;
+  if (totalBytes > 900_000_000) fail("music bundle exceeds 900 MB budget");
+}
+for (const role of requiredRoles) if (!roleSet.has(role)) fail("missing required role: " + role);
+for (const item of manifest.files) if (item.role !== "notice" && !noticePaths.has(item.noticePath))
+  fail("license evidence is not inventoried for " + item.path);
+const inventory = walk(root);
+if (inventory.length !== listed.size + 1 ||
+    inventory.some(path => path !== "manifest.json" && !listed.has(path)))
+  fail("bundle includes unknown/unreviewed files");
+
+if (targetIndex !== -1) {
+  const androidMain = resolve(process.argv[targetIndex + 1]);
+  const assets = join(androidMain, "assets", "offline-music");
+  const libs = join(androidMain, "jniLibs", "arm64-v8a");
+  mkdirSync(assets, { recursive: true });
+  mkdirSync(libs, { recursive: true });
+  for (const item of manifest.files) {
+    const dest = binaryRoles.has(item.role) ? join(libs, item.path) : join(assets, item.path);
+    mkdirSync(resolve(dest, ".."), { recursive: true });
+    copyFileSync(join(root, item.path), dest);
+  }
+  copyFileSync(manifestFile, join(assets, "manifest.json"));
+  console.log("STAGED: verified offline music bundle", manifest.files.length, "artifacts");
+} else {
+  console.log("VERIFIED: pinned offline music bundle", manifest.files.length, "files", totalBytes, "bytes");
+}

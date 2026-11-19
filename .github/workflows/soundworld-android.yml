@@ -43,6 +43,8 @@ jobs:
         run: |
           bash -n scripts/check_android_startup.sh
           python3 -m unittest scripts.test_ui_accessibility_target scripts.test_ui_measured_onboarding scripts.test_android_lifecycle_contract scripts.test_ui_route_status scripts.test_wav_completion_contract scripts.test_android_workflow_release_contract
+      - name: Validate offline music package provenance and size (if supplied)
+        run: node scripts/validate-offline-music-assets.mjs
       - name: Validate Android CSS compatibility transform
         run: node --test scripts/legacy-css.test.mjs
       - name: Validate native thermal and battery policy (real Java)
@@ -96,6 +98,8 @@ jobs:
           npx cap add android
           npx cap sync android
           sed -i 's/minSdkVersion = [0-9]*/minSdkVersion = 31/' android/variables.gradle
+      - name: Stage optional verified Fermata/MNN/music assets into Android package
+        run: node scripts/validate-offline-music-assets.mjs --stage android/app/src/main
       - name: Install real SoundWorld native sensor plugin
         run: |
           set -euo pipefail
