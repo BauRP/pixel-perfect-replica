@@ -9,7 +9,7 @@
  * model compatibility or actual audio generation.
  */
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readdirSync, mkdirSync, copyFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, mkdirSync, copyFileSync, createReadStream } from "node:fs";
 import { join, resolve, relative, sep } from "node:path";
 
 const root = resolve("offline-music");
@@ -77,12 +77,16 @@ for (const item of manifest.files) {
   const file = resolve(root, item.path);
   if (!file.startsWith(root + sep) || !existsSync(file) || !lstatSync(file).isFile())
     fail("missing local artifact " + item.path);
-  const bytes = readFileSync(file);
-  if (bytes.length !== item.sizeBytes ||
-      createHash("sha256").update(bytes).digest("hex") !== item.sha256)
-    fail("wrong size or SHA256 for " + item.path);
-  totalBytes += bytes.length;
+  const size = lstatSync(file).size;
+  if (size !== item.sizeBytes) fail("wrong file size for " + item.path);
+  totalBytes += size;
   if (totalBytes > 900_000_000) fail("music bundle exceeds 900 MB budget");
+  // Fermata weights can be hundreds of MB. Hash incrementally instead of
+  // loading each entire model/soundbank into the Node.js heap during CI.
+  const digest = createHash("sha256");
+  for await (const chunk of createReadStream(file)) digest.update(chunk);
+  if (digest.digest("hex") !== item.sha256)
+    fail("wrong SHA256 for " + item.path);
 }
 for (const role of requiredRoles) if (!roleSet.has(role)) fail("missing required role: " + role);
 for (const item of manifest.files) if (item.role !== "notice" && !noticePaths.has(item.noticePath))
