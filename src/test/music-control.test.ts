@@ -15,6 +15,29 @@ describe("real-world signals to future music directives", () => {
     expect(p.plan(DEFAULT_SETTINGS,3000).atmosphere).toBe("rain");
     expect(p.observeAmbient({atmosphere:"traffic",confidence:.9,timestamp:25000},DEFAULT_SETTINGS)).toBe(true);
   });
+  it("expires missing YAMNet environment instead of issuing old musical instructions",()=>{
+    const p=new MusicControlPlanner();
+    const s={...DEFAULT_SETTINGS,directorRules:DEFAULT_SETTINGS.directorRules.map(x=>({
+      ...x,enabled:x.id==="rain-soft",
+    }))};
+    expect(p.observeAmbient({atmosphere:"rain",confidence:.9,timestamp:1000},s)).toBe(true);
+    expect(p.plan(s,1001).directorEffects).toContain("soften-arrangement");
+    expect(p.plan(s,31000).atmosphere).toBe("rain");
+    const old=p.plan(s,31001);
+    expect(old.atmosphere).toBe("unknown");
+    expect(old.directorEffects).not.toContain("soften-arrangement");
+    expect(old.regenerate).toBe(false);
+    expect(p.observeAmbient({atmosphere:"traffic",confidence:.9,timestamp:35000},s)).toBe(true);
+    expect(p.plan(s,35000).atmosphere).toBe("traffic");
+  });
+  it("does not regenerate stale scenes that have never been consumed",()=>{
+    const p=new MusicControlPlanner();
+    expect(p.observeAmbient({atmosphere:"rain",confidence:.9,timestamp:1000},DEFAULT_SETTINGS)).toBe(true);
+    const stale=p.plan(DEFAULT_SETTINGS,32000);
+    expect(stale.atmosphere).toBe("unknown");
+    expect(stale.regenerate).toBe(false);
+    expect(p.plan(DEFAULT_SETTINGS,32001).regenerate).toBe(false);
+  });
   it("discards old ambient callbacks so weather never moves backwards in time",()=>{
     const p=new MusicControlPlanner();
     expect(p.observeAmbient({atmosphere:"rain",confidence:.9,timestamp:20000},DEFAULT_SETTINGS)).toBe(true);

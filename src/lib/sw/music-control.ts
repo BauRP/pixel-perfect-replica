@@ -25,6 +25,9 @@ export interface ControlPlan {
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 const transitions = { smooth: 8000, fast: 2800, auto: 4800 } as const;
+// A measured atmosphere is an expiring sensor observation, not a persistent
+// claim about the environment. The user may stop YAMNet while music continues.
+const AMBIENT_EVIDENCE_MAX_AGE_MS = 30_000;
 
 export class MusicControlPlanner {
   private atmosphere: Atmosphere = "unknown";
@@ -110,7 +113,13 @@ export class MusicControlPlanner {
       settings.environmentReaction === "medium" ? .28 : .44;
     const density = clamp(.36 + Math.max(0, settings.mood) * .035 +
       (activity === "running" ? .11 : 0) * strength / .28, .25, .7);
-    const env: Atmosphere = settings.musicOnlyMode ? "unknown" : this.atmosphere;
+    const ambientFresh = !settings.musicOnlyMode &&
+      Number.isSafeInteger(now) && Number.isSafeInteger(this.lastMajorChangeAt) &&
+      this.lastMajorChangeAt > 0 && now >= this.lastMajorChangeAt &&
+      now - this.lastMajorChangeAt <= AMBIENT_EVIDENCE_MAX_AGE_MS;
+    // Old YAMNet scenes must not keep affecting arrangement after analysis
+    // ends or Bluetooth switches. Do not synthesize a new "quiet" observation.
+    const env: Atmosphere = ambientFresh ? this.atmosphere : "unknown";
     const directorEffects: string[] = [];
     const enabled = new Set(settings.directorRules.filter(x=>x.enabled).map(x=>x.id));
     if (stepPulseBpm !== null && enabled.has("steps-drums")) directorEffects.push("accent-step-percussion");
@@ -120,7 +129,7 @@ export class MusicControlPlanner {
         this.birdVerifiedAt>0 && now>=this.birdVerifiedAt &&
         now-this.birdVerifiedAt<=10000) directorEffects.push("brighter-melody");
     if (env === "quiet" && enabled.has("quiet-sparse")) directorEffects.push("sparser-arrangement");
-    const regenerate = !settings.musicOnlyMode && !this.locked && this.regenerationDue;
+    const regenerate = ambientFresh && !this.locked && this.regenerationDue;
     this.regenerationDue = false;
     return {
       atmosphere: env, tempoBpm, stepPulseBpm,
