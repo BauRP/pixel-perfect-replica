@@ -10,7 +10,7 @@ import { pcmToBase64 } from "./pcm-base64";
 
 interface PCMPlugin {
   start(): Promise<{preparing:boolean}>;
-  appendPcm(args:{base64:string}): Promise<{queued:boolean}>;
+  appendPcm(args:{base64:string}): Promise<{queued:boolean;backpressure?:boolean}>;
   pause(): Promise<{audible:boolean}>;
   stop(): Promise<{requested:boolean}>;
   status(): Promise<{audible:boolean;queuedChunks:number;serviceActive:boolean;readyForPcm:boolean;underruns:number;lastAudioError:string}>;
@@ -54,6 +54,11 @@ export async function requestNativeAudioSink():Promise<Result<"preparing">> {
 export function positivePcmAcknowledgment(result:{queued?:boolean}|null|undefined):boolean {
   return result?.queued === true;
 }
+export function retryablePcmBackpressure(
+  result:{queued?:boolean;backpressure?:boolean}|null|undefined,
+):boolean {
+  return result?.queued === false && result.backpressure === true;
+}
 export function validatePcmChunk(pcm:Uint8Array):boolean {
   return pcm.length>0 && pcm.length<=192000 && pcm.length%4===0;
 }
@@ -62,12 +67,21 @@ export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
   if(!validatePcmChunk(pcm))return {ok:false,code:"ERROR",message:"Неверный размер или формат PCM"};
   // Chunk <=1s prevents large JS -> native bridge payloads.
   try {
-    const acknowledgment = await native.appendPcm({base64:pcmToBase64(pcm)});
-    // A resolved bridge call is not proof that Android accepted this packet.
-    // Only an explicit native queue acknowledgment may advance WAV storage.
-    if (!positivePcmAcknowledgment(acknowledgment))
-      return {ok:false,code:"ERROR",message:"Android не подтвердил приём PCM"};
-    return {ok:true,value:"queued"};
+    // A genuine generator can briefly outrun AudioTrack. Only a NEGATIVE
+    // queue acknowledgment specifically marked "backpressure" may be
+    // retried; successful packets must NEVER be sent twice.
+    const encoded=pcmToBase64(pcm);
+    for (let attempt=0;attempt<25;attempt++) {
+      const acknowledgment=await native.appendPcm({base64:encoded});
+      if (positivePcmAcknowledgment(acknowledgment))
+        return {ok:true,value:"queued"};
+      if (!retryablePcmBackpressure(acknowledgment))
+        return {ok:false,code:"ERROR",message:"Android не подтвердил приём PCM"};
+      if (attempt===24)
+        return {ok:false,code:"TIMEOUT",message:"Очередь настоящего PCM не освободилась"};
+      await new Promise<void>(resolve=>setTimeout(resolve,100));
+    }
+    return {ok:false,code:"TIMEOUT",message:"Очередь PCM недоступна"};
   }catch(e){return {ok:false,code:"ERROR",message:String(e)};}
 }
 export async function pauseNativeAudioSink():Promise<void>{

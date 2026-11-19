@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {validatePcmChunk,positivePcmAcknowledgment,confirmedAudioStop} from "../lib/sw/native-pcm";
+import {validatePcmChunk,positivePcmAcknowledgment,retryablePcmBackpressure,confirmedAudioStop} from "../lib/sw/native-pcm";
 describe("real PCM output buffer validation",()=>{
   it("accepts only a positive native PCM queue confirmation",()=>{
     expect(positivePcmAcknowledgment({queued:true})).toBe(true);
@@ -7,6 +7,12 @@ describe("real PCM output buffer validation",()=>{
     expect(positivePcmAcknowledgment({})).toBe(false);
     expect(positivePcmAcknowledgment(null)).toBe(false);
     expect(positivePcmAcknowledgment(undefined)).toBe(false);
+  });
+  it("retries ONLY explicitly rejected queue-full packets, never accepted PCM",()=>{
+    expect(retryablePcmBackpressure({queued:false,backpressure:true})).toBe(true);
+    expect(retryablePcmBackpressure({queued:true,backpressure:true})).toBe(false);
+    expect(retryablePcmBackpressure({queued:false})).toBe(false);
+    expect(retryablePcmBackpressure(null)).toBe(false);
   });
   it("requires Android confirmation when stopping a generated audio service",()=>{
     expect(confirmedAudioStop({requested:true})).toBe(true);

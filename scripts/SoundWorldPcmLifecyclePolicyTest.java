@@ -35,6 +35,14 @@ public final class SoundWorldPcmLifecyclePolicyTest {
       SoundWorldPcmLifecyclePolicy.idleExpired(0, 121000, 120000));
     check("invalid timeout does not stop playback", false,
       SoundWorldPcmLifecyclePolicy.idleExpired(1000, 100000, 0));
+    check("active full PCM queue is temporary backpressure",true,
+      SoundWorldPcmLifecyclePolicy.canRetryFullQueue(true,false,true,true));
+    check("paused PCM is not retryable",false,
+      SoundWorldPcmLifecyclePolicy.canRetryFullQueue(true,true,true,true));
+    check("stopped PCM is not retryable",false,
+      SoundWorldPcmLifecyclePolicy.canRetryFullQueue(false,false,false,true));
+    check("free PCM queue must not cause retries",false,
+      SoundWorldPcmLifecyclePolicy.canRetryFullQueue(true,false,true,false));
     System.out.println("PASS: PCM lifecycle rejects early, stopped and stale audio");
   }
 }

@@ -67,6 +67,9 @@ public final class SoundWorldPlaybackService extends Service {
 
   public static SoundWorldPlaybackService current() { return active; }
 
+  public enum EnqueueResult { ACCEPTED, BACKPRESSURE, UNAVAILABLE }
+
+
   @Override public void onCreate() {
     super.onCreate();
     active = this;
@@ -158,26 +161,32 @@ public final class SoundWorldPlaybackService extends Service {
     return START_NOT_STICKY; // Android must never auto-restart mic or audio by itself
   }
 
-  /** Returns false when there is no active session or the bounded queue is full. */
-  public synchronized boolean offerPcm(byte[] pcm) {
-    // 16-bit stereo: samples must align to 4 bytes; <1s at 48kHz; never store ambient microphone data.
+  /** A full queue is temporary backpressure, NOT evidence that the
+   *  real generator, audio session or WAV data is broken. Rejection occurs
+   *  without enqueuing, so a bounded producer retry cannot duplicate audio. */
+  public synchronized EnqueueResult offerPcm(byte[] pcm) {
     if (!readyForPcm() || pcm == null || pcm.length == 0 ||
-        pcm.length % 4 != 0 || pcm.length > 192000) return false;
-    if (!running.get() && writerActive.get()) return false; // previous AudioTrack is still releasing
+        pcm.length % 4 != 0 || pcm.length > 192000)
+      return EnqueueResult.UNAVAILABLE;
+    if (!running.get() && writerActive.get())
+      return EnqueueResult.UNAVAILABLE; // old writer releasing its AudioTrack
     if (writerActive.compareAndSet(false, true)) {
-      running.set(true);
       if (!chunks.offer(pcm)) {
-        running.set(false);
         writerActive.set(false);
-        return false;
+        return EnqueueResult.BACKPRESSURE;
       }
+      running.set(true);
       writer = new Thread(this::writeAudio, "SoundWorld-PCM-Output");
       writer.setDaemon(true);
       writer.start();
-    } else if (!running.get() || !chunks.offer(pcm)) return false;
-    // This service is now backed by real PCM from an actual producer.
+    } else {
+      if (!running.get()) return EnqueueResult.UNAVAILABLE;
+      if (!chunks.offer(pcm)) return SoundWorldPcmLifecyclePolicy.canRetryFullQueue(
+        foregroundReady.get(), paused.get(), running.get(), true)
+        ? EnqueueResult.BACKPRESSURE : EnqueueResult.UNAVAILABLE;
+    }
     idleHandler.removeCallbacks(noFirstPcm);
-    return true; // queued, not necessarily audible yet
+    return EnqueueResult.ACCEPTED; // queued, NOT necessarily audible
   }
 
   private void writeAudio() {
@@ -260,6 +269,14 @@ public final class SoundWorldPlaybackService extends Service {
       releaseAudio();
       running.set(false);
       writerActive.set(false);
+      // A failed AudioFocus/AudioTrack initialization occurs AFTER first
+      // PCM was accepted and the no-first-audio watchdog was removed.
+      // Tear down this foreground service immediately instead of leaving
+      // a silent, immortal notification and consuming resources.
+      if (!lastAudioError.isEmpty()) {
+        foregroundReady.set(false);
+        stopSelf();
+      }
     }
   }
 

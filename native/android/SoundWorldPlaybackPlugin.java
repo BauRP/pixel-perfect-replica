@@ -32,8 +32,15 @@ public class SoundWorldPlaybackPlugin extends Plugin {
     if (service == null) {call.reject("Музыкальная служба не запущена");return;}
     try {
       byte[] pcm = Base64.decode(data, Base64.DEFAULT);
-      if (!service.offerPcm(pcm)) {call.reject("Буфер заполнен, остановлен или аудио недопустимо");return;}
-      JSObject r=new JSObject();r.put("queued",true);call.resolve(r);
+      SoundWorldPlaybackService.EnqueueResult result = service.offerPcm(pcm);
+      if (result == SoundWorldPlaybackService.EnqueueResult.UNAVAILABLE) {
+        call.reject("Аудиослужба остановлена или PCM недопустим");
+        return;
+      }
+      JSObject r=new JSObject();
+      r.put("queued", result == SoundWorldPlaybackService.EnqueueResult.ACCEPTED);
+      r.put("backpressure", result == SoundWorldPlaybackService.EnqueueResult.BACKPRESSURE);
+      call.resolve(r);
     } catch(Exception ex) {call.reject("Ошибка PCM: "+ex.getMessage());}
   }
 
