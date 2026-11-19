@@ -13,6 +13,10 @@ public final class SoundWorldPcmLifecyclePolicy {
       boolean running, boolean writerActive) {
     return foregroundReady && !paused && (running || !writerActive);
   }
+  /** A stale packet is invalid even if the new audio service is running. */
+  public static boolean matchesSession(int activeSession, int requestedSession) {
+    return activeSession > 0 && requestedSession == activeSession;
+  }
   /** A full active queue means WAIT, never silently drop or duplicate PCM. */
   public static boolean canRetryFullQueue(boolean foregroundReady, boolean paused,
       boolean running, boolean queueFull) {

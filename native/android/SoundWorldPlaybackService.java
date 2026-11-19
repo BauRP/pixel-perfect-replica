@@ -173,7 +173,7 @@ public final class SoundWorldPlaybackService extends Service {
    *  real generator, audio session or WAV data is broken. Rejection occurs
    *  without enqueuing, so a bounded producer retry cannot duplicate audio. */
   public synchronized EnqueueResult offerPcm(byte[] pcm, int requestedSessionId) {
-    if (requestedSessionId <= 0 || requestedSessionId != pcmSessionId ||
+    if (!SoundWorldPcmLifecyclePolicy.matchesSession(pcmSessionId, requestedSessionId) ||
         !readyForPcm() || pcm == null || pcm.length == 0 ||
         pcm.length % 4 != 0 || pcm.length > 192000)
       return EnqueueResult.UNAVAILABLE;

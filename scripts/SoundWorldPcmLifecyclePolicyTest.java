@@ -43,6 +43,14 @@ public final class SoundWorldPcmLifecyclePolicyTest {
       SoundWorldPcmLifecyclePolicy.canRetryFullQueue(false,false,false,true));
     check("free PCM queue must not cause retries",false,
       SoundWorldPcmLifecyclePolicy.canRetryFullQueue(true,false,true,false));
+    check("old session cannot enqueue after restart",false,
+      SoundWorldPcmLifecyclePolicy.matchesSession(12,11));
+    check("confirmed current session may enqueue",true,
+      SoundWorldPcmLifecyclePolicy.matchesSession(12,12));
+    check("zero session does not authorize audio",false,
+      SoundWorldPcmLifecyclePolicy.matchesSession(0,0));
+    check("negative session does not authorize audio",false,
+      SoundWorldPcmLifecyclePolicy.matchesSession(12,-1));
     System.out.println("PASS: PCM lifecycle rejects early, stopped and stale audio");
   }
 }
