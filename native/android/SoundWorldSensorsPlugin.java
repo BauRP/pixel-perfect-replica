@@ -611,6 +611,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
               scheduledInputType == AudioDeviceInfo.TYPE_USB_HEADSET)
               ? "headsetMic" : "phoneMic";
             data.put("source", source);
+            data.put("routeGeneration", scheduledGeneration);
+            // Native callback reflects the exact physical input at inference
+            // scheduling, never the latest device selected after classification.
             notifyListeners("yamnet", data);
             sent++;
           }

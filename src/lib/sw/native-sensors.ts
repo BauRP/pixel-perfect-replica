@@ -10,6 +10,7 @@ import { AmbientStabilizer, StepPaceEstimator, type Atmosphere } from "./environ
 import { getSettingsSnapshot, type Settings } from "./settings";
 import { sensorsAllowed, SENSOR_MODE_BLOCKED } from "./sensor-mode";
 import { manageNativeListener } from "./native-listener";
+import { SoundRouteFence } from "./sound-route-fence";
 
 type NativeResult = { started?: boolean; stopped?: boolean; granted?: boolean; active?: boolean; name?: string; kind?: string; input?: string; output?: string };
 export interface SensorsStatus {
@@ -28,6 +29,7 @@ export interface RawSound {
   confidence: number;
   timestamp: number;
   source: "headsetMic" | "phoneMic" | "bluetoothMic";
+  routeGeneration?: number;
 }
 export interface RawStep { timestamp: number; sensor: string }
 interface SensorsPlugin {
@@ -178,7 +180,7 @@ export function installNativeSensorAdapters(): void {
   if (!androidSensorsAvailable()) return;
   const stability = new AmbientStabilizer();
   const pace = new StepPaceEstimator();
-  let lastConfirmedMicSource: RawSound["source"] | null = null;
+  const routeFence = new SoundRouteFence();
   const adapters: Partial<Adapters> = {
     permissions: {
       microphone: async () => {
@@ -213,19 +215,21 @@ export function installNativeSensorAdapters(): void {
             await native.stopAnalysis().catch(()=>{});
             return unavailable(SENSOR_MODE_BLOCKED);
           }
+          if(r.started)routeFence.reset();
           return r.started ? {ok:true,value:undefined} : unavailable("Модель YAMNet недоступна");
         }catch(e){return safeError(e);}
       },
       stopCapture: async () => {
-        try {await native.stopAnalysis();stability.reset();lastConfirmedMicSource=null;return {ok:true,value:undefined};}
+        try {await native.stopAnalysis();stability.reset();routeFence.reset();return {ok:true,value:undefined};}
         catch(e){return safeError(e);}
       },
       observeEnvironment: cb => observeRawSound(e=>{
         if (!sensorsAllowed(getSettingsSnapshot())) return;
-        // Different physical source types need independent YAMNet evidence.
-        if (lastConfirmedMicSource !== null && lastConfirmedMicSource !== e.source)
-          stability.reset();
-        lastConfirmedMicSource = e.source;
+        // One physical Android mic route = one evidence stream. Different
+        // headsets of the SAME type must still invalidate old observations.
+        const route=routeFence.observe(e);
+        if(route==="stale")return;
+        if(route==="changed")stability.reset();
         const stable=stability.update(e);
         if (!stable) return;
         const mapped:EnvironmentEvent={label:stable.atmosphere,confidence:stable.confidence,timestamp:stable.timestamp,source:e.source};

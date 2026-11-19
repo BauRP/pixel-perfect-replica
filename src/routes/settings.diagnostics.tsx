@@ -4,7 +4,7 @@ import { PageHeader, Section } from "@/components/sw/ui";
 import {
   androidSensorsAvailable, observeRawSteps, observeSensorErrors, observeRawSound, observeMicrophoneLevel, sensorStatus,
   startSensorDiagnostics, startStepOnlyDiagnostics, stopSensorDiagnostics, getNativePerformanceSnapshot, ATMOSPHERE_RU,
-  type SensorsStatus
+  type SensorsStatus, observeActualRouteChanges
 } from "@/lib/sw/native-sensors";
 import { AmbientStabilizer, StepPaceEstimator } from "@/lib/sw/environment-smoothing";
 import { MusicControlPlanner, type ControlPlan } from "@/lib/sw/music-control";
@@ -18,6 +18,7 @@ import { buildMusicRequest } from "@/lib/sw/music-preferences";
 import { currentAudioSinkStatus } from "@/lib/sw/native-pcm";
 import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 import { resetDiagnosticEvidence } from "@/lib/sw/diagnostic-evidence";
+import { SoundRouteFence } from "@/lib/sw/sound-route-fence";
 
 export const Route = createFileRoute("/settings/diagnostics")({
   head: () => ({ meta: [{ title: "Диагностика — SoundWorld AR" }] }),
@@ -40,6 +41,7 @@ function Diagnostics() {
   const [stepsOnly,setStepsOnly]=useState(false);
   const collectingSound=useRef(false);
   const soundLog=useRef(new YamnetObservationLog());
+  const routeFence=useRef(new SoundRouteFence());
   const [soundEvents,setSoundEvents]=useState<readonly YamnetObservation[]>([]);
   const stepCounter = useRef(new RealStepSession());
   const lastRealStep = useRef(0);
@@ -99,6 +101,16 @@ function Diagnostics() {
     });
     const removeSounds=observeRawSound(e=>{
       if (!collectingSound.current || settingsRef.current.musicOnlyMode) return;
+      const route=routeFence.current.observe(e);
+      if(route==="stale")return;
+      if(route==="changed") {
+        // The last sound/musical direction belonged to another microphone.
+        resetEvidence.current();
+        soundLog.current.start(Date.now());
+        setSoundEvents([]);
+        setEnvironment("Новый микрофон · ожидание подтверждения окружения");
+        setPlan(null);
+      }
       const received=soundLog.current.ingest(e,Date.now());
       if (received!==null) setSoundEvents(received);
       const birdConfirmed=birds.ingest(e.label,e.confidence,e.timestamp);
@@ -109,6 +121,17 @@ function Diagnostics() {
       }
       if(birdConfirmed)planner.observeConfirmedBird(e.timestamp);
       if(stable||birdConfirmed)updatePlan();
+    });
+    const removeRoute=observeActualRouteChanges(()=>{
+      if(!collectingSound.current)return;
+      // On a hot-plug, revoke old evidence immediately; do not wait for
+      // the next (possibly delayed) classifier result to change UI.
+      routeFence.current.reset();
+      resetEvidence.current();
+      soundLog.current.start(Date.now());
+      setSoundEvents([]);
+      setEnvironment("Маршрут изменён · ожидание нового распознавания");
+      setPlan(null);
     });
     const removeMic=observeMicrophoneLevel(e=>{
       if(!collectingSound.current || settingsRef.current.musicOnlyMode)return;
@@ -125,7 +148,8 @@ function Diagnostics() {
     },3000);
     return ()=>{mounted=false;countingSteps.current=false;stepCounter.current.stop();
       collectingSound.current=false;soundLog.current.stop();resetEvidence.current();resetEvidence.current=()=>{};
-      clearInterval(interval);removeSteps();removeErrors();removeSounds();removeMic();void stopSensorDiagnostics()};
+      routeFence.current.reset();
+      clearInterval(interval);removeSteps();removeErrors();removeSounds();removeMic();removeRoute();void stopSensorDiagnostics()};
   },[]);
   const start=async(mode:"all"|"steps"="all")=>{
     if(pendingRef.current || settingsRef.current.musicOnlyMode) return;
@@ -135,7 +159,7 @@ function Diagnostics() {
       if(!result.ok) {notify.result(result,"");setError(result.message);}
       else {
         // Every explicitly started test begins with fresh evidence only.
-        resetEvidence.current();setPlan(null);setMicInput("");setMicRms(null);
+        resetEvidence.current();routeFence.current.reset();setPlan(null);setMicInput("");setMicRms(null);
         stepCounter.current.start(Date.now());
         countingSteps.current=true;
         lastRealStep.current=0;
@@ -171,7 +195,7 @@ function Diagnostics() {
     stepCounter.current.stop();
     collectingSound.current=false;
     soundLog.current.stop();
-    resetEvidence.current();
+    resetEvidence.current();routeFence.current.reset();
     setSoundEvents([]);
     try {
       await stopSensorDiagnostics();setActive(false);setMicRms(null);setMicInput("");setPlan(null);
