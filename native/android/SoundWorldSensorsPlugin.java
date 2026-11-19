@@ -538,7 +538,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
                 try { worker.execute(() -> {
                   try {
                     if (currentCapture(rec, epoch) &&
-                        scheduledGeneration == micRouteGeneration)
+                        scheduledGeneration == micRouteGeneration.get())
                       classifyWindow(cls, windowCopy, rec, epoch, healthy,
                         scheduledGeneration, scheduledInputType);
                   } finally {
