@@ -34,3 +34,36 @@ describe("bounded MIDI composition sequence",()=>{
       .resolves.toMatchObject({ok:false,code:"ERROR"});
   });
 });
+
+describe("genuine model lifecycle deadlines",()=>{
+  it("does not hang when native MNN never answers",async()=>{
+    vi.useFakeTimers();
+    try{
+      let aborted=false;
+      const task=streamRealMidiScores({next:async(signal)=>new Promise<null>(()=>{
+        signal?.addEventListener("abort",()=>{aborted=true;});
+      })},async()=>({ok:true,frames:1}),{maxScoreWaitMs:1000});
+      await vi.advanceTimersByTimeAsync(1001);
+      expect(await task).toMatchObject({ok:false,code:"ERROR",completedScores:0});
+      expect(aborted).toBe(true);
+    }finally{vi.useRealTimers();}
+  });
+  it("responds to manual stop even when only isCancelled exists",async()=>{
+    vi.useFakeTimers();
+    try{
+      let stopped=false;
+      const task=streamRealMidiScores({next:async()=>new Promise<null>(()=>{})},
+        async()=>({ok:true,frames:1}),{maxScoreWaitMs:1000,isCancelled:()=>stopped});
+      await vi.advanceTimersByTimeAsync(20);
+      stopped=true;
+      await vi.advanceTimersByTimeAsync(120);
+      expect(await task).toMatchObject({ok:false,code:"UNAVAILABLE"});
+    }finally{vi.useRealTimers();}
+  });
+  it("rejects invalid deadlines before calling the model",async()=>{
+    const next=vi.fn(async()=>null);
+    expect(await streamRealMidiScores({next},async()=>({ok:true,frames:1}),{maxScoreWaitMs:0}))
+      .toMatchObject({ok:false,code:"ERROR"});
+    expect(next).not.toHaveBeenCalled();
+  });
+});

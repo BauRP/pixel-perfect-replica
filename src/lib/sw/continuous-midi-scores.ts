@@ -23,30 +23,42 @@ export type SequenceOptions=Readonly<{
   onProgress?:(progress:SequenceProgress)=>void;
   prefetchLeadFrames?:number;
   maxScores?:number;
+  /** Timeout for a genuine on-device model call, including prefetch. */
+  maxScoreWaitMs?:number;
 }>;
 type Fetched={kind:"score";value:unknown|null}|{kind:"failure";message:string}|{kind:"cancelled"};
 
 function cancelled(options?:SequenceOptions):boolean {
   return options?.signal?.aborted===true||options?.isCancelled?.()===true;
 }
+/** Every local model call is bounded even if the native inference engine
+ * never resolves or ignores AbortSignal. Never substitute fake notes. */
 function fetchScore(source:RealScoreSource,options?:SequenceOptions):Promise<Fetched>{
-  if(cancelled(options))return Promise.resolve({kind:"cancelled"});
-  try {
-    const requested=Promise.resolve(source.next(options?.signal)).then(
-      (value):Fetched=>({kind:"score",value}),
-      (e):Fetched=>({kind:"failure",message:e instanceof Error?e.message:"Ошибка получения MIDI"}),
+  const deadlineMs=options?.maxScoreWaitMs??120_000;
+  return new Promise<Fetched>(resolve=>{
+    const controller=new AbortController();
+    let finished=false;
+    let timeout:ReturnType<typeof setTimeout>|undefined;
+    let polling:ReturnType<typeof setInterval>|undefined;
+    const finish=(result:Fetched)=>{
+      if(finished)return;
+      finished=true;
+      if(timeout!==undefined)clearTimeout(timeout);
+      if(polling!==undefined)clearInterval(polling);
+      options?.signal?.removeEventListener("abort",onAbort);
+      if(result.kind!=="score")controller.abort();
+      resolve(result);
+    };
+    const onAbort=()=>finish({kind:"cancelled"});
+    if(cancelled(options)){finish({kind:"cancelled"});return;}
+    options?.signal?.addEventListener("abort",onAbort,{once:true});
+    timeout=setTimeout(()=>finish({kind:"failure",message:"Модель не ответила за установленное время"}),deadlineMs);
+    if(options?.isCancelled)polling=setInterval(()=>{if(cancelled(options))onAbort();},100);
+    void Promise.resolve().then(()=>source.next(controller.signal)).then(
+      value=>finish({kind:"score",value}),
+      error=>finish({kind:"failure",message:error instanceof Error?error.message:"Ошибка получения MIDI"}),
     );
-    const signal=options?.signal;
-    if(!signal)return requested;
-    return new Promise<Fetched>(resolve=>{
-      const abort=()=>{signal.removeEventListener("abort",abort);resolve({kind:"cancelled"});};
-      signal.addEventListener("abort",abort,{once:true});
-      if(signal.aborted)abort();
-      void requested.then(value=>{signal.removeEventListener("abort",abort);resolve(value);});
-    });
-  }catch(e){
-    return Promise.resolve({kind:"failure",message:e instanceof Error?e.message:"Ошибка генератора MIDI"});
-  }
+  });
 }
 
 /** renderOne must validate the score and render only genuine licensed PCM. */
@@ -57,8 +69,10 @@ export async function streamRealMidiScores(
 ):Promise<SequenceOutcome> {
   const maxScores=options?.maxScores??10_000;
   const lead=options?.prefetchLeadFrames??12*48000;
+  const maxWait=options?.maxScoreWaitMs??120_000;
   if(!Number.isSafeInteger(maxScores)||maxScores<1||maxScores>10_000||
-     !Number.isSafeInteger(lead)||lead<0||lead>120*48000)
+     !Number.isSafeInteger(lead)||lead<0||lead>120*48000||
+     !Number.isSafeInteger(maxWait)||maxWait<1000||maxWait>300_000)
     return {ok:false,code:"ERROR",message:"Неверные ограничения музыкального потока",completedScores:0,totalFrames:0};
   let totalFrames=0,completedScores=0;
   let next=await fetchScore(source,options);
