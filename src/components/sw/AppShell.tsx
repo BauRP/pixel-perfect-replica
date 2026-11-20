@@ -3,6 +3,7 @@ import { Disc3, SlidersHorizontal, Settings2 } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { hydrateSettings, useSettings, useSettingsHydrated } from "@/lib/sw/settings";
 import { getAdapters } from "@/lib/sw/engine";
+import { stopSensorDiagnostics } from "@/lib/sw/native-sensors";
 import { cn } from "@/lib/utils";
 
 /** EXACTLY three destinations, fixed order and labels. */
@@ -22,6 +23,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (hydrated) void getAdapters().performance.applyBatteryMode(settings.batteryMode);
   }, [hydrated, settings.batteryMode]);
+  useEffect(() => {
+    // Opting out of environment analysis is an immediate privacy action,
+    // not merely a cosmetic flag hiding existing microphone readings.
+    // Stop both the microphone/YAMNet and step-detection native resources.
+    if (hydrated && settings.musicOnlyMode) {
+      void stopSensorDiagnostics();
+      void getAdapters().environment.stopCapture();
+    }
+  }, [hydrated, settings.musicOnlyMode]);
   useEffect(() => {
     // Re-apply the user's actual route choice on app launch AND while the
     // microphone is already active. No capture is opened by this call.
