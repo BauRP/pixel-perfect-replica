@@ -55,6 +55,27 @@ function Diagnostics() {
   const [hardware,setHardware] = useState<{ramMb?:number;battery?:number;thermalStatus?:number;inferenceSkipped:number;inferenceThrottled?:number;analysisStride?:number;batteryMode?:string;lowMemory?:boolean;captureRateHz?:number}|null>(null);
   const resetEvidence = useRef<()=>void>(()=>{});
   useEffect(()=>{
+    if(!settings.musicOnlyMode)return;
+    // AppShell stops native mic/steps for the whole app. Also invalidate the
+    // local diagnostic presentation immediately rather than showing old
+    // observations as if analysis were still permitted.
+    countingSteps.current=false;
+    collectingSound.current=false;
+    stepCounter.current.stop();
+    soundLog.current.stop();
+    routeFence.current.reset();
+    resetEvidence.current();
+    setActive(false);
+    setStepsOnly(false);
+    setSteps("Без анализа окружения");
+    setStepCount(null);
+    setSoundEvents([]);
+    setEnvironment("Обстановка не определяется");
+    setMicInput("");
+    setMicRms(null);
+    setPlan(null);
+  },[settings.musicOnlyMode]);
+  useEffect(()=>{
     const estimator = new StepPaceEstimator();
     const stabilizer = new AmbientStabilizer();
     const planner = new MusicControlPlanner();
