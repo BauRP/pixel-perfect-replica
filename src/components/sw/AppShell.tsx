@@ -29,7 +29,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     // Stop both the microphone/YAMNet and step-detection native resources.
     if (hydrated && settings.musicOnlyMode) {
       void stopSensorDiagnostics();
-      void getAdapters().environment.stopCapture();
     }
   }, [hydrated, settings.musicOnlyMode]);
   useEffect(() => {
