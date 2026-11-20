@@ -17,6 +17,7 @@ import { significantPlayerHealthAlerts } from "@/lib/sw/device-health";
 import { HISTORY_DISK_SCAN_TIMEOUT_MS } from "@/lib/sw/history-loading";
 import { PlaybackEventOrder, reconcileHistoryPlayback } from "@/lib/sw/history-wav-seek";
 import { AmbientStabilizer, StepPaceEstimator, type Atmosphere } from "@/lib/sw/environment-smoothing";
+import { SoundRouteFence } from "@/lib/sw/sound-route-fence";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -50,6 +51,15 @@ function Player() {
   const [lastEnvironment,setLastEnvironment] = useState<{kind:Atmosphere;at:number}|null>(null);
   const [lastActivity,setLastActivity] = useState<{kind:"walking"|"running";at:number}|null>(null);
   const [microphone,setMicrophone] = useState<{active:boolean;input:string;at:number}>({active:false,input:"",at:0});
+  // A privacy-mode switch must destroy displayed evidence, not just hide it.
+  // Otherwise switching analysis back on could briefly reveal an old mic scene.
+  useEffect(()=>{
+    if(s.musicOnlyMode){
+      setLastEnvironment(null);
+      setLastActivity(null);
+      setMicrophone({active:false,input:"",at:0});
+    }
+  },[s.musicOnlyMode]);
 
   useEffect(() => getAdapters().engine.observeEngineState(setState), []);
   useEffect(()=>{
@@ -123,10 +133,23 @@ function Player() {
   useEffect(()=>{
     const stabilizer=new AmbientStabilizer();
     const pace=new StepPaceEstimator();
+    const routeFence=new SoundRouteFence();
     let mounted=true;
     void sensorStatus().then(s=>{if(mounted&&s?.recording)setMicrophone({active:true,input:s.actualInput,at:Date.now()})});
     const offSound=observeRawSound(event=>{
-      if(getSettingsSnapshot().musicOnlyMode)return;
+      if(getSettingsSnapshot().musicOnlyMode){
+        routeFence.reset();
+        stabilizer.reset();
+        return;
+      }
+      // Distinct hardware devices may share "headsetMic". Only the native
+      // per-route generation can prevent mixing their YAMNet confirmations.
+      const route=routeFence.observe(event);
+      if(route==="stale")return;
+      if(route==="changed"){
+        stabilizer.reset();
+        setLastEnvironment(null);
+      }
       const stable=stabilizer.update(event);
       if(stable)setLastEnvironment({kind:stable.atmosphere,at:Date.now()});
     });
@@ -145,7 +168,7 @@ function Player() {
       setLastActivity(x=>x&&now-x.at>5000?null:x);
       setMicrophone(x=>x.active&&now-x.at>5000?{active:false,input:"",at:0}:x);
     },3000);
-    return ()=>{mounted=false;offSound();offSteps();offMicrophone();window.clearInterval(interval)};
+    return ()=>{mounted=false;routeFence.reset();stabilizer.reset();pace.reset();offSound();offSteps();offMicrophone();window.clearInterval(interval)};
   },[]);
 
   const run = async (fn: () => Promise<unknown>) => {
