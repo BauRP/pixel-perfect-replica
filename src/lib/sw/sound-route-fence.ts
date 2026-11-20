@@ -23,6 +23,9 @@ export class SoundRouteFence {
     if (generation !== undefined &&
         (!Number.isSafeInteger(generation) || generation < 0))
       return "stale";
+    // Once native route generations are observed, a generation-less late
+    // callback must not downgrade the gate or reset confirmed YAMNet evidence.
+    if (this.generation !== null && generation === undefined) return "stale";
     if (this.source === null) {
       this.source=value.source;
       this.generation=generation ?? null;

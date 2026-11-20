@@ -180,6 +180,10 @@ export function startStepOnlyDiagnostics(): Promise<Result> {
 export function stopSensorDiagnostics(): Promise<void> {
   ++diagnosticEpoch; // revoke permission to complete before awaiting older work
   if (!androidSensorsAvailable()) return Promise.resolve();
+  // Immediately tell Android to revoke capture, even if an older permission
+  // or start callback has not returned to JavaScript. A second ordered stop
+  // after the older work guarantees it cannot resurrect the microphone.
+  void stopNativeDiagnostics();
   return diagnosticOperations.enqueue(stopNativeDiagnostics);
 }
 function subscribe<T>(event: "yamnet"|"step"|"analysisError"|"micLevel"|"audioRouteChanged", cb: (data:T)=>void):Unsubscribe {
@@ -246,7 +250,7 @@ export function installNativeSensorAdapters(): void {
             if(cancelled())return unavailable("Запуск анализа отменён");
             const result=await native.startAnalysis();
             if(cancelled())return unavailable("Запуск анализа отменён");
-            if(result.started){stability.reset();routeFence.reset();}
+            if(result.started){stability.reset();routeFence.reset();pace.reset();}
             return result.started
               ? {ok:true as const,value:undefined}
               : unavailable("Модель YAMNet недоступна");
@@ -263,10 +267,9 @@ export function installNativeSensorAdapters(): void {
         return diagnosticOperations.enqueue(async ():Promise<Result> => {
           try {
             await native.stopAnalysis();
-            stability.reset();
-            routeFence.reset();
             return {ok:true as const,value:undefined};
           }catch(e){return safeError(e);}
+          finally{stability.reset();routeFence.reset();pace.reset();}
         });
       },
       observeEnvironment: cb => observeRawSound(e=>{

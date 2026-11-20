@@ -7,6 +7,7 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import type { Result } from "./engine";
 import { pcmToBase64 } from "./pcm-base64";
+import { SerialNativeOperations } from "./serial-native-operations";
 
 interface PCMPlugin {
   start(): Promise<{preparing:boolean}>;
@@ -20,6 +21,8 @@ const native = registerPlugin<PCMPlugin>("SoundWorldPlayback");
 // Android session that the user actually started and Android confirmed.
 let activeSessionId:number|null = null;
 let requestGeneration = 0;
+// Serial lifecycle ensures a delayed Android START cannot run after STOP.
+const audioLifecycle = new SerialNativeOperations();
 export function matchingPcmSession(active:number|null,requested:number):boolean {
   return active !== null && Number.isSafeInteger(requested) &&
     requested > 0 && active === requested;
@@ -34,11 +37,14 @@ export async function currentAudioSinkStatus() {
  * The caller must start this ONLY after a user-initiated Play action and model validation.
  * It returns PREPARING, not LIVE. Only status().audible confirms AudioTrack writes.
  */
-export async function requestNativeAudioSink():Promise<Result<"preparing">> {
-  if(Capacitor.getPlatform()!=="android") return unavailable("Аудиослужба доступна только на Android");
+export function requestNativeAudioSink():Promise<Result<"preparing">> {
+  if(Capacitor.getPlatform()!=="android") return Promise.resolve(unavailable("Аудиослужба доступна только на Android"));
   const generation = ++requestGeneration;
   activeSessionId=null;
-  try {
+  return audioLifecycle.enqueue(async ():Promise<Result<"preparing">> => {
+    if(generation!==requestGeneration)
+      return unavailable("Музыкальная сессия уже остановлена");
+    try {
     await native.start();
     if(generation!==requestGeneration)
       return unavailable("Музыкальная сессия уже остановлена");
@@ -63,10 +69,11 @@ export async function requestNativeAudioSink():Promise<Result<"preparing">> {
     // confirms that it is able to accept generated PCM.
     if(generation===requestGeneration) await native.stop().catch(()=>{});
     return {ok:false,code:"TIMEOUT",message:"Android не подготовил аудиослужбу за 2,4 секунды"};
-  } catch(e){
-    if(generation===requestGeneration) await native.stop().catch(()=>{});
-    return {ok:false,code:"ERROR",message:String(e)};
-  }
+    } catch(e){
+      if(generation===requestGeneration) await native.stop().catch(()=>{});
+      return {ok:false,code:"ERROR",message:String(e)};
+    }
+  });
 }
 /** Never count a bridge resolution without affirmative Android queue receipt. */
 export function positivePcmAcknowledgment(result:{queued?:boolean}|null|undefined):boolean {
@@ -108,19 +115,23 @@ export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
     return {ok:false,code:"TIMEOUT",message:"Очередь PCM недоступна"};
   }catch(e){return {ok:false,code:"ERROR",message:String(e)};}
 }
-export async function pauseNativeAudioSink():Promise<void>{
-  // Invalidate any in-flight append/retry before Android asynchronously stops.
+export function pauseNativeAudioSink():Promise<void>{
+  // Revoke immediately; the native pause must run AFTER an in-flight START.
   activeSessionId=null;
   requestGeneration++;
-  if(Capacitor.getPlatform()==="android")await native.pause().catch(()=>{});
+  if(Capacitor.getPlatform()!=="android")return Promise.resolve();
+  return audioLifecycle.enqueue(async()=>{await native.pause().catch(()=>{});});
 }
 export function confirmedAudioStop(response:{requested?:boolean}|null|undefined):boolean {
   return response?.requested === true;
 }
-export async function stopNativeAudioSink():Promise<void>{
+export function stopNativeAudioSink():Promise<void>{
+  // Invalidate packets now; serialize Android STOP after every pending START.
   activeSessionId=null;
   requestGeneration++;
-  if(Capacitor.getPlatform()!=="android")return;
-  const response=await native.stop();
-  if(!confirmedAudioStop(response))throw new Error("Android не подтвердил остановку аудиослужбы");
+  if(Capacitor.getPlatform()!=="android")return Promise.resolve();
+  return audioLifecycle.enqueue(async()=>{
+    const response=await native.stop();
+    if(!confirmedAudioStop(response))throw new Error("Android не подтвердил остановку аудиослужбы");
+  });
 }
