@@ -9,7 +9,7 @@
  * model compatibility or actual audio generation.
  */
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readdirSync, mkdirSync, copyFileSync, createReadStream } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, mkdirSync, copyFileSync, createReadStream, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve, relative, sep } from "node:path";
 
 const root = resolve("offline-music");
@@ -44,6 +44,7 @@ if (!existsSync(root)) {
   else console.log("SHELL_ONLY: Music weights, tokenizer and synthesizer are not installed");
   process.exit(0);
 }
+if (lstatSync(root).isSymbolicLink()) fail("music bundle root symlink forbidden");
 if (!existsSync(manifestFile)) fail("files exist but manifest.json is missing");
 if (lstatSync(manifestFile).isSymbolicLink()) fail("manifest symlink forbidden");
 const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
@@ -79,6 +80,26 @@ for (const item of manifest.files) {
     fail("missing local artifact " + item.path);
   const size = lstatSync(file).size;
   if (size !== item.sizeBytes) fail("wrong file size for " + item.path);
+  if (binaryRoles.has(item.role)) {
+    // Verify the actual Android ABI. A renamed x86 ELF is not arm64-v8a.
+    const header = Buffer.alloc(20);
+    const fd = openSync(file, "r");
+    let count;
+    try { count = readSync(fd, header, 0, header.length, 0); }
+    finally { closeSync(fd); }
+    if (count !== 20 || header[0] !== 0x7f ||
+        header.toString("ascii", 1, 4) !== "ELF" ||
+        header[4] !== 2 || header[5] !== 1 ||
+        header.readUInt16LE(16) !== 3 || header.readUInt16LE(18) !== 183)
+      fail("JNI shared library is not an arm64-v8a ELF: " + item.path);
+  }
+  if (item.role === "notice") {
+    if (size > 500_000) fail("unreasonably large license evidence file");
+    const licenseText = readFileSync(file, "utf8");
+    if (!/Apache License\s*Version 2\.0/i.test(licenseText) &&
+        !/SPDX-License-Identifier:\s*Apache-2\.0/i.test(licenseText))
+      fail("license evidence does not identify Apache-2.0: " + item.path);
+  }
   totalBytes += size;
   if (totalBytes > 900_000_000) fail("music bundle exceeds 900 MB budget");
   // Fermata weights can be hundreds of MB. Hash incrementally instead of

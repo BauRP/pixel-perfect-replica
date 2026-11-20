@@ -47,6 +47,8 @@ jobs:
         run: node scripts/validate-offline-music-assets.mjs
       - name: Validate Android CSS compatibility transform
         run: node --test scripts/legacy-css.test.mjs
+      - name: Test offline model ABI and Apache license inventory
+        run: node --test scripts/validate-offline-music-assets.test.mjs
       - name: Validate native thermal and battery policy (real Java)
         run: |
           set -euo pipefail
