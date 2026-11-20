@@ -12,6 +12,7 @@ import { sensorsAllowed, SENSOR_MODE_BLOCKED } from "./sensor-mode";
 import { manageNativeListener } from "./native-listener";
 import { SoundRouteFence } from "./sound-route-fence";
 import { SerialNativeOperations } from "./serial-native-operations";
+import { withNativeDeadline } from "./native-call-deadline";
 
 type NativeResult = { started?: boolean; stopped?: boolean; granted?: boolean; active?: boolean; name?: string; kind?: string; input?: string; output?: string };
 export interface SensorsStatus {
@@ -66,11 +67,11 @@ const safeError = (e: unknown): {ok:false;code:"ERROR";message:string} => ({
 });
 export async function getNativePerformanceSnapshot() {
   if (!androidSensorsAvailable()) return null;
-  try { return await native.performanceSnapshot(); } catch { return null; }
+  try { return await withNativeDeadline(()=>native.performanceSnapshot(),4000); } catch { return null; }
 }
 export async function sensorStatus(): Promise<SensorsStatus | null> {
   if (!androidSensorsAvailable()) return null;
-  try { return await native.status(); } catch { return null; }
+  try { return await withNativeDeadline(()=>native.status(),4000); } catch { return null; }
 }
 let diagnosticEpoch = 0;
 // A stop request invalidates pending start immediately, then runs AFTER any
@@ -78,7 +79,12 @@ let diagnosticEpoch = 0;
 // reopen Android AudioRecord AFTER the user's privacy opt-out.
 const diagnosticOperations = new SerialNativeOperations();
 const stopNativeDiagnostics = async () => {
-  await Promise.allSettled([native.stopMicrophoneProbe(),native.stopSteps()]);
+  // One rejected/never-resolved Capacitor callback must not poison the
+  // lifecycle queue. Timed-out STOP is unknown, not proof of microphone off.
+  await Promise.allSettled([
+    withNativeDeadline(()=>native.stopMicrophoneProbe(),5000),
+    withNativeDeadline(()=>native.stopSteps(),5000),
+  ]);
 };
 export function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
   if (!androidSensorsAvailable()) return Promise.resolve(unavailable("Только в Android APK"));
@@ -89,33 +95,33 @@ export function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
     if (cancelled() || !sensorsAllowed(getSettingsSnapshot()))
       return unavailable("Запуск анализа отменён");
     try {
-    const permission = await native.requestMicrophone();
+    const permission = await withNativeDeadline(()=>native.requestMicrophone(),60_000);
     if(cancelled()) return unavailable("Проверка микрофона отменена");
     if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
     if (!permission.granted) return {ok:false,code:"PERMISSION_DENIED",message:"Микрофон не разрешён"};
-    const availability = await native.status();
+    const availability = await withNativeDeadline(()=>native.status(),5000);
     if(cancelled()) return unavailable("Проверка микрофона отменена");
     if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
     // Request all permissions BEFORE starting audio: Android may pause the
     // Activity while showing a permission dialog, which stops diagnostic capture.
     if (includeSteps && availability.stepsSupported) {
       try {
-        const activity = await native.requestActivity();
+        const activity = await withNativeDeadline(()=>native.requestActivity(),60_000);
         if(cancelled()) return unavailable("Проверка микрофона отменена");
-        if (activity.granted) await native.startSteps();
+        if (activity.granted) await withNativeDeadline(()=>native.startSteps(),8000);
       } catch { /* microphone still works without the motion sensor */ }
     }
     if(cancelled()) return unavailable("Проверка микрофона отменена");
     if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
-    await native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())});
+    await withNativeDeadline(()=>native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())}),6000);
     if(cancelled()) return unavailable("Проверка микрофона отменена");
     if (!sensorsAllowed(getSettingsSnapshot())) {
       await native.stopSteps().catch(()=>{});
       return unavailable(SENSOR_MODE_BLOCKED);
     }
     const r = availability.yamnetIncluded
-      ? await native.startAnalysis()
-      : await native.startMicrophoneProbe();
+      ? await withNativeDeadline(()=>native.startAnalysis(),12_000)
+      : await withNativeDeadline(()=>native.startMicrophoneProbe(),12_000);
     if(cancelled()) return unavailable("Проверка микрофона отменена");
     if (!sensorsAllowed(getSettingsSnapshot())) {
       await Promise.allSettled([native.stopMicrophoneProbe(),native.stopSteps()]);
@@ -150,16 +156,16 @@ export function startStepOnlyDiagnostics(): Promise<Result> {
     if (cancelled() || !sensorsAllowed(getSettingsSnapshot()))
       return unavailable("Запуск шагомера отменён");
     try {
-    const status = await native.status();
+    const status = await withNativeDeadline(()=>native.status(),5000);
     if (cancelled()) return unavailable("Запуск шагомера отменён");
     if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
     if (!status.stepsSupported) return unavailable("На устройстве отсутствует датчик шагов");
-    const permission = await native.requestActivity();
+    const permission = await withNativeDeadline(()=>native.requestActivity(),60_000);
     if (cancelled()) return unavailable("Запуск шагомера отменён");
     if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
     if (!permission.granted)
       return {ok:false,code:"PERMISSION_DENIED",message:"Разрешите физическую активность для шагомера"};
-    const result = await native.startSteps();
+    const result = await withNativeDeadline(()=>native.startSteps(),8000);
     if (cancelled() || !sensorsAllowed(getSettingsSnapshot())) {
       await native.stopSteps().catch(()=>{});
       return unavailable("Запуск шагомера отменён");
@@ -239,16 +245,16 @@ export function installNativeSensorAdapters(): void {
             !sensorsAllowed(getSettingsSnapshot());
           if(cancelled())return unavailable("Запуск анализа отменён");
           try {
-            const status=await native.status();
+            const status=await withNativeDeadline(()=>native.status(),5000);
             if(cancelled())return unavailable("Запуск анализа отменён");
             if(!status.microphoneGranted)
               return {ok:false,code:"PERMISSION_DENIED" as const,
                 message:"Разрешите микрофон при запуске музыки"};
-            await native.setInputPreference({
+            await withNativeDeadline(()=>native.setInputPreference({
               preference:effectiveMicrophonePreference(getSettingsSnapshot()),
-            });
+            }),6000);
             if(cancelled())return unavailable("Запуск анализа отменён");
-            const result=await native.startAnalysis();
+            const result=await withNativeDeadline(()=>native.startAnalysis(),12_000);
             if(cancelled())return unavailable("Запуск анализа отменён");
             if(result.started){stability.reset();routeFence.reset();pace.reset();}
             return result.started
@@ -269,7 +275,7 @@ export function installNativeSensorAdapters(): void {
         void Promise.resolve().then(()=>native.stopAnalysis()).catch(()=>undefined);
         return diagnosticOperations.enqueue(async ():Promise<Result> => {
           try {
-            await native.stopAnalysis();
+            await withNativeDeadline(()=>native.stopAnalysis(),5000);
             return {ok:true as const,value:undefined};
           }catch(e){return safeError(e);}
           finally{stability.reset();routeFence.reset();pace.reset();}
