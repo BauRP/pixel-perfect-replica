@@ -8,6 +8,7 @@ import type { MidiScheduledEvent } from "./decoded-midi-events";
 import { midiEventFrame, scheduleDecodedMidiNotes } from "./decoded-midi-events";
 import { PCM_TRANSFER_BYTES } from "./generated-pcm-session";
 import type { Result } from "./engine";
+import { streamRealMidiScores, type RealScoreSource, type SequenceOptions, type SequenceOutcome } from "./continuous-midi-scores";
 
 export interface VerifiedMidiRenderer {
   /** Must be backed by an opened, real licensed native soundbank/synth. */
@@ -21,6 +22,8 @@ export interface VerifiedMidiRenderer {
 }
 export interface RealPcmConsumer {
   submit(bytes:Uint8Array):Promise<Result<number>>;
+  /** Emergency stop for errors/cancelled generation; not after normal playback. */
+  stop?():Promise<Result<void>>;
 }
 
 export type RenderProgress = Readonly<{renderedFrames:number;totalFrames:number}>;
@@ -82,4 +85,21 @@ export async function renderVerifiedMidiToPcm(
   }catch(e){
     return {ok:false,code:"ERROR",message:e instanceof Error?e.message:"Ошибка MIDI-рендера"};
   }
+}
+
+/** Schedule consecutive authentic 60–120s MIDI scores without retaining all
+ * of them in memory. This does NOT generate music by itself. */
+export async function renderContinuousVerifiedMidiToPcm(
+  source:RealScoreSource, renderer:VerifiedMidiRenderer, consumer:RealPcmConsumer,
+  options?:SequenceOptions,
+):Promise<SequenceOutcome> {
+  const result=await streamRealMidiScores(source,(score,onProgress)=>
+    renderVerifiedMidiToPcm(score,renderer,consumer,{
+      isCancelled:()=>options?.signal?.aborted===true||options?.isCancelled?.()===true,
+      onProgress,
+    }),options);
+  if(!result.ok&&consumer.stop){
+    try{await consumer.stop();}catch{/* Preserve original cause, not a cleanup error. */}
+  }
+  return result;
 }

@@ -200,6 +200,9 @@ public final class SoundWorldPlaybackService extends Service {
 
   private void writeAudio() {
     try {
+      // Stop may have happened between spawning the writer and this callback.
+      if (!SoundWorldPcmLifecyclePolicy.mayPrepareOutput(
+          foregroundReady.get(), paused.get(), running.get())) return;
       if (audioManager == null) { lastAudioError = "Аудиосистема Android недоступна"; return; }
       long lastRealPcmAt = SystemClock.elapsedRealtime();
       focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
@@ -217,6 +220,8 @@ public final class SoundWorldPlaybackService extends Service {
       if (audioManager.requestAudioFocus(focusRequest) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
         lastAudioError = "Android не предоставил аудиофокус";return;
       }
+      if (!SoundWorldPcmLifecyclePolicy.mayPrepareOutput(
+          foregroundReady.get(), paused.get(), running.get())) return;
       int min = AudioTrack.getMinBufferSize(48000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT);
       if (min <= 0) { lastAudioError = "Устройство не поддерживает PCM 48 кГц"; return; }
       audioTrack = new AudioTrack.Builder().setAudioAttributes(new AudioAttributes.Builder()
@@ -228,6 +233,8 @@ public final class SoundWorldPlaybackService extends Service {
       if (audioTrack.getState() != AudioTrack.STATE_INITIALIZED) {
         lastAudioError = "AudioTrack не инициализирован";return;
       }
+      if (!SoundWorldPcmLifecyclePolicy.mayPrepareOutput(
+          foregroundReady.get(), paused.get(), running.get())) return;
       while (running.get() && !paused.get()) {
         byte[] pcm = chunks.poll(500, TimeUnit.MILLISECONDS);
         if (pcm == null) {
@@ -251,7 +258,12 @@ public final class SoundWorldPlaybackService extends Service {
           continue;
         }
         lastRealPcmAt = SystemClock.elapsedRealtime();
-        if (audioTrack.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) audioTrack.play();
+        // Same lock as pauseAudio: late writer must not call play AFTER stop.
+        synchronized (this) {
+          if (!SoundWorldPcmLifecyclePolicy.mayPrepareOutput(
+              foregroundReady.get(), paused.get(), running.get())) break;
+          if (audioTrack.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) audioTrack.play();
+        }
         int at = 0;
         while (at < pcm.length && running.get() && !paused.get()) {
           int written = audioTrack.write(pcm, at, pcm.length - at, AudioTrack.WRITE_BLOCKING);

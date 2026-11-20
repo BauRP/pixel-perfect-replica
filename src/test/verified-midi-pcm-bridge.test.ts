@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from "vitest";
-import {renderVerifiedMidiToPcm} from "../lib/sw/verified-midi-pcm-bridge";
+import {renderVerifiedMidiToPcm,renderContinuousVerifiedMidiToPcm} from "../lib/sw/verified-midi-pcm-bridge";
 const valid=()=>({durationUs:60_000_000,notes:[
   {track:0,channel:0,program:0,pitch:64,velocity:95,startUs:0,endUs:60_000_000},
 ]});
@@ -59,5 +59,31 @@ describe("genuine licensed MIDI synthesizer bridge (no fake production audio)",(
       ready:async()=>true,render:async x=>new Uint8Array(x.frameCount*4),
     },{submit:async()=>({ok:true,value:4})});
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("genuine consecutive MIDI scores",()=>{
+  it("sends 2 complete model scores, 120 seconds of verified PCM",async()=>{
+    let fetched=0,rendered=0;
+    const result=await renderContinuousVerifiedMidiToPcm({
+      next:async()=>++fetched<=2?valid():null,
+    },{
+      ready:async()=>true,
+      render:async input=>{rendered++;return new Uint8Array(input.frameCount*4);},
+    },{submit:async bytes=>({ok:true,value:bytes.length})});
+    expect(result).toEqual({ok:true,completedScores:2,totalFrames:5_760_000});
+    expect(rendered).toBe(480);
+    expect(fetched).toBe(3);
+  });
+  it("refuses invalid second scores and stops the native sink on error",async()=>{
+    let fetched=0;
+    const stop=vi.fn(async()=>({ok:true as const,value:undefined}));
+    const result=await renderContinuousVerifiedMidiToPcm({
+      next:async()=>++fetched===1?valid():{durationUs:11_000_000,notes:[]},
+    },{
+      ready:async()=>true,render:async input=>new Uint8Array(input.frameCount*4),
+    },{submit:async bytes=>({ok:true,value:bytes.length}),stop});
+    expect(result).toMatchObject({ok:false,completedScores:1});
+    expect(stop).toHaveBeenCalledTimes(1);
   });
 });
