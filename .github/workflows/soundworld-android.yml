@@ -291,11 +291,10 @@ jobs:
             echo "- У debug-сборок может отличаться подпись; это не Play Store-релиз."
             echo "- Музыкальная нейросеть Fermata пока не подключена."
           } >> "$GITHUB_STEP_SUMMARY"
-      # If Releases is unavailable, keep a short-lived APK artifact as a
-      # verified download fallback when Actions artifact capacity permits.
-      - name: Backup APK to Actions artifacts if Releases API is unavailable
-        id: fallback_apk
-        if: steps.publish_diagnostic_apk.outcome == 'failure'
+      # Upload every compiled APK to the Actions Artifacts section, as in Multi-Cam.
+      # Releases remains the independent, longer-lived direct APK download.
+      - name: Upload APK to Actions artifacts on every successful build
+        id: upload_apk_artifact
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -470,16 +469,21 @@ jobs:
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: bash scripts/check_android_startup.sh
       - name: Confirm at least one APK download path succeeded
-        if: always() && steps.publish_diagnostic_apk.outcome == 'failure' && steps.fallback_apk.outcome != 'success'
+        if: always() && steps.publish_diagnostic_apk.outcome == 'failure' && steps.upload_apk_artifact.outcome != 'success'
         shell: bash
         run: |
           echo "::error::APK compiled, but GitHub Releases and Actions artifacts were both unavailable. This is a delivery failure, not an Android startup failure."
           exit 1
-      - name: Explain fallback APK download
-        if: steps.publish_diagnostic_apk.outcome == 'failure' && steps.fallback_apk.outcome == 'success'
+      - name: Show APK download link in Actions Artifacts
+        if: always() && steps.upload_apk_artifact.outcome == 'success'
+        shell: bash
         run: |
-          echo "### APK built; GitHub Releases had an API outage" >> "$GITHUB_STEP_SUMMARY"
-          echo "Download the APK and SHA-256 from the Artifacts section of this workflow run (repository access required; retained 2 days)." >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          {
+            echo "### [⬇️ Скачать APK из Artifacts](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts)"
+            echo "- Открой раздел Artifacts и скачай архив soundworld-ar-debug-${{ github.run_number }}-${{ github.run_attempt }}. В нём APK и SHA-256."
+            echo "- Файлы в Artifacts хранятся 2 дня; если доступен Release, прямая ссылка выше остаётся основным способом скачивания."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Mark APK verified only after optional Android 12–16 launch tests
         if: github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators && steps.publish_diagnostic_apk.outcome == 'success'
