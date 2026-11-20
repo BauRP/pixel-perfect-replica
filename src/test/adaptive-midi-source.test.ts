@@ -1,5 +1,6 @@
 import {describe,it,expect,vi} from "vitest";
 import {AdaptiveMidiSource} from "../lib/sw/adaptive-midi-source";
+import type {MusicRequest} from "../lib/sw/music-preferences";
 import {DEFAULT_SETTINGS} from "../lib/sw/settings";
 import {MusicControlPlanner} from "../lib/sw/music-control";
 const score=()=>({durationUs:60_000_000,notes:[{
@@ -25,7 +26,7 @@ describe("local, instrument-only adaptive model handoff",()=>{
     const result=await source.next();
     expect(result).not.toBeNull();
     expect(generate).toHaveBeenCalledTimes(1);
-    const req=generate.mock.calls[0]![0];
+    const req=generate.mock.calls[0]![0] as MusicRequest;
     expect(req.instrumental).toBe(true);
     expect(req.genreCandidates).toContain("g02-s01");
     expect(req.genreCandidates).not.toContain("g01-s01");

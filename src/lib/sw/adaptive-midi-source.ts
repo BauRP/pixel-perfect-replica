@@ -33,7 +33,7 @@ export class AdaptiveMidiSource implements RealScoreSource {
       this.inputs.currentPlan(),this.inputs.currentFavorites());
     // Parent groups are only UI categories. At least one REAL selectable
     // subgenre must survive hard exclusions; never override user blocks.
-    if(!request.genreCandidates.some(id=>/^g\\d{2}-s\\d{2}$/.test(id)))
+    if(!request.genreCandidates.some(id=>/^g\d{2}-s\d{2}$/.test(id)))
       throw new Error("Все выбранные музыкальные направления исключены");
     const frozen:Readonly<MusicRequest>=Object.freeze({
       ...request,
