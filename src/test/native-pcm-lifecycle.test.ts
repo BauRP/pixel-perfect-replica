@@ -4,6 +4,9 @@ import {describe,it,expect,vi} from "vitest";
 const driver=vi.hoisted(()=>({
   events: [] as string[],
   releaseStart: null as null|(()=>void),
+  receipts: [] as Array<()=>void>,
+  packetValues: [] as string[],
+  holdPackets: false,
 }));
 vi.mock("@capacitor/core",()=>({
   Capacitor:{getPlatform:()=>"android"},
@@ -13,13 +16,58 @@ vi.mock("@capacitor/core",()=>({
       driver.releaseStart=()=>resolve({preparing:true});
     }),
     status:async()=>({readyForPcm:true,sessionId:91,lastAudioError:""}),
+    appendPcm:({base64}:{base64:string})=>{
+      driver.packetValues.push(base64);
+      if(!driver.holdPackets)return Promise.resolve({queued:true});
+      return new Promise<{queued:boolean}>(resolve=>{
+        driver.receipts.push(()=>resolve({queued:true}));
+      });
+    },
     stop:async()=>{driver.events.push("stop");return {requested:true};},
     pause:async()=>{driver.events.push("pause");return {audible:false};},
   }),
 }));
-import {requestNativeAudioSink,stopNativeAudioSink,pauseNativeAudioSink} from "../lib/sw/native-pcm";
+import {requestNativeAudioSink,stopNativeAudioSink,pauseNativeAudioSink,appendRealPcm} from "../lib/sw/native-pcm";
 
 describe("Android real PCM lifecycle ordering",()=>{
+  it("holds concurrent genuine PCM packets in order, copying each payload",async()=>{
+    driver.events.length=0;driver.packetValues.length=0;
+    driver.receipts.length=0;driver.holdPackets=true;
+    const start=requestNativeAudioSink();
+    await Promise.resolve();
+    driver.releaseStart?.();
+    expect((await start).ok).toBe(true);
+    const firstBytes=new Uint8Array([1,0,1,0]);
+    const first=appendRealPcm(firstBytes);
+    firstBytes[0]=9;
+    const second=appendRealPcm(new Uint8Array([2,0,2,0]));
+    await Promise.resolve();await Promise.resolve();
+    expect(driver.packetValues).toHaveLength(1);
+    driver.receipts.shift()?.();
+    expect((await first).ok).toBe(true);
+    // Drain the second native packet only after the first acknowledgement.
+    for(let tick=0;tick<8 && driver.receipts.length===0;tick++) await Promise.resolve();
+    expect(driver.packetValues).toHaveLength(2);
+    driver.receipts.shift()?.();
+    expect((await second).ok).toBe(true);
+    expect(driver.packetValues[0]).not.toBe(driver.packetValues[1]);
+    driver.holdPackets=false;
+    await stopNativeAudioSink();
+  });
+  it("refuses excessive concurrent PCM without allocating an unbounded queue",async()=>{
+    driver.packetValues.length=0;driver.receipts.length=0;driver.holdPackets=true;
+    const start=requestNativeAudioSink();await Promise.resolve();driver.releaseStart?.();
+    expect((await start).ok).toBe(true);
+    const tasks=Array.from({length:8},()=>appendRealPcm(new Uint8Array(4)));
+    const ninth=await appendRealPcm(new Uint8Array(4));
+    expect(ninth.ok).toBe(false);
+    for(let i=0;i<8;i++){
+      for(let tick=0;tick<12 && driver.receipts.length===0;tick++)await Promise.resolve();
+      driver.receipts.shift()?.();
+    }
+    expect((await Promise.all(tasks)).every(x=>x.ok)).toBe(true);
+    driver.holdPackets=false;await stopNativeAudioSink();
+  });
   it("a late START cannot resurrect audio after STOP",async()=>{
     driver.events.length=0;
     const starting=requestNativeAudioSink();

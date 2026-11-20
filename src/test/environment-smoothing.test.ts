@@ -62,6 +62,15 @@ describe("real event filtering (no simulated detections)",()=>{
     expect(s.update({label:"Vehicle",confidence:.8,timestamp:3600})).toBeNull();
     expect(s.update({label:"Vehicle",confidence:.8,timestamp:4200})?.atmosphere).toBe("traffic");
   });
+  it("confirms two real YAMNet windows despite battery throttling, never one",()=>{
+    const s=new AmbientStabilizer();
+    expect(s.update({label:"Rain",confidence:.9,timestamp:1000})).toBeNull();
+    expect(s.update({label:"Rain",confidence:.9,timestamp:9000})?.atmosphere).toBe("rain");
+    const afterGap=new AmbientStabilizer();
+    expect(afterGap.update({label:"Traffic",confidence:.9,timestamp:1000})).toBeNull();
+    expect(afterGap.update({label:"Traffic",confidence:.9,timestamp:15000})).toBeNull();
+    expect(afterGap.update({label:"Traffic",confidence:.9,timestamp:22000})?.atmosphere).toBe("traffic");
+  });
   it("ignores delayed YAMNet labels rather than reverting a confirmed scene",()=>{
     const s=new AmbientStabilizer();
     expect(s.update({label:"Rain",confidence:.9,timestamp:1000})).toBeNull();

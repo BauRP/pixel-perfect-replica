@@ -244,6 +244,9 @@ public final class SoundWorldPlaybackService extends Service {
             actualPlayback = false; publishState(false);
             lastUnderruns = audioTrack.getUnderrunCount();
             audioTrack.pause();
+            // A stalled producer can leave samples buffered in AudioTrack.
+            // Flush the previous fragment before real new PCM is played.
+            audioTrack.flush();
           }
           continue;
         }

@@ -23,6 +23,11 @@ let activeSessionId:number|null = null;
 let requestGeneration = 0;
 // Serial lifecycle ensures a delayed Android START cannot run after STOP.
 const audioLifecycle = new SerialNativeOperations();
+// Independent ordered PCM packets: concurrent producers must never reorder notes.
+const pcmWriteQueue = new SerialNativeOperations();
+const MAX_PENDING_PCM_WRITES = 8;
+let pendingPcmWrites = 0;
+const PCM_ACK_TIMEOUT_MS = 3000;
 export function matchingPcmSession(active:number|null,requested:number):boolean {
   return active !== null && Number.isSafeInteger(requested) &&
     requested > 0 && active === requested;
@@ -87,33 +92,56 @@ export function retryablePcmBackpressure(
 export function validatePcmChunk(pcm:Uint8Array):boolean {
   return pcm.length>0 && pcm.length<=192000 && pcm.length%4===0;
 }
+type QueueReceipt={queued:boolean;backpressure?:boolean};
+/** An unknown native acknowledgement must NEVER be retried: Android might
+ * already have queued the packet. Cancel the session instead of duplicating sound.
+ */
+async function boundedPcmReceipt(request:Promise<QueueReceipt>):Promise<QueueReceipt|null> {
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  const deadline=new Promise<null>(resolve=>{
+    timer=setTimeout(()=>resolve(null),PCM_ACK_TIMEOUT_MS);
+  });
+  try{return await Promise.race([request,deadline]);}
+  finally{if(timer!==undefined)clearTimeout(timer);}
+}
+
 export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
   if(Capacitor.getPlatform()!=="android") return unavailable("Аудиовывод Android недоступен");
   if(!validatePcmChunk(pcm))return {ok:false,code:"ERROR",message:"Неверный размер или формат PCM"};
+  // Capture session and payload BEFORE waiting; a reusable model buffer may be overwritten.
   const sessionId=activeSessionId;
   if(sessionId===null)return unavailable("Нет подтверждённой музыкальной аудиосессии");
-  // Chunk <=1s prevents large JS -> native bridge payloads.
+  if(pendingPcmWrites>=MAX_PENDING_PCM_WRITES)
+    return unavailable("Очередь настоящего PCM заполнена");
+  const encoded=pcmToBase64(pcm);
+  pendingPcmWrites++;
   try {
-    // A genuine generator can briefly outrun AudioTrack. Only a NEGATIVE
-    // queue acknowledgment specifically marked "backpressure" may be
-    // retried; successful packets must NEVER be sent twice.
-    const encoded=pcmToBase64(pcm);
-    for (let attempt=0;attempt<25;attempt++) {
-      if(!matchingPcmSession(activeSessionId,sessionId))
-        return unavailable("Музыкальная сессия сменилась во время передачи PCM");
-      const acknowledgment=await native.appendPcm({base64:encoded,sessionId});
-      if(!matchingPcmSession(activeSessionId,sessionId))
-        return unavailable("Музыкальная сессия остановлена до подтверждения PCM");
-      if (positivePcmAcknowledgment(acknowledgment))
-        return {ok:true,value:"queued"};
-      if (!retryablePcmBackpressure(acknowledgment))
-        return {ok:false,code:"ERROR",message:"Android не подтвердил приём PCM"};
-      if (attempt===24)
-        return {ok:false,code:"TIMEOUT",message:"Очередь настоящего PCM не освободилась"};
-      await new Promise<void>(resolve=>setTimeout(resolve,100));
-    }
-    return {ok:false,code:"TIMEOUT",message:"Очередь PCM недоступна"};
-  }catch(e){return {ok:false,code:"ERROR",message:String(e)};}
+    return await pcmWriteQueue.enqueue(async():Promise<Result<"queued">>=>{
+      try {
+        // A negative, explicit backpressure is the ONLY retryable outcome.
+        for(let attempt=0;attempt<25;attempt++){
+          if(!matchingPcmSession(activeSessionId,sessionId))
+            return unavailable("Музыкальная сессия сменилась во время передачи PCM");
+          const acknowledgment=await boundedPcmReceipt(native.appendPcm({base64:encoded,sessionId}));
+          if(!matchingPcmSession(activeSessionId,sessionId))
+            return unavailable("Музыкальная сессия остановлена до подтверждения PCM");
+          if(acknowledgment===null){
+            // A late successful callback is ambiguous. Stop the native session,
+            // rather than risking a duplicated packet or a silent frozen writer.
+            void stopNativeAudioSink().catch(()=>undefined);
+            return {ok:false,code:"TIMEOUT",message:"Android не подтвердил PCM за 3 секунды"};
+          }
+          if(positivePcmAcknowledgment(acknowledgment))
+            return {ok:true,value:"queued"};
+          if(!retryablePcmBackpressure(acknowledgment))
+            return {ok:false,code:"ERROR",message:"Android не подтвердил приём PCM"};
+          if(attempt===24)return {ok:false,code:"TIMEOUT",message:"Очередь настоящего PCM не освободилась"};
+          await new Promise<void>(resolve=>setTimeout(resolve,100));
+        }
+        return {ok:false,code:"TIMEOUT",message:"Очередь PCM недоступна"};
+      }catch(e){return {ok:false,code:"ERROR",message:String(e)};}
+    });
+  }finally{pendingPcmWrites--;}
 }
 export function pauseNativeAudioSink():Promise<void>{
   // Revoke immediately; the native pause must run AFTER an in-flight START.

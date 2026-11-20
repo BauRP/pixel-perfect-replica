@@ -26,6 +26,9 @@ export class AmbientStabilizer {
   private lastSeen = 0;
   private current: Atmosphere = "unknown";
   private lastTransition = 0;
+  // Battery / thermal throttling can stretch actual YAMNet windows beyond
+  // 3.5 seconds. Still require TWO independent windows within 12 seconds.
+  private readonly maxConfirmationGapMs=12_000;
   constructor(private readonly minConfidence = 0.53, private readonly requiredHits = 2, private readonly minTransitionMs = 1500) {}
   update(p: AmbientPrediction): StableAmbientEvent | null {
     if (!Number.isFinite(p.confidence) || !Number.isFinite(p.timestamp) ||
@@ -40,7 +43,7 @@ export class AmbientStabilizer {
     if (this.lastSeen > 0 && p.timestamp <= this.lastSeen) return null;
     // Distinct YAMNet windows only. Several labels from one window are NOT repeat evidence.
     if (this.lastSeen > 0 && p.timestamp - this.lastSeen < 650 && p.timestamp >= this.lastSeen) return null;
-    if (next !== this.candidate || p.timestamp - this.lastSeen > 3500 || p.timestamp < this.lastSeen) {
+    if (next !== this.candidate || p.timestamp - this.lastSeen > this.maxConfirmationGapMs || p.timestamp < this.lastSeen) {
       this.candidate = next; this.hits = 1;
     } else this.hits++;
     this.lastSeen = p.timestamp;
