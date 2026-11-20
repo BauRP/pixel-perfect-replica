@@ -84,7 +84,7 @@ export function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
   if (!androidSensorsAvailable()) return Promise.resolve(unavailable("Только в Android APK"));
   if (!sensorsAllowed(getSettingsSnapshot())) return Promise.resolve(unavailable(SENSOR_MODE_BLOCKED));
   const epoch = ++diagnosticEpoch;
-  return diagnosticOperations.enqueue(async () => {
+  return diagnosticOperations.enqueue(async ():Promise<Result> => {
     const cancelled = () => epoch !== diagnosticEpoch;
     if (cancelled() || !sensorsAllowed(getSettingsSnapshot()))
       return unavailable("Запуск анализа отменён");
@@ -145,7 +145,7 @@ export function startStepOnlyDiagnostics(): Promise<Result> {
   if (!androidSensorsAvailable()) return Promise.resolve(unavailable("Шагомер доступен только в Android APK"));
   if (!sensorsAllowed(getSettingsSnapshot())) return Promise.resolve(unavailable(SENSOR_MODE_BLOCKED));
   const epoch = ++diagnosticEpoch;
-  return diagnosticOperations.enqueue(async () => {
+  return diagnosticOperations.enqueue(async ():Promise<Result> => {
     const cancelled = () => epoch !== diagnosticEpoch;
     if (cancelled() || !sensorsAllowed(getSettingsSnapshot()))
       return unavailable("Запуск шагомера отменён");
@@ -230,7 +230,7 @@ export function installNativeSensorAdapters(): void {
         // AudioRecord. Use one serial lifecycle so STOP always wins over a
         // delayed start (permission prompt, route change or model loading).
         const epoch=++diagnosticEpoch;
-        return diagnosticOperations.enqueue(async () => {
+        return diagnosticOperations.enqueue(async ():Promise<Result> => {
           const cancelled=()=>epoch!==diagnosticEpoch ||
             !sensorsAllowed(getSettingsSnapshot());
           if(cancelled())return unavailable("Запуск анализа отменён");
@@ -260,7 +260,7 @@ export function installNativeSensorAdapters(): void {
       },
       stopCapture: () => {
         ++diagnosticEpoch;
-        return diagnosticOperations.enqueue(async () => {
+        return diagnosticOperations.enqueue(async ():Promise<Result> => {
           try {
             await native.stopAnalysis();
             stability.reset();
