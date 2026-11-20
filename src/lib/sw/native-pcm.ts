@@ -28,6 +28,18 @@ const pcmWriteQueue = new SerialNativeOperations();
 const MAX_PENDING_PCM_WRITES = 8;
 let pendingPcmWrites = 0;
 const PCM_ACK_TIMEOUT_MS = 3000;
+const AUDIO_NATIVE_CALL_MS = 3500;
+class NativeCallTimeout extends Error {}
+/** A broken Capacitor callback must not hold the serial audio lifecycle
+ * forever. Stop is still requested natively and no PCM is re-authorized. */
+async function boundedNativeCall<T>(action:()=>Promise<T>,timeoutMs=AUDIO_NATIVE_CALL_MS):Promise<T>{
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  const deadline=new Promise<never>((_resolve,reject)=>{
+    timer=setTimeout(()=>reject(new NativeCallTimeout("Android не ответил на аудиокоманду")),timeoutMs);
+  });
+  try{return await Promise.race([Promise.resolve().then(action),deadline]);}
+  finally{if(timer!==undefined)clearTimeout(timer);}
+}
 export function matchingPcmSession(active:number|null,requested:number):boolean {
   return active !== null && Number.isSafeInteger(requested) &&
     requested > 0 && active === requested;
@@ -35,7 +47,7 @@ export function matchingPcmSession(active:number|null,requested:number):boolean 
 const unavailable = (msg:string):{ok:false;code:"UNAVAILABLE";message:string} => ({ok:false,code:"UNAVAILABLE",message:msg});
 export async function currentAudioSinkStatus() {
   if(Capacitor.getPlatform()!=="android") return null;
-  try {return await native.status();}catch{return null;}
+  try {return await boundedNativeCall(()=>native.status(),1500);}catch{return null;}
 }
 
 /**
@@ -50,13 +62,16 @@ export function requestNativeAudioSink():Promise<Result<"preparing">> {
     if(generation!==requestGeneration)
       return unavailable("Музыкальная сессия уже остановлена");
     try {
-    await native.start();
+    await boundedNativeCall(()=>native.start());
     if(generation!==requestGeneration)
       return unavailable("Музыкальная сессия уже остановлена");
     // ContextCompat.startForegroundService only REQUESTS startup; Android
     // invokes onStartCommand later. Do not send music to an unready service.
+    const statusDeadline=Date.now()+4500;
     for(let attempt=0;attempt<24;attempt++) {
-      const status=await native.status();
+      const remaining=statusDeadline-Date.now();
+      if(remaining<=0)break;
+      const status=await boundedNativeCall(()=>native.status(),Math.min(1200,remaining));
       if(generation!==requestGeneration)
         return unavailable("Музыкальная сессия уже остановлена");
       if(status.readyForPcm && Number.isSafeInteger(status.sessionId) &&
@@ -72,11 +87,11 @@ export function requestNativeAudioSink():Promise<Result<"preparing">> {
     }
     // Do not keep an unused foreground service alive if Android never
     // confirms that it is able to accept generated PCM.
-    if(generation===requestGeneration) await native.stop().catch(()=>{});
-    return {ok:false,code:"TIMEOUT",message:"Android не подготовил аудиослужбу за 2,4 секунды"};
+    if(generation===requestGeneration) await boundedNativeCall(()=>native.stop()).catch(()=>{});
+    return {ok:false,code:"TIMEOUT",message:"Android не подготовил аудиослужбу за 4,5 секунды"};
     } catch(e){
-      if(generation===requestGeneration) await native.stop().catch(()=>{});
-      return {ok:false,code:"ERROR",message:String(e)};
+      if(generation===requestGeneration) await boundedNativeCall(()=>native.stop()).catch(()=>{});
+      return {ok:false,code:e instanceof NativeCallTimeout?"TIMEOUT":"ERROR",message:String(e)};
     }
   });
 }
@@ -148,7 +163,7 @@ export function pauseNativeAudioSink():Promise<void>{
   activeSessionId=null;
   requestGeneration++;
   if(Capacitor.getPlatform()!=="android")return Promise.resolve();
-  return audioLifecycle.enqueue(async()=>{await native.pause().catch(()=>{});});
+  return audioLifecycle.enqueue(async()=>{await boundedNativeCall(()=>native.pause());});
 }
 export function confirmedAudioStop(response:{requested?:boolean}|null|undefined):boolean {
   return response?.requested === true;
@@ -159,7 +174,7 @@ export function stopNativeAudioSink():Promise<void>{
   requestGeneration++;
   if(Capacitor.getPlatform()!=="android")return Promise.resolve();
   return audioLifecycle.enqueue(async()=>{
-    const response=await native.stop();
+    const response=await boundedNativeCall(()=>native.stop());
     if(!confirmedAudioStop(response))throw new Error("Android не подтвердил остановку аудиослужбы");
   });
 }

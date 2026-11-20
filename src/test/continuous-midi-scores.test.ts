@@ -1,6 +1,37 @@
 import {describe,it,expect,vi} from "vitest";
 import {streamRealMidiScores} from "../lib/sw/continuous-midi-scores";
 describe("bounded MIDI composition sequence",()=>{
+  it("abandons the next model request when current rendering fails",async()=>{
+    let requests=0,aborted=false;
+    const result=await streamRealMidiScores({
+      next:async signal=>{
+        requests++;
+        if(requests===1)return {genuineScore:true};
+        return new Promise<null>(resolve=>{
+          if(signal?.aborted){aborted=true;resolve(null);}
+          else signal?.addEventListener("abort",()=>{aborted=true;resolve(null);},{once:true});
+        });
+      },
+    },async(_score,onProgress)=>{
+      onProgress({renderedFrames:48_000,totalFrames:48_000});
+      await Promise.resolve();
+      return {ok:false,code:"ERROR",message:"Actual renderer failed"};
+    });
+    expect(result).toMatchObject({ok:false,code:"ERROR",completedScores:0});
+    expect(requests).toBe(2);
+    expect(aborted).toBe(true);
+  });
+  it("does not launch another request when render progress arrives after completion",async()=>{
+    let requests=0;
+    const out=await streamRealMidiScores({
+      next:async()=>++requests===1?{genuineScore:true}:null,
+    },async(_score,onProgress)=>{
+      onProgress({renderedFrames:2_880_000,totalFrames:2_880_000});
+      return {ok:false,code:"ERROR",message:"Generator stopped"};
+    });
+    expect(out.ok).toBe(false);
+    expect(requests).toBeLessThanOrEqual(2);
+  });
   it("streams two hours without a two-hour buffer",async()=>{
     let index=0,completed=0;const frames=60*48000;
     const result=await streamRealMidiScores({

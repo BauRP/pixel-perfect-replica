@@ -33,7 +33,7 @@ function cancelled(options?:SequenceOptions):boolean {
 }
 /** Every local model call is bounded even if the native inference engine
  * never resolves or ignores AbortSignal. Never substitute fake notes. */
-function fetchScore(source:RealScoreSource,options?:SequenceOptions):Promise<Fetched>{
+function fetchScore(source:RealScoreSource,options?:SequenceOptions,prefetchAbort?:AbortSignal):Promise<Fetched>{
   const deadlineMs=options?.maxScoreWaitMs??120_000;
   return new Promise<Fetched>(resolve=>{
     const controller=new AbortController();
@@ -46,16 +46,21 @@ function fetchScore(source:RealScoreSource,options?:SequenceOptions):Promise<Fet
       if(timeout!==undefined)clearTimeout(timeout);
       if(polling!==undefined)clearInterval(polling);
       options?.signal?.removeEventListener("abort",onAbort);
+      prefetchAbort?.removeEventListener("abort",onAbort);
       if(result.kind!=="score")controller.abort();
       resolve(result);
     };
     const onAbort=()=>finish({kind:"cancelled"});
-    if(cancelled(options)){finish({kind:"cancelled"});return;}
+    if(cancelled(options)||prefetchAbort?.aborted===true){finish({kind:"cancelled"});return;}
     options?.signal?.addEventListener("abort",onAbort,{once:true});
+    prefetchAbort?.addEventListener("abort",onAbort,{once:true});
     timeout=setTimeout(()=>finish({kind:"failure",message:"Модель не ответила за установленное время"}),deadlineMs);
     if(options?.isCancelled)polling=setInterval(()=>{if(cancelled(options))onAbort();},100);
-    void Promise.resolve().then(()=>source.next(controller.signal)).then(
-      value=>finish({kind:"score",value}),
+    void Promise.resolve().then(()=>{
+      if(finished)return null;
+      return source.next(controller.signal);
+    }).then(
+      value=>{if(!finished)finish({kind:"score",value});},
       error=>finish({kind:"failure",message:error instanceof Error?error.message:"Ошибка получения MIDI"}),
     );
   });
@@ -85,9 +90,16 @@ export async function streamRealMidiScores(
       fail("UNAVAILABLE","Генератор не предоставил настоящую композицию");
     const score=next.value;
     let prefetched:Promise<Fetched>|null=null,lastFrame=0,lastTotal=0;
+    let prefetchAbort:AbortController|null=null;
+    let progressOpen=true;
+    const cancelUnusedPrefetch=()=>{
+      progressOpen=false;
+      prefetchAbort?.abort();
+    };
     let renderResult:RenderOutcome;
     try{
       renderResult=await renderOne(score,p=>{
+        if(!progressOpen)throw new Error("Позднее событие завершённого MIDI-рендера");
         if(!Number.isSafeInteger(p.renderedFrames)||!Number.isSafeInteger(p.totalFrames)||
            p.renderedFrames<lastFrame||p.renderedFrames>p.totalFrames||
            p.totalFrames<1||(lastTotal!==0&&p.totalFrames!==lastTotal))
@@ -96,17 +108,34 @@ export async function streamRealMidiScores(
         options?.onProgress?.({completedScores,totalRenderedFrames:totalFrames+p.renderedFrames,
           currentScoreFrames:p.renderedFrames,currentScoreTotalFrames:p.totalFrames});
         if(!prefetched&&completedScores+1<maxScores&&
-           p.totalFrames-p.renderedFrames<=lead&&!cancelled(options))
-          prefetched=fetchScore(source,options);
+           p.totalFrames-p.renderedFrames<=lead&&!cancelled(options)){
+          prefetchAbort=new AbortController();
+          prefetched=fetchScore(source,options,prefetchAbort.signal);
+        }
       });
-    }catch(e){return fail("ERROR",e instanceof Error?e.message:"Ошибка потока MIDI");}
-    if(cancelled(options))return fail("UNAVAILABLE","Музыкальный поток остановлен");
-    if(!renderResult.ok)return fail(renderResult.code,renderResult.message);
+    }catch(e){
+      cancelUnusedPrefetch();
+      return fail("ERROR",e instanceof Error?e.message:"Ошибка потока MIDI");
+    }
+    progressOpen=false;
+    if(cancelled(options)){
+      cancelUnusedPrefetch();
+      return fail("UNAVAILABLE","Музыкальный поток остановлен");
+    }
+    if(!renderResult.ok){
+      cancelUnusedPrefetch();
+      return fail(renderResult.code,renderResult.message);
+    }
     if(!Number.isSafeInteger(renderResult.frames)||renderResult.frames<1||
-       (lastTotal>0&&(lastFrame!==lastTotal||lastTotal!==renderResult.frames)))
+       (lastTotal>0&&(lastFrame!==lastTotal||lastTotal!==renderResult.frames))){
+      cancelUnusedPrefetch();
       return fail("ERROR","Подтверждена неверная длительность музыкального фрагмента");
+    }
     totalFrames+=renderResult.frames;completedScores++;
-    if(completedScores>=maxScores)return {ok:true,completedScores,totalFrames};
+    if(completedScores>=maxScores){
+      cancelUnusedPrefetch();
+      return {ok:true,completedScores,totalFrames};
+    }
     next=await (prefetched??fetchScore(source,options));
   }
   return {ok:true,completedScores,totalFrames};

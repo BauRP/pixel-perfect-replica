@@ -264,6 +264,9 @@ export function installNativeSensorAdapters(): void {
       },
       stopCapture: () => {
         ++diagnosticEpoch;
+        // Do not wait for an old permission callback before telling Android
+        // to release the microphone. The ordered stop below closes late starts.
+        void Promise.resolve().then(()=>native.stopAnalysis()).catch(()=>undefined);
         return diagnosticOperations.enqueue(async ():Promise<Result> => {
           try {
             await native.stopAnalysis();

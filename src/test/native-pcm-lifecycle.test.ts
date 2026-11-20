@@ -7,6 +7,8 @@ const driver=vi.hoisted(()=>({
   receipts: [] as Array<()=>void>,
   packetValues: [] as string[],
   holdPackets: false,
+  hangStart: false,
+  hangStatus: false,
 }));
 vi.mock("@capacitor/core",()=>({
   Capacitor:{getPlatform:()=>"android"},
@@ -14,8 +16,10 @@ vi.mock("@capacitor/core",()=>({
     start:()=>new Promise<{preparing:boolean}>(resolve=>{
       driver.events.push("start");
       driver.releaseStart=()=>resolve({preparing:true});
+      if(driver.hangStart)driver.releaseStart=null;
     }),
-    status:async()=>({readyForPcm:true,sessionId:91,lastAudioError:""}),
+    status:()=>driver.hangStatus?new Promise<never>(()=>{}):
+      Promise.resolve({readyForPcm:true,sessionId:91,lastAudioError:""}),
     appendPcm:({base64}:{base64:string})=>{
       driver.packetValues.push(base64);
       if(!driver.holdPackets)return Promise.resolve({queued:true});
@@ -30,6 +34,36 @@ vi.mock("@capacitor/core",()=>({
 import {requestNativeAudioSink,stopNativeAudioSink,pauseNativeAudioSink,appendRealPcm} from "../lib/sw/native-pcm";
 
 describe("Android real PCM lifecycle ordering",()=>{
+  it("STOP is not trapped behind an unresponsive Android start callback",async()=>{
+    vi.useFakeTimers();
+    try{
+      driver.events.length=0;
+      driver.hangStart=true;
+      const starting=requestNativeAudioSink();
+      for(let i=0;i<6;i++)await Promise.resolve();
+      const stopping=stopNativeAudioSink();
+      await vi.advanceTimersByTimeAsync(4000);
+      expect((await starting).ok).toBe(false);
+      await stopping;
+      expect(driver.events).toContain("stop");
+    }finally{driver.hangStart=false;vi.useRealTimers();}
+  });
+  it("STOP also recovers from a never-resolved status callback",async()=>{
+    vi.useFakeTimers();
+    try{
+      driver.events.length=0;
+      driver.hangStatus=true;
+      const starting=requestNativeAudioSink();
+      for(let i=0;i<6;i++)await Promise.resolve();
+      driver.releaseStart?.();
+      for(let i=0;i<6;i++)await Promise.resolve();
+      const stopping=stopNativeAudioSink();
+      await vi.advanceTimersByTimeAsync(2500);
+      expect((await starting).ok).toBe(false);
+      await stopping;
+      expect(driver.events).toContain("stop");
+    }finally{driver.hangStatus=false;vi.useRealTimers();}
+  });
   it("holds concurrent genuine PCM packets in order, copying each payload",async()=>{
     driver.events.length=0;driver.packetValues.length=0;
     driver.receipts.length=0;driver.holdPackets=true;
