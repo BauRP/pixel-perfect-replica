@@ -223,26 +223,51 @@ export function installNativeSensorAdapters(): void {
         const s=await sensorStatus();
         return s?.yamnetIncluded?{ok:true,value:undefined}:unavailable("Файл YAMNet отсутствует");
       },
-      startCapture: async () => {
-        if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
-        try {
-          const s=await native.status();
-          if(!s.microphoneGranted) return {ok:false,code:"PERMISSION_DENIED",message:"Разрешите микрофон при запуске музыки"};
-          if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
-          await native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())});
-          if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
-          const r = await native.startAnalysis();
-          if (!sensorsAllowed(getSettingsSnapshot())) {
-            await native.stopAnalysis().catch(()=>{});
-            return unavailable(SENSOR_MODE_BLOCKED);
+      startCapture: () => {
+        if (!sensorsAllowed(getSettingsSnapshot()))
+          return Promise.resolve(unavailable(SENSOR_MODE_BLOCKED));
+        // The music adapter and the Diagnostics screen control the same native
+        // AudioRecord. Use one serial lifecycle so STOP always wins over a
+        // delayed start (permission prompt, route change or model loading).
+        const epoch=++diagnosticEpoch;
+        return diagnosticOperations.enqueue(async () => {
+          const cancelled=()=>epoch!==diagnosticEpoch ||
+            !sensorsAllowed(getSettingsSnapshot());
+          if(cancelled())return unavailable("Запуск анализа отменён");
+          try {
+            const status=await native.status();
+            if(cancelled())return unavailable("Запуск анализа отменён");
+            if(!status.microphoneGranted)
+              return {ok:false,code:"PERMISSION_DENIED" as const,
+                message:"Разрешите микрофон при запуске музыки"};
+            await native.setInputPreference({
+              preference:effectiveMicrophonePreference(getSettingsSnapshot()),
+            });
+            if(cancelled())return unavailable("Запуск анализа отменён");
+            const result=await native.startAnalysis();
+            if(cancelled())return unavailable("Запуск анализа отменён");
+            if(result.started){stability.reset();routeFence.reset();}
+            return result.started
+              ? {ok:true as const,value:undefined}
+              : unavailable("Модель YAMNet недоступна");
+          }catch(e){
+            await stopNativeDiagnostics();
+            return safeError(e);
+          }finally{
+            if(cancelled())await stopNativeDiagnostics();
           }
-          if(r.started)routeFence.reset();
-          return r.started ? {ok:true,value:undefined} : unavailable("Модель YAMNet недоступна");
-        }catch(e){return safeError(e);}
+        });
       },
-      stopCapture: async () => {
-        try {await native.stopAnalysis();stability.reset();routeFence.reset();return {ok:true,value:undefined};}
-        catch(e){return safeError(e);}
+      stopCapture: () => {
+        ++diagnosticEpoch;
+        return diagnosticOperations.enqueue(async () => {
+          try {
+            await native.stopAnalysis();
+            stability.reset();
+            routeFence.reset();
+            return {ok:true as const,value:undefined};
+          }catch(e){return safeError(e);}
+        });
       },
       observeEnvironment: cb => observeRawSound(e=>{
         if (!sensorsAllowed(getSettingsSnapshot())) return;
