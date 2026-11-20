@@ -11,6 +11,7 @@ import { getSettingsSnapshot, type Settings } from "./settings";
 import { sensorsAllowed, SENSOR_MODE_BLOCKED } from "./sensor-mode";
 import { manageNativeListener } from "./native-listener";
 import { SoundRouteFence } from "./sound-route-fence";
+import { SerialNativeOperations } from "./serial-native-operations";
 
 type NativeResult = { started?: boolean; stopped?: boolean; granted?: boolean; active?: boolean; name?: string; kind?: string; input?: string; output?: string };
 export interface SensorsStatus {
@@ -72,13 +73,22 @@ export async function sensorStatus(): Promise<SensorsStatus | null> {
   try { return await native.status(); } catch { return null; }
 }
 let diagnosticEpoch = 0;
-export async function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
-  if (!androidSensorsAvailable()) return unavailable("Только в Android APK");
-  if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
+// A stop request invalidates pending start immediately, then runs AFTER any
+// in-flight native start. Without serialization a delayed startAnalysis() can
+// reopen Android AudioRecord AFTER the user's privacy opt-out.
+const diagnosticOperations = new SerialNativeOperations();
+const stopNativeDiagnostics = async () => {
+  await Promise.allSettled([native.stopMicrophoneProbe(),native.stopSteps()]);
+};
+export function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
+  if (!androidSensorsAvailable()) return Promise.resolve(unavailable("Только в Android APK"));
+  if (!sensorsAllowed(getSettingsSnapshot())) return Promise.resolve(unavailable(SENSOR_MODE_BLOCKED));
   const epoch = ++diagnosticEpoch;
-  const cancelled = () => epoch !== diagnosticEpoch;
-  let started=false;
-  try {
+  return diagnosticOperations.enqueue(async () => {
+    const cancelled = () => epoch !== diagnosticEpoch;
+    if (cancelled() || !sensorsAllowed(getSettingsSnapshot()))
+      return unavailable("Запуск анализа отменён");
+    try {
     const permission = await native.requestMicrophone();
     if(cancelled()) return unavailable("Проверка микрофона отменена");
     if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
@@ -115,25 +125,31 @@ export async function startSensorDiagnostics(includeSteps: boolean): Promise<Res
       await native.stopSteps().catch(()=>{});
       return unavailable("Проверка микрофона не запущена");
     }
-    started=true;
     return {ok:true,value:undefined};
-  } catch(e) {
-    // A late failure from a cancelled run must never stop a newer recording.
-    if(!cancelled()) {
-      await native.stopSteps().catch(()=>{});
-      if(started)await stopSensorDiagnostics();
+    } catch(e) {
+      // Serialization guarantees no newer diagnostic has started while the
+      // failed operation still owns native capture. Clean both resources.
+      await stopNativeDiagnostics();
+      return safeError(e);
+    } finally {
+      // Covers a delayed native start resolving AFTER opt-out or a stop tap.
+      // The queued stop will also run before any newer start is permitted.
+      if (cancelled() || !sensorsAllowed(getSettingsSnapshot()))
+        await stopNativeDiagnostics();
     }
-    return safeError(e);
-  }
+  });
 }
 /** Independent step-detector test. It must never ask for microphone permission,
  * initialize AudioRecord, or create YAMNet inference resources. */
-export async function startStepOnlyDiagnostics(): Promise<Result> {
-  if (!androidSensorsAvailable()) return unavailable("Шагомер доступен только в Android APK");
-  if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
+export function startStepOnlyDiagnostics(): Promise<Result> {
+  if (!androidSensorsAvailable()) return Promise.resolve(unavailable("Шагомер доступен только в Android APK"));
+  if (!sensorsAllowed(getSettingsSnapshot())) return Promise.resolve(unavailable(SENSOR_MODE_BLOCKED));
   const epoch = ++diagnosticEpoch;
-  const cancelled = () => epoch !== diagnosticEpoch;
-  try {
+  return diagnosticOperations.enqueue(async () => {
+    const cancelled = () => epoch !== diagnosticEpoch;
+    if (cancelled() || !sensorsAllowed(getSettingsSnapshot()))
+      return unavailable("Запуск шагомера отменён");
+    try {
     const status = await native.status();
     if (cancelled()) return unavailable("Запуск шагомера отменён");
     if (!sensorsAllowed(getSettingsSnapshot())) return unavailable(SENSOR_MODE_BLOCKED);
@@ -151,15 +167,20 @@ export async function startStepOnlyDiagnostics(): Promise<Result> {
     return result.started
       ? {ok:true,value:undefined}
       : unavailable("Android не подтвердил запуск датчика шагов");
-  } catch (e) {
-    return safeError(e);
-  }
+    } catch (e) {
+      await stopNativeDiagnostics();
+      return safeError(e);
+    } finally {
+      if (cancelled() || !sensorsAllowed(getSettingsSnapshot()))
+        await stopNativeDiagnostics();
+    }
+  });
 }
 
-export async function stopSensorDiagnostics(): Promise<void> {
-  ++diagnosticEpoch; // invalidate suspended permission dialogs / native starts
-  if (!androidSensorsAvailable()) return;
-  await Promise.allSettled([native.stopMicrophoneProbe(),native.stopSteps()]);
+export function stopSensorDiagnostics(): Promise<void> {
+  ++diagnosticEpoch; // revoke permission to complete before awaiting older work
+  if (!androidSensorsAvailable()) return Promise.resolve();
+  return diagnosticOperations.enqueue(stopNativeDiagnostics);
 }
 function subscribe<T>(event: "yamnet"|"step"|"analysisError"|"micLevel"|"audioRouteChanged", cb: (data:T)=>void):Unsubscribe {
   if (!androidSensorsAvailable()) return () => {};
