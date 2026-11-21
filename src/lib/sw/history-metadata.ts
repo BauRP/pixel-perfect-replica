@@ -25,28 +25,28 @@ export function normalizeHistoryClips(value: unknown): HistoryClipBatch {
     }
     const raw = entry as Record<string, unknown>;
     // An absent ID cannot be used safely for Play/Favorite/Export.
-    if (typeof raw.id !== "string" || !nativeRecordingId.test(raw.id) || seen.has(raw.id)) {
+    if (typeof raw["id"] !== "string" || !nativeRecordingId.test(raw["id"]) || seen.has(raw["id"])) {
       skipped++;
       continue;
     }
-    seen.add(raw.id);
+    seen.add(raw["id"]);
     const validNumber = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
-    const createdAt = validNumber(raw.createdAt) && raw.createdAt > 0 && raw.createdAt <= 8.64e15 ? raw.createdAt : 0;
-    const durationSec = validNumber(raw.durationSec) && raw.durationSec > 0 ? raw.durationSec : 0;
-    const genreIds = Array.isArray(raw.genreIds) ? raw.genreIds.filter((x): x is string => typeof x === "string" && x.length > 0) : [];
-    const instrumentIds = Array.isArray(raw.instrumentIds) ? raw.instrumentIds.filter((x): x is string => typeof x === "string" && x.length > 0) : undefined;
+    const createdAt = validNumber(raw["createdAt"]) && raw["createdAt"] > 0 && raw["createdAt"] <= 8.64e15 ? raw["createdAt"] : 0;
+    const durationSec = validNumber(raw["durationSec"]) && raw["durationSec"] > 0 ? raw["durationSec"] : 0;
+    const genreIds = Array.isArray(raw["genreIds"]) ? raw["genreIds"].filter((x): x is string => typeof x === "string" && x.length > 0) : [];
+    const instrumentIds = Array.isArray(raw["instrumentIds"]) ? raw["instrumentIds"].filter((x): x is string => typeof x === "string" && x.length > 0) : undefined;
     clips.push({
-      id: raw.id,
+      id: raw["id"],
       createdAt,
       durationSec,
       genreIds,
-      instrumentIds,
-      mood: validNumber(raw.mood) ? raw.mood : 0,
-      speed: validNumber(raw.speed) ? raw.speed : 0,
-      uri: typeof raw.uri === "string" ? raw.uri : undefined,
-      favorite: raw.favorite === true,
-      exportedUri: typeof raw.exportedUri === "string" ? raw.exportedUri : undefined,
-      recoveredProtected: raw.recoveredProtected === true,
+      ...(instrumentIds === undefined ? {} : { instrumentIds }),
+      mood: validNumber(raw["mood"]) ? raw["mood"] : 0,
+      speed: validNumber(raw["speed"]) ? raw["speed"] : 0,
+      ...(typeof raw["uri"] === "string" ? { uri: raw["uri"] } : {}),
+      favorite: raw["favorite"] === true,
+      ...(typeof raw["exportedUri"] === "string" ? { exportedUri: raw["exportedUri"] } : {}),
+      recoveredProtected: raw["recoveredProtected"] === true,
     });
   }
   return { clips, skipped };

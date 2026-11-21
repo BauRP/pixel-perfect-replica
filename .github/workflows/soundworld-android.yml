@@ -220,88 +220,11 @@ jobs:
 
       - name: Publish diagnostic APK to GitHub Releases (independent of emulator status)
         id: publish_diagnostic_apk
-        # Even a 403 from Releases must not prevent Android startup checks.
-        # A final verification step still fails this job if publishing failed.
-        continue-on-error: true
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          # Unique run/attempt IDs prevent collisions and preserve older downloads.
-          tag="soundworld-ar-build-${{ github.run_id }}-${{ github.run_attempt }}"
-          title="SoundWorld AR — диагностическая APK #${{ github.run_number }} (проверка запуска не пройдена)"
-          notes="ДИАГНОСТИЧЕСКАЯ APK: работа на Android ещё НЕ подтверждена.
-          Может аварийно закрываться. Не считать стабильной версией.
-          Android 12+ (minSdk 31). Исходная ветка: ${GITHUB_REF_NAME}.
-          Успешны только проверка типов, тесты кода, сборка и проверка пакета.
-          Это debug APK: музыкальный ИИ Fermata пока не подключён.
-          У разных сборок может быть разная отладочная подпись, поэтому
-          обновление поверх уже установленной версии не гарантируется.
-          Репозиторий закрыт, скачивание доступно только с доступом к нему.
-          Коммит: ${GITHUB_SHA}."
-          # Avoid losing a compiled APK when GitHub Releases intermittently
-          # returns HTTP 500. Handle a partially-created tag idempotently.
-          published=0
-          for attempt in 1 2 3 4; do
-            if gh release view "$tag" >/dev/null 2>&1; then
-              gh release upload "$tag" \
-                output/soundworld-ar-debug.apk \
-                output/soundworld-ar-debug.apk.sha256 --clobber || true
-            else
-              gh release create "$tag" \
-                output/soundworld-ar-debug.apk \
-                output/soundworld-ar-debug.apk.sha256 \
-                --target "$GITHUB_SHA" \
-                --title "$title" \
-                --notes "$notes" \
-                --prerelease \
-                --latest=false || true
-            fi
-            if asset_names="$(gh release view "$tag" --json assets --jq '.assets[].name' 2>/dev/null)" \
-              && grep -Fxq 'soundworld-ar-debug.apk' <<< "$asset_names" \
-              && grep -Fxq 'soundworld-ar-debug.apk.sha256' <<< "$asset_names"; then
-              published=1
-              break
-            fi
-            echo "::warning::GitHub Releases attempt $attempt failed"
-            if (( attempt < 4 )); then sleep $((attempt * 8)); fi
-          done
-          if (( published != 1 )); then
-            echo "::warning::GitHub Releases unavailable after retries; trying Actions backup"
-            exit 1
-          fi
-
-          download_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/soundworld-ar-debug.apk"
-          release_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
-          sha256="$(cut -d ' ' -f 1 output/soundworld-ar-debug.apk.sha256)"
-          {
-            echo "## Готовый APK"
-            echo
-            echo "- [Скачать APK из GitHub Release](${download_url})"
-            echo "- [Открыть страницу версии](${release_url})"
-            echo
-            echo "- **Сборка:** диагностическая APK, Android 12+, запуск ещё не проверен"
-            echo "- **SHA-256:** \`${sha256}\`"
-            echo "- **Исходный коммит:** \`${GITHUB_SHA:0:12}\`"
-            echo "- **ВНИМАНИЕ:** APK может аварийно закрываться. Не считать проверенной до завершения эмулятора."
-            echo "- У debug-сборок может отличаться подпись; это не Play Store-релиз."
-            echo "- Музыкальная нейросеть Fermata пока не подключена."
-          } >> "$GITHUB_STEP_SUMMARY"
-      # Upload every compiled APK to the Actions Artifacts section, as in Multi-Cam.
-      # Releases remains the independent, longer-lived direct APK download.
-      - name: Upload APK to Actions artifacts on every successful build
-        id: upload_apk_artifact
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: soundworld-ar-debug-${{ github.run_number }}-${{ github.run_attempt }}
-          path: |
-            output/soundworld-ar-debug.apk
-            output/soundworld-ar-debug.apk.sha256
-          retention-days: 2
-          if-no-files-found: error
+        run: bash scripts/publish_apk_release.sh
 
       # Publish the diagnostic debug APK without expensive emulators on push.
       # Emulator checks are an OPTIONAL manually requested acceptance, not unfinished code.
@@ -466,23 +389,6 @@ jobs:
           emulator-boot-timeout: 360
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: bash scripts/check_android_startup.sh
-      - name: Confirm at least one APK download path succeeded
-        if: always() && steps.publish_diagnostic_apk.outcome == 'failure' && steps.upload_apk_artifact.outcome != 'success'
-        shell: bash
-        run: |
-          echo "::error::APK compiled, but GitHub Releases and Actions artifacts were both unavailable. This is a delivery failure, not an Android startup failure."
-          exit 1
-      - name: Show APK download link in Actions Artifacts
-        if: always() && steps.upload_apk_artifact.outcome == 'success'
-        shell: bash
-        run: |
-          set -euo pipefail
-          {
-            echo "### [⬇️ Скачать APK из Artifacts](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts)"
-            echo "- Открой раздел Artifacts и скачай архив soundworld-ar-debug-${{ github.run_number }}-${{ github.run_attempt }}. В нём APK и SHA-256."
-            echo "- Файлы в Artifacts хранятся 2 дня; если доступен Release, прямая ссылка выше остаётся основным способом скачивания."
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Mark APK verified only after optional Android 12–16 launch tests
         if: github.event_name == 'workflow_dispatch' && inputs.verify_android_emulators && steps.publish_diagnostic_apk.outcome == 'success'
         shell: bash

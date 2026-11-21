@@ -51,31 +51,35 @@ class AndroidWorkflowReleaseContract(unittest.TestCase):
         for workflow in (WORKFLOW, APK_WORKFLOW):
             source = workflow.read_text(encoding="utf-8")
             blocks = shell_step_bodies(source)
-            self.assertGreaterEqual(len(blocks), 10)
+            self.assertGreaterEqual(len(blocks), 8)
             for index, body in enumerate(blocks, start=1):
                 result = subprocess.run(["bash", "-n"], input=body, text=True, capture_output=True, check=False)
                 self.assertEqual(result.returncode, 0, f"{workflow.name} step {index}: {result.stderr}")
 
-    def test_release_and_backup_do_not_disappear(self):
-        source = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("gh release create", source)
-        self.assertIn("actions/upload-artifact@v4", source)
-        self.assertIn("Confirm at least one APK download path succeeded", source)
-        self.assertIn("soundworld-ar-debug.apk.sha256", source)
-        self.assertNotIn('"\\n            echo "', source)
+    def test_release_only_delivery_in_both_workflows(self):
+        for workflow in (WORKFLOW, APK_WORKFLOW):
+            source = workflow.read_text(encoding="utf-8")
+            with self.subTest(workflow=workflow.name):
+                self.assertIn("contents: write", source)
+                self.assertIn("bash scripts/publish_apk_release.sh", source)
+                self.assertIn("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}", source)
+                self.assertNotIn("actions/upload-artifact", source)
+                self.assertNotIn("scripts/upload_apk_external.py", source)
+                self.assertNotIn("#artifacts", source)
+                publishing = source.index("id: publish_diagnostic_apk")
+                self.assertLess(source.index("assembleDebug"), publishing)
+                self.assertLess(source.index("source_apk="), publishing)
+                self.assertNotIn("continue-on-error: true", source[publishing:publishing + 250])
 
-    def test_active_apk_in_main_and_safe_publishing(self):
+    def test_existing_build_schedule_and_runner_are_preserved(self):
         source = APK_WORKFLOW.read_text(encoding="utf-8")
         self.assertNotIn("\n  push:", source)
         self.assertIn("workflow_dispatch:", source)
         self.assertIn("id: prepare_download", source)
-        self.assertIn("steps.prepare_download.outcome == 'success'", source)
-        self.assertIn("scripts/upload_apk_external.py", source)
-        self.assertIn("gh release create", source)
-        self.assertIn("actions/upload-artifact@v4", source)
         self.assertIn("blacksmith-4vcpu-ubuntu-2404", source)
         self.assertIn("scripts.test_upload_apk_external scripts.test_android_workflow_release_contract", source)
         self.assertNotIn("multi-cam-pov", source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,3 +32,4 @@ use the editor.
 ## Project rules
 - All native/AI capabilities go through typed adapters in `src/lib/sw/engine.ts`; UI never calls mic/AI directly, and stubs must return UNAVAILABLE, never fake success — keeps Phase 1 honest and swappable.
 - User settings live in the versioned schema in `src/lib/sw/settings.ts`; add fields via `migrateSettings` — so old saved data keeps loading.
+- GitHub Android workflows publish runner-local APKs through `scripts/publish_apk_release.sh` and verify Release asset bytes and `browser_download_url` before reporting success; Actions artifact quotas must not affect delivery.

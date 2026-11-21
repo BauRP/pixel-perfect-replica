@@ -32,12 +32,13 @@ export class YamnetObservationLog {
         v.label.length > 120 || typeof v.source !== "string" || v.source.length > 45 ||
         typeof v.confidence !== "number" || !Number.isFinite(v.confidence) ||
         v.confidence < 0 || v.confidence > 1 ||
-        !Number.isSafeInteger(v.timestamp) || !Number.isSafeInteger(now) ||
+        typeof v.timestamp !== "number" || !Number.isSafeInteger(v.timestamp) || !Number.isSafeInteger(now) ||
         v.timestamp < this.since || v.timestamp > now + 2000 ||
         now - v.timestamp > 10_000) return null;
 
     if (this.entries.some(e=>e.timestamp===v.timestamp && e.label===v.label))return null;
-    if (this.entries.length && v.timestamp < this.entries[this.entries.length-1]!.timestamp)return null;
+    const previous = this.entries[this.entries.length - 1];
+    if (previous && v.timestamp < previous.timestamp) return null;
     this.entries.push(Object.freeze({
       label:v.label,confidence:v.confidence,timestamp:v.timestamp,source:v.source,
     }));

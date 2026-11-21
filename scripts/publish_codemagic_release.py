@@ -3,7 +3,7 @@
 
 Requires encrypted Codemagic environment secret GITHUB_RELEASE_TOKEN with
 Contents: Read and write permission on BauRP/pixel-perfect-replica only.
-Missing token is an explicit non-fatal skip; APK stays in Codemagic Artifacts.
+Missing credentials or incomplete uploads fail publication explicitly.
 """
 from __future__ import annotations
 import hashlib
@@ -57,9 +57,7 @@ def upload_asset(url: str, token: str, path: Path):
 def main() -> int:
     token = os.environ.get("GITHUB_RELEASE_TOKEN", "").strip()
     if not token:
-        print("GitHub Releases: optional upload skipped. Configure secret "
-              "GITHUB_RELEASE_TOKEN in Codemagic to enable one-click APK links.")
-        return 0
+        raise RuntimeError("Configure encrypted GITHUB_RELEASE_TOKEN in Codemagic with repository Contents write access")
     if os.environ.get("CM_REPO_SLUG") != REPOSITORY:
         raise RuntimeError("Refusing to publish outside the authorized SoundWorld repository")
     if os.environ.get("CM_BRANCH") != "main":
@@ -78,12 +76,10 @@ def main() -> int:
     if CHECKSUM.read_text(encoding="utf-8").strip() != f"{digest}  {APK.name}":
         raise RuntimeError("APK checksum mismatch; refusing GitHub release")
 
-    # Do not replace the "latest APK" with an outdated, slow-running build.
+    # Every completed build gets a Release; only current main updates latest.
     main_branch = request_json(f"{API}/branches/main", token)
     main_sha = main_branch.get("commit", {}).get("sha")
-    if main_sha != sha:
-        print("A newer commit is already on main; this older APK stays in Codemagic Artifacts.")
-        return 0
+    is_current = main_sha == sha
 
     tag = f"soundworld-codemagic-{build_id}"
     release_url = f"{API}/releases"
@@ -110,23 +106,25 @@ def main() -> int:
             assets[path.name] = upload_asset(upload_url, token, path)
     latest = request_json(f"{release_url}/tags/{quote(tag)}", token)
     final_assets = {item.get("name"): item for item in latest.get("assets", [])}
-    if any(x.name not in final_assets or final_assets[x.name].get("size") != x.stat().st_size
+    if any(x.name not in final_assets or final_assets[x.name].get("state") != "uploaded"
+           or final_assets[x.name].get("size") != x.stat().st_size
            for x in (APK, CHECKSUM)):
         raise RuntimeError("Release exists but verified APK and checksum are incomplete")
     apk_url = final_assets[APK.name]["browser_download_url"]
-    if not apk_url.startswith(f"https://github.com/{REPOSITORY}/releases/download/{tag}/"):
+    if apk_url != f"https://github.com/{REPOSITORY}/releases/download/{tag}/{APK.name}":
         raise RuntimeError("Unexpected GitHub APK URL")
     # GitHub's /releases/latest/download/... always targets the newest
     # successfully verified APK. Avoid changing latest while assets are missing.
     published = request_json(
         f"{release_url}/{release['id']}", token,
         method="PATCH",
-        payload={"draft": False, "prerelease": False, "make_latest": "true"},
+        payload={"draft": False, "prerelease": False, "make_latest": "true" if is_current else "false"},
     )
     if published.get("draft") or published.get("prerelease") or published.get("tag_name") != tag:
         raise RuntimeError("GitHub did not confirm publication of the verified release")
     print("SoundWorld verified APK direct download:", apk_url)
-    print("SoundWorld LATEST APK permanent download:", LATEST_APK_URL)
+    if is_current:
+        print("SoundWorld LATEST APK permanent download:", LATEST_APK_URL)
     return 0
 
 
@@ -135,5 +133,6 @@ if __name__ == "__main__":
         sys.exit(main())
     except Exception as error:
         # Never include token values or raw response bodies in error messages.
-        print(f"GitHub Releases upload failed: {type(error).__name__}", file=sys.stderr)
+        detail = f"HTTP {error.code}: {error.reason}" if isinstance(error, HTTPError) else str(error)
+        print(f"GitHub Releases upload failed: {type(error).__name__}: {detail}", file=sys.stderr)
         sys.exit(1)

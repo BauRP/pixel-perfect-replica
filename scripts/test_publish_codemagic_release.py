@@ -26,11 +26,12 @@ class LatestGitHubApkTests(unittest.TestCase):
             "download/soundworld-ar-debug.apk",
         )
 
-    def test_absent_token_does_not_block_codemagic_artifacts(self):
+    def test_absent_token_fails_publication(self):
         with patch.dict(os.environ, {"GITHUB_RELEASE_TOKEN": ""}):
-            self.assertEqual(release.main(), 0)
+            with self.assertRaisesRegex(RuntimeError, "GITHUB_RELEASE_TOKEN"):
+                release.main()
 
-    def test_never_publish_an_outdated_commit(self):
+    def test_older_build_gets_own_release_without_replacing_latest(self):
         with tempfile.TemporaryDirectory() as dirname:
             folder = Path(dirname)
             apk = folder / "soundworld-ar-debug.apk"
@@ -50,13 +51,20 @@ class LatestGitHubApkTests(unittest.TestCase):
             with patch.dict(os.environ, env), \
                     patch.object(release, "APK", apk), \
                     patch.object(release, "CHECKSUM", check), \
-                    patch.object(release, "request_json", return_value={
-                        "commit": {"sha": newer}
-                    }) as api, \
+                    patch.object(release, "request_json", side_effect=[
+                        {"commit": {"sha": newer}},
+                        {"id": 42, "assets": [], "upload_url": "https://uploads.github.com/test{?name}"},
+                        {"assets": [
+                            {"name": apk.name, "state": "uploaded", "size": apk.stat().st_size,
+                             "browser_download_url": f"https://github.com/{release.REPOSITORY}/releases/download/soundworld-codemagic-test_build_2026/{apk.name}"},
+                            {"name": check.name, "state": "uploaded", "size": check.stat().st_size},
+                        ]},
+                        {"draft": False, "prerelease": False, "tag_name": "soundworld-codemagic-test_build_2026"},
+                    ]) as api, \
                     patch.object(release, "upload_asset") as upload:
                 self.assertEqual(release.main(), 0)
-                api.assert_called_once()
-                upload.assert_not_called()
+                self.assertEqual(upload.call_count, 2)
+                self.assertEqual(api.call_args.kwargs["payload"]["make_latest"], "false")
 
     def test_reject_wrong_repository(self):
         with patch.dict(os.environ, {
@@ -72,7 +80,7 @@ class LatestGitHubApkTests(unittest.TestCase):
                         source.index("method=\"PATCH\""))
         self.assertIn('"draft": True', source)
         self.assertIn('"make_latest": "true"', source)
-        self.assertIn('main_sha != sha', source)
+        self.assertIn('is_current = main_sha == sha', source)
 
 
 if __name__ == "__main__":
