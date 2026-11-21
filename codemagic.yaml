@@ -189,6 +189,11 @@ workflows:
           print(f"SoundWorld AR APK verified: {apk.stat().st_size} bytes, sha256={sha}")
           PY
 
+      - name: Publish APK to GitHub Releases when token is configured
+        script: |
+          set -euo pipefail
+          python3 scripts/publish_codemagic_release.py
+
     artifacts:
       - output/soundworld-ar-debug.apk
       - output/soundworld-ar-debug.apk.sha256
