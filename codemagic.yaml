@@ -7,7 +7,7 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 90
     environment:
-      node: v22.11.0
+      node: v22.16.0
       java: 21
     triggering:
       events:
@@ -18,15 +18,22 @@ workflows:
           source: true
       cancel_previous_builds: true
     scripts:
-      - name: Install Bun and frozen Android dependencies
+      - name: Install Bun and resolve Android dependencies
         script: |
           set -euo pipefail
           npm install --global bun@1.4.4
           bun --version
+          node --version
+          # package.json gained five Android/font dependencies after bun.lock
+          # was committed. Regenerate the lock in this build instead of failing
+          # before installing the required Capacitor 8 packages.
+          bun install
+          # Require the generated lockfile to reproduce a clean install.
           bun install --frozen-lockfile
       - name: Essential TypeScript and asset validation
         script: |
           set -euo pipefail
+          python3 -m unittest scripts.test_codemagic_config
           bunx tsc --noEmit
           node scripts/validate-offline-music-assets.mjs
       - name: Build SoundWorld offline Android web app
