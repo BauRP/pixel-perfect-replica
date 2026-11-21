@@ -1,0 +1,54 @@
+# SoundWorld AR - independent Codemagic APK build; GitHub private source stays private.
+workflows:
+  soundworld-apk:
+    name: SoundWorld AR - Скачать APK
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      node: 22
+      java: 21
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: chatgpt/soundworld-phase2-android-20261108
+          include: true
+    scripts:
+      - name: Install Bun and application dependencies
+        script: |
+          set -euo pipefail
+          npm install --global bun@1.4.4
+          bun --version
+          bun install --frozen-lockfile
+      - name: Check TypeScript and build offline Android interface
+        script: |
+          set -euo pipefail
+          bunx tsc --noEmit
+          bun run build:android:web
+          python3 scripts/external_android_build.py verify-web
+      - name: Create and configure Capacitor Android project
+        script: |
+          set -euo pipefail
+          npx --no-install cap add android
+          npx --no-install cap sync android
+          python3 scripts/external_android_build.py prepare
+      - name: Stage optional verified Apache-2.0 music assets
+        script: |
+          set -euo pipefail
+          node scripts/validate-offline-music-assets.mjs --stage android/app/src/main
+      - name: Install original Android native plugins and checked YAMNet
+        script: |
+          set -euo pipefail
+          python3 scripts/external_android_build.py native
+      - name: Build actual Android debug APK
+        script: |
+          set -euo pipefail
+          cd android
+          bash ./gradlew assembleDebug --no-daemon
+      - name: Validate and expose APK download
+        script: |
+          set -euo pipefail
+          python3 scripts/external_android_build.py finalize
+    artifacts:
+      - output/soundworld-ar-debug.apk
+      - output/soundworld-ar-debug.apk.sha256
