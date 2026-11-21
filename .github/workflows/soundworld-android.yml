@@ -280,11 +280,10 @@ jobs:
           release_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
           sha256="$(cut -d ' ' -f 1 output/soundworld-ar-debug.apk.sha256)"
           {
-            echo "## Диагностическая APK — SoundWorld AR"
+            echo "## Готовый APK"
             echo
-            echo "### [⬇️ Скачать диагностическую APK](${download_url})"
-            echo
-            echo "[Открыть страницу версии](${release_url})"
+            echo "- [Скачать APK из GitHub Release](${download_url})"
+            echo "- [Открыть страницу версии](${release_url})"
             echo
             echo "- **Сборка:** диагностическая APK, Android 12+, запуск ещё не проверен"
             echo "- **SHA-256:** \`${sha256}\`"
