@@ -95,6 +95,7 @@ class CodemagicAndroidContract(unittest.TestCase):
         self.assertLess(verification, publication)
         self.assertIn("scripts/verify_android_apk.py", source)
         self.assertIn("scripts/publish_codemagic_release.py", source)
+        self.assertIn("scripts.test_publish_codemagic_release", source)
         self.assertIn("GITHUB_RELEASE_TOKEN", (
             ROOT / "scripts/publish_codemagic_release.py"
         ).read_text(encoding="utf-8"))

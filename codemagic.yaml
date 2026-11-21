@@ -33,7 +33,7 @@ workflows:
       - name: Essential TypeScript and asset validation
         script: |
           set -euo pipefail
-          python3 -m unittest scripts.test_codemagic_config
+          python3 -m unittest scripts.test_codemagic_config scripts.test_publish_codemagic_release
           bunx tsc --noEmit
           node scripts/validate-offline-music-assets.mjs
       - name: Build SoundWorld offline Android web app

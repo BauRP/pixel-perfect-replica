@@ -20,6 +20,7 @@ REPOSITORY = "BauRP/pixel-perfect-replica"
 APK = Path("output/soundworld-ar-debug.apk")
 CHECKSUM = Path("output/soundworld-ar-debug.apk.sha256")
 API = f"https://api.github.com/repos/{REPOSITORY}"
+LATEST_APK_URL = f"https://github.com/{REPOSITORY}/releases/latest/download/{APK.name}"
 
 
 def request_json(url: str, token: str, *, method: str = "GET", payload=None):
@@ -77,6 +78,13 @@ def main() -> int:
     if CHECKSUM.read_text(encoding="utf-8").strip() != f"{digest}  {APK.name}":
         raise RuntimeError("APK checksum mismatch; refusing GitHub release")
 
+    # Do not replace the "latest APK" with an outdated, slow-running build.
+    main_branch = request_json(f"{API}/branches/main", token)
+    main_sha = main_branch.get("commit", {}).get("sha")
+    if main_sha != sha:
+        print("A newer commit is already on main; this older APK stays in Codemagic Artifacts.")
+        return 0
+
     tag = f"soundworld-codemagic-{build_id}"
     release_url = f"{API}/releases"
     payload = {
@@ -85,8 +93,9 @@ def main() -> int:
         "name": f"SoundWorld AR - Codemagic {build_id}",
         "body": f"SoundWorld AR diagnostic Android debug APK, built from main commit {sha}. "
                 "Android device startup and real offline Fermata model not verified.",
-        "draft": False,
-        "prerelease": True,
+        # Publish only after both APK and SHA256 are verified and uploaded.
+        "draft": True,
+        "prerelease": False,
     }
     try:
         release = request_json(release_url, token, method="POST", payload=payload)
@@ -107,7 +116,17 @@ def main() -> int:
     apk_url = final_assets[APK.name]["browser_download_url"]
     if not apk_url.startswith(f"https://github.com/{REPOSITORY}/releases/download/{tag}/"):
         raise RuntimeError("Unexpected GitHub APK URL")
-    print("SoundWorld APK published to PRIVATE GitHub Releases:", apk_url)
+    # GitHub's /releases/latest/download/... always targets the newest
+    # successfully verified APK. Avoid changing latest while assets are missing.
+    published = request_json(
+        f"{release_url}/{release['id']}", token,
+        method="PATCH",
+        payload={"draft": False, "prerelease": False, "make_latest": "true"},
+    )
+    if published.get("draft") or published.get("prerelease") or published.get("tag_name") != tag:
+        raise RuntimeError("GitHub did not confirm publication of the verified release")
+    print("SoundWorld verified APK direct download:", apk_url)
+    print("SoundWorld LATEST APK permanent download:", LATEST_APK_URL)
     return 0
 
 
