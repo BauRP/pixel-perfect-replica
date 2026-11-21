@@ -21,7 +21,11 @@ env:
 jobs:
   build:
     name: Build and publish SoundWorld AR APK
-    runs-on: ubuntu-latest
+    # The external Blacksmith runner is activated after its GitHub App is
+    # authorized for this private repository. No additional project copies.
+    # Set repository variable SOUNDWORLD_RUNNER=ubuntu-24.04 only if GitHub
+    # hosted Actions allowance is available and you want to switch back.
+    runs-on: ${{ vars.SOUNDWORLD_RUNNER || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 90
     steps:
       - name: Checkout
@@ -50,6 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 -m unittest scripts.test_upload_apk_external
           bunx tsc --noEmit
           bun run test
 
@@ -297,17 +302,26 @@ jobs:
           retention-days: 2
           if-no-files-found: error
 
-      # The new workflow is independent from optional emulator checks.
-      # Releases and Artifacts are the same download methods as in Multi-Cam.
-      - name: Confirm at least one APK download path succeeded
-        if: always() && steps.publish_diagnostic_apk.outcome == 'failure' && steps.upload_apk_artifact.outcome != 'success'
+      # Same external hosts used in Nova Gallery, as a last resort.
+      # APK link is public; app source and repo stay private.
+      - name: Upload compiled APK to independent cloud storage
+        id: upload_external_apk
+        if: steps.publish_diagnostic_apk.outcome != 'success' && steps.upload_apk_artifact.outcome != 'success'
+        continue-on-error: true
         shell: bash
         run: |
-          echo "::error::Neither GitHub Release nor Actions Artifact could deliver the compiled APK."
+          set -euo pipefail
+          python3 scripts/upload_apk_external.py output/soundworld-ar-debug.apk
+
+      - name: Confirm at least one APK download path succeeded
+        if: always() && steps.publish_diagnostic_apk.outcome != 'success' && steps.upload_apk_artifact.outcome != 'success' && steps.upload_external_apk.outcome != 'success'
+        shell: bash
+        run: |
+          echo "::error::No GitHub or external APK delivery path succeeded."
           exit 1
 
       - name: Show direct APK download link in summary
-        if: always() && (steps.publish_diagnostic_apk.outcome == 'success' || steps.upload_apk_artifact.outcome == 'success')
+        if: always() && (steps.publish_diagnostic_apk.outcome == 'success' || steps.upload_apk_artifact.outcome == 'success' || steps.upload_external_apk.outcome == 'success')
         shell: bash
         run: |
           set -euo pipefail
@@ -318,6 +332,10 @@ jobs:
             fi
             if [[ "${{ steps.upload_apk_artifact.outcome }}" == "success" ]]; then
               echo "- [Скачать APK из GitHub Actions Artifacts]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID#artifacts)"
+            fi
+            if [[ "${{ steps.upload_external_apk.outcome }}" == "success" ]]; then
+              echo "- [Скачать APK со стороннего облака](${{ steps.upload_external_apk.outputs.download_url }})"
+              echo "- Внешняя ссылка публичная, у временных хостингов срок ограничен."
             fi
             echo "- Android 12+, debug APK; установка на телефон не проверена"
           } >> "$GITHUB_STEP_SUMMARY"
