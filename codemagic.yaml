@@ -1,0 +1,187 @@
+# SoundWorld AR - Android debug APK build using Codemagic Personal Account.
+# Single GitHub repository: BauRP/pixel-perfect-replica, branch main.
+# Free eligible macOS M2 instance; no team, keystore or paid Linux machine.
+workflows:
+  soundworld-android-apk:
+    name: SoundWorld AR - latest Android APK
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    environment:
+      node: v22.11.0
+      java: 21
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Install Bun and frozen Android dependencies
+        script: |
+          set -euo pipefail
+          npm install --global bun@1.4.4
+          bun --version
+          bun install --frozen-lockfile
+      - name: Essential TypeScript and asset validation
+        script: |
+          set -euo pipefail
+          bunx tsc --noEmit
+          node scripts/validate-offline-music-assets.mjs
+      - name: Build SoundWorld offline Android web app
+        script: |
+          set -euo pipefail
+          bun run build:android:web
+          test -s dist-android/index.html
+          test -n "$(find dist-android -type f -name '*.js' -print -quit)"
+          test -n "$(find dist-android -type f -name '*.css' -print -quit)"
+          grep -q 'id="root"' dist-android/index.html
+
+      - name: Install Android SDK 36 using macOS tools
+        script: |
+          set -euo pipefail
+          echo "Android SDK root: $ANDROID_SDK_ROOT"
+          test -d "$ANDROID_SDK_ROOT"
+          if command -v sdkmanager >/dev/null 2>&1; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          elif [ -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          else
+            echo "Android SDK manager unavailable on Codemagic"
+            exit 1
+          fi
+          "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Generate Capacitor Android host
+        script: |
+          set -euo pipefail
+          npx cap add android
+          npx cap sync android
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path("android/variables.gradle")
+          data=p.read_text()
+          changed, count=re.subn(r"minSdkVersion\s*=\s*\d+", "minSdkVersion = 31", data)
+          assert count == 1, "Capacitor minSdk declaration missing or ambiguous"
+          p.write_text(changed)
+          PY
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+          node scripts/validate-offline-music-assets.mjs --stage android/app/src/main
+
+      - name: Install native SoundWorld sensors, media player and YAMNet
+        script: |
+          set -euo pipefail
+          target=android/app/src/main/java/kz/soundworld/ar
+          mkdir -p "$target"
+          cp native/android/SoundWorldSensorsPlugin.java "$target/SoundWorldSensorsPlugin.java"
+          cp native/android/SoundWorldStepTime.java "$target/SoundWorldStepTime.java"
+          cp native/android/SoundWorldMicResampler.java "$target/SoundWorldMicResampler.java"
+          cp native/android/SoundWorldCapturePolicy.java "$target/SoundWorldCapturePolicy.java"
+          cp native/android/SoundWorldPowerPolicy.java "$target/SoundWorldPowerPolicy.java"
+          cp native/android/SoundWorldPowerEpochGuard.java "$target/SoundWorldPowerEpochGuard.java"
+          cp native/android/MainActivity.java "$target/MainActivity.java"
+          cp native/android/SoundWorldPlaybackService.java "$target/SoundWorldPlaybackService.java"
+          cp native/android/SoundWorldPcmLifecyclePolicy.java "$target/SoundWorldPcmLifecyclePolicy.java"
+          cp native/android/SoundWorldPlaybackPlugin.java "$target/SoundWorldPlaybackPlugin.java"
+          cp native/android/SoundWorldMusicLibraryPlugin.java "$target/SoundWorldMusicLibraryPlugin.java"
+          cp native/android/SoundWorldWavExportPolicy.java "$target/SoundWorldWavExportPolicy.java"
+          cp native/android/SoundWorldClipRetentionPolicy.java "$target/SoundWorldClipRetentionPolicy.java"
+          cp native/android/SoundWorldClipLengthPolicy.java "$target/SoundWorldClipLengthPolicy.java"
+          cp native/android/SoundWorldClipPlaybackService.java "$target/SoundWorldClipPlaybackService.java"
+          cp native/android/SoundWorldFocusPolicy.java "$target/SoundWorldFocusPolicy.java"
+          # Production YAMNet asset is bundled at APK build time (not downloaded by the user).
+          mkdir -p android/app/src/main/assets
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite" \
+            -o android/app/src/main/assets/yamnet.tflite
+          python3 -c 'from pathlib import Path; assert Path("android/app/src/main/assets/yamnet.tflite").stat().st_size > 1000000, "YAMNet model too small"'
+          python3 -c 'import hashlib; from pathlib import Path; p=Path("android/app/src/main/assets/yamnet.tflite"); assert hashlib.sha256(p.read_bytes()).hexdigest() == "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf", "YAMNet hash mismatch"'
+          cat >> android/app/build.gradle <<'GRADLE'
+          dependencies {
+              implementation 'com.google.mediapipe:tasks-audio:0.10.35'
+          }
+          GRADLE
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path('android/app/src/main/AndroidManifest.xml')
+          text=path.read_text()
+          for name in ('android.permission.RECORD_AUDIO','android.permission.ACTIVITY_RECOGNITION'):
+              if name not in text:
+                  text=text.replace('<application',f'<uses-permission android:name="{name}" />\n    <application',1)
+          # Actual output only after user Play and genuine PCM; never auto-start on boot.
+          text=text.replace('<application', '<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <application', 1)
+          text=text.replace('</application>', '<service android:name=".SoundWorldPlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback" />\n    <service android:name=".SoundWorldClipPlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback" />\n    </application>', 1)
+          # Literal backslash-n must never leak into AndroidManifest.xml.
+          assert r'\n' not in text, "AndroidManifest contains escaped newline text"
+          from xml.etree import ElementTree as ET
+          ET.fromstring(text)
+          path.write_text(text)
+          PY
+          # Set display-cutout mode in both Android splash and app themes.
+          # On some physical Android 15+ phones the splash is created before
+          # MainActivity.onCreate, so a Java-only fix can be too late.
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          path = Path("android/app/src/main/res/values/styles.xml")
+          tree = ET.parse(path)
+          root = tree.getroot()
+          changed = []
+          for style in root.findall("style"):
+              if style.get("name") not in ("AppTheme.NoActionBarLaunch", "AppTheme.NoActionBar"):
+                  continue
+              item = next((x for x in style.findall("item")
+                           if x.get("name") == "android:windowLayoutInDisplayCutoutMode"), None)
+              if item is None:
+                  item = ET.SubElement(style, "item", {"name": "android:windowLayoutInDisplayCutoutMode"})
+              item.text = "always"
+              changed.append(style.get("name"))
+          assert len(changed) == 2, f"Missing expected Capacitor splash/activity themes: {changed}"
+          tree.write(path, encoding="unicode", xml_declaration=True)
+          ET.parse(path)
+          print("Android splash and Activity cutout mode:", ", ".join(changed))
+          PY
+
+      - name: Compile debug APK with Gradle
+        script: |
+          set -euo pipefail
+          cd android
+          chmod +x gradlew
+          for attempt in 1 2 3; do
+            if bash ./gradlew assembleDebug --no-daemon 2>&1 | tee /tmp/soundworld-gradle-build.log; then
+              exit 0
+            fi
+            if ! grep -Eq 'Could not find org\.|Could not resolve all artifacts|Could not GET|Read timed out|Connect timed out|HTTP (429|500|502|503|504)' /tmp/soundworld-gradle-build.log; then
+              echo "Gradle compile failure (not a temporary download issue)"
+              exit 1
+            fi
+            if [ "$attempt" -ge 3 ]; then
+              echo "Gradle dependency download failed after retries"
+              exit 1
+            fi
+            sleep "$((attempt * 8))"
+          done
+
+      - name: Verify APK content and prepare download files
+        script: |
+          set -euo pipefail
+          apk="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$apk"
+          python3 scripts/verify_android_apk.py "$apk"
+          mkdir -p output
+          cp "$apk" output/soundworld-ar-debug.apk
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          apk=Path("output/soundworld-ar-debug.apk")
+          assert apk.stat().st_size > 1000000, "Generated APK is unexpectedly small"
+          sha=hashlib.sha256(apk.read_bytes()).hexdigest()
+          Path("output/soundworld-ar-debug.apk.sha256").write_text(f"{sha}  {apk.name}\n")
+          print(f"SoundWorld AR APK verified: {apk.stat().st_size} bytes, sha256={sha}")
+          PY
+
+    artifacts:
+      - output/soundworld-ar-debug.apk
+      - output/soundworld-ar-debug.apk.sha256
