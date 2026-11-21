@@ -1,10 +1,9 @@
 name: Android APK
 
+# Codemagic is the active Android APK builder for pushes to main.
+# Keep this GitHub runner workflow only as a manual fallback to prevent
+# indefinitely queued Blacksmith jobs and misleading yellow checks.
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - "PROGRESS.md"
   workflow_dispatch:
 
 permissions:

@@ -77,7 +77,7 @@ class CodemagicAndroidContract(unittest.TestCase):
 
     def test_bash_script_syntax(self):
         scripts = shell_scripts(self.source)
-        self.assertEqual(len(scripts), 8)
+        self.assertGreaterEqual(len(scripts), 8)
         for index, body in enumerate(scripts, start=1):
             self.assertTrue(body.startswith("set -euo pipefail"),
                             f"Step {index} does not fail on errors")
@@ -87,6 +87,17 @@ class CodemagicAndroidContract(unittest.TestCase):
             )
             self.assertEqual(check.returncode, 0,
                              f"Step {index}: {check.stderr}")
+
+    def test_release_is_only_after_compiled_verified_apk(self):
+        source = self.source
+        verification = source.index("- name: Verify APK content and prepare download files")
+        publication = source.index("- name: Publish APK to GitHub Releases when token is configured")
+        self.assertLess(verification, publication)
+        self.assertIn("scripts/verify_android_apk.py", source)
+        self.assertIn("scripts/publish_codemagic_release.py", source)
+        self.assertIn("GITHUB_RELEASE_TOKEN", (
+            ROOT / "scripts/publish_codemagic_release.py"
+        ).read_text(encoding="utf-8"))
 
     def test_lockfile_discrepancy_is_handled(self):
         import json

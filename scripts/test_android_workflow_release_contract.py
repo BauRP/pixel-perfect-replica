@@ -66,7 +66,8 @@ class AndroidWorkflowReleaseContract(unittest.TestCase):
 
     def test_active_apk_in_main_and_safe_publishing(self):
         source = APK_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("branches: [main]", source)
+        self.assertNotIn("\n  push:", source)
+        self.assertIn("workflow_dispatch:", source)
         self.assertIn("id: prepare_download", source)
         self.assertIn("steps.prepare_download.outcome == 'success'", source)
         self.assertIn("scripts/upload_apk_external.py", source)
