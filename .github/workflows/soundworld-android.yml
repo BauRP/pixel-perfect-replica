@@ -1,11 +1,8 @@
 name: SoundWorld Android native sensors (Phase 2)
 
+# Optional legacy diagnostic workflow: manual only.
+# Daily APK builds run from main using android_build.yml.
 on:
-  push:
-    branches: [chatgpt/soundworld-phase2-android-20261108]
-    # A progress-only update must not consume scarce private-repo runner minutes.
-    paths-ignore:
-      - "PROGRESS.md"
   workflow_dispatch:
     inputs:
       verify_android_emulators:

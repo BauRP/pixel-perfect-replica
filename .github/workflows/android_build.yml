@@ -2,7 +2,7 @@ name: Android APK
 
 on:
   push:
-    branches: ["chatgpt/soundworld-phase2-android-20261108"]
+    branches: [main]
     paths-ignore:
       - "PROGRESS.md"
   workflow_dispatch:
