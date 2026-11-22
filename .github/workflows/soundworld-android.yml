@@ -218,6 +218,9 @@ jobs:
           test -s output/soundworld-ar-debug.apk.sha256
           echo "Verified APK size: $(stat -c%s output/soundworld-ar-debug.apk) bytes"
 
+      - name: Verify APK publication contract
+        run: python3 -m unittest scripts.test_publish_apk_release
+
       - name: Publish diagnostic APK to GitHub Releases (independent of emulator status)
         id: publish_diagnostic_apk
         shell: bash

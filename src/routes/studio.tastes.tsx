@@ -7,7 +7,7 @@ import { studioSelectedGenres } from "@/lib/sw/effective-preferences";
 import { notify } from "@/lib/sw/notify";
 
 export const Route = createFileRoute("/studio/tastes")({
-  head: () => ({ meta: [{ title: "Музыкальные вкусы — Studio" }, { name: "description", content: "Изменить любимые жанры." }, { property: "og:title", content: "Музыкальные вкусы" }, { property: "og:description", content: "Изменить любимые жанры." }] }),
+  head: () => ({ meta: [{ title: "Музыкальные вкусы — Studio" }, { name: "description", content: "Изменить любимые жанры." }, { property: "og:title", content: "Музыкальные вкусы" }, { property: "og:description", content: "Изменить любимые жанры." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
   component: Tastes,
 });
 

@@ -14,7 +14,7 @@ import { HISTORY_DISK_SCAN_TIMEOUT_MS, historyIsEmpty, type HistoryLoadPhase } f
 import { normalizeHistoryClips } from "@/lib/sw/history-metadata";
 
 export const Route = createFileRoute("/history")({
-  head: () => ({ meta: [{ title: "История и избранное — SoundWorld AR" }, { name: "description", content: "Настоящие сохранённые фрагменты SoundWorld AR" }] }),
+  head: () => ({ meta: [{ title: "История и избранное — SoundWorld AR" }, { name: "description", content: "Настоящие сохранённые фрагменты SoundWorld AR" }, { property: "og:title", content: "История и избранное — SoundWorld AR" }, { property: "og:description", content: "Настоящие сохранённые фрагменты SoundWorld AR" }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
   component: HistoryPage,
 });
 

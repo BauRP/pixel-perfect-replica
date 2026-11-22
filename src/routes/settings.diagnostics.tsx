@@ -21,7 +21,7 @@ import { resetDiagnosticEvidence } from "@/lib/sw/diagnostic-evidence";
 import { SoundRouteFence } from "@/lib/sw/sound-route-fence";
 
 export const Route = createFileRoute("/settings/diagnostics")({
-  head: () => ({ meta: [{ title: "Диагностика — SoundWorld AR" }] }),
+  head: () => ({ meta: [{ title: "Диагностика — SoundWorld AR" }, { name: "description", content: "Проверка настоящих датчиков и аудиовыхода SoundWorld AR." }, { property: "og:title", content: "Диагностика — SoundWorld AR" }, { property: "og:description", content: "Проверка настоящих датчиков и аудиовыхода SoundWorld AR." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
   component: Diagnostics
 });
 

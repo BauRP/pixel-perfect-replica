@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader, Section } from "@/components/sw/ui";
 
 export const Route = createFileRoute("/settings/about")({
-  head: () => ({ meta: [{ title: "Лицензии и приватность — SoundWorld AR" }, { name: "description", content: "Лицензии и политика приватности." }, { property: "og:title", content: "Лицензии и приватность" }, { property: "og:description", content: "Лицензии и приватность." }] }),
+  head: () => ({ meta: [{ title: "Лицензии и приватность — SoundWorld AR" }, { name: "description", content: "Лицензии и политика приватности." }, { property: "og:title", content: "Лицензии и приватность" }, { property: "og:description", content: "Лицензии и приватность." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
   component: () => (
     <>
       <PageHeader title="Лицензии и приватность" back />

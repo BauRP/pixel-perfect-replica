@@ -26,6 +26,8 @@ export const Route = createFileRoute("/")({
       { name: "description", content: "Плеер адаптивной инструментальной музыки SoundWorld AR." },
       { property: "og:title", content: "Player — SoundWorld AR" },
       { property: "og:description", content: "Плеер адаптивной инструментальной музыки." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Player,

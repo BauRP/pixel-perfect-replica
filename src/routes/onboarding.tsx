@@ -12,6 +12,8 @@ export const Route = createFileRoute("/onboarding")({
       { name: "description", content: "Выберите любимые жанры для адаптивной музыки SoundWorld AR." },
       { property: "og:title", content: "Музыкальные вкусы — SoundWorld AR" },
       { property: "og:description", content: "Выберите любимые жанры." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Onboarding,

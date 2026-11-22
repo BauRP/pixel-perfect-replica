@@ -13,6 +13,8 @@ export const Route = createFileRoute("/studio/")({
       { name: "description", content: "Одиннадцать музыкальных настроек SoundWorld AR." },
       { property: "og:title", content: "Studio — SoundWorld AR" },
       { property: "og:description", content: "Музыкальные настройки." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Studio,

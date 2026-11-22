@@ -8,7 +8,7 @@ import {AmbientStabilizer,StepPaceEstimator} from "@/lib/sw/environment-smoothin
 import {directorLivePreview,BirdEvidenceGate,type DirectorEvidence} from "@/lib/sw/director-live-preview";
 
 export const Route = createFileRoute("/studio/director")({
-  head: () => ({ meta: [{ title: "Музыкальный режиссёр — Studio" }, { name: "description", content: "Правила реакции музыки на звуки." }, { property: "og:title", content: "Музыкальный режиссёр" }, { property: "og:description", content: "Правила реакции музыки." }] }),
+  head: () => ({ meta: [{ title: "Музыкальный режиссёр — Studio" }, { name: "description", content: "Правила реакции музыки на звуки." }, { property: "og:title", content: "Музыкальный режиссёр" }, { property: "og:description", content: "Правила реакции музыки." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
   component: Director,
 });
 

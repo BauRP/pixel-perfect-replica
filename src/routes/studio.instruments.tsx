@@ -7,7 +7,7 @@ import { notify } from "@/lib/sw/notify";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/studio/instruments")({
-  head: () => ({ meta: [{ title: "Любимые инструменты — Studio" }, { name: "description", content: "Выбор любимых инструментов." }, { property: "og:title", content: "Любимые инструменты" }, { property: "og:description", content: "Выбор любимых инструментов." }] }),
+  head: () => ({ meta: [{ title: "Любимые инструменты — Studio" }, { name: "description", content: "Выбор любимых инструментов." }, { property: "og:title", content: "Любимые инструменты" }, { property: "og:description", content: "Выбор любимых инструментов." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
   component: Instruments,
 });
 
