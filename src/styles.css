@@ -294,3 +294,16 @@ body { min-width: 0; min-height: 100%; overflow-x: hidden; }
 }
 /* The keyboard must not force the document wider than the Android WebView. */
 html, body, #root { max-width: 100%; }
+
+/* Player cover must stay a true square on every Android screen size.
+   Previously 125–200px height overrides flattened it to a banner. The
+   existing scrollable main area holds the remainder of Player content. */
+.sw-player .sw-player-cover {
+  width: 100%;
+  max-width: 390px;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  max-height: none;
+  flex-shrink: 0;
+  align-self: center;
+}

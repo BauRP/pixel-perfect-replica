@@ -1,7 +1,7 @@
 import { Link, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, Check, Minus, HelpCircle } from "lucide-react";
 import type { ReactNode } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({ title, back, right, subtitle }: { title: string; back?: boolean; right?: ReactNode; subtitle?: string }) {
@@ -30,24 +30,26 @@ export function PageHeader({ title, back, right, subtitle }: { title: string; ba
 
 export function HelpDot({ title, text }: { title: string; text: string }) {
   return (
-    <Dialog>
-      <DialogTrigger asChild>
+    <Popover>
+      <PopoverTrigger asChild>
         <button
+          type="button"
           aria-label={`Что такое «${title}»?`}
-          className="grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-foreground"
+          className="grid size-9 shrink-0 place-items-center rounded-full border border-primary/50 bg-primary/10 text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          <span className="grid size-5 place-items-center rounded-full border border-current text-xs font-bold">?</span>
+          <span aria-hidden="true" className="text-base font-bold leading-none">?</span>
         </button>
-      </DialogTrigger>
-      <DialogContent className="max-w-sm rounded-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 font-display text-base">
-            <HelpCircle className="size-5 text-primary" /> {title}
-          </DialogTitle>
-          <DialogDescription className="text-base leading-relaxed text-foreground/90">{text}</DialogDescription>
-        </DialogHeader>
-      </DialogContent>
-    </Dialog>
+      </PopoverTrigger>
+      <PopoverContent side="left" align="center" sideOffset={8}
+        collisionPadding={12}
+        className="z-50 w-64 max-w-[calc(100vw-1.5rem)] rounded-xl border border-primary/30 bg-popover px-3 py-3 text-left shadow-xl">
+        <div className="flex items-center gap-2 font-semibold text-foreground">
+          <HelpCircle className="size-4 shrink-0 text-primary" aria-hidden="true" />
+          <span>{title}</span>
+        </div>
+        <p className="mt-1 text-xs leading-relaxed text-foreground/90">{text}</p>
+      </PopoverContent>
+    </Popover>
   );
 }
 

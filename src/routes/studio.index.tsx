@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Lock, Music4, Wand2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { HelpDot, NavRow, PageHeader, Section, Segmented } from "@/components/sw/ui";
 import { Slider } from "@/components/ui/slider";
 import { updateSettings, useSettings, effectiveDirections, type Settings } from "@/lib/sw/settings";
@@ -42,6 +42,13 @@ const SPEED_WORD = (v: number) => (v < 0 ? "Медленнее" : v > 0 ? "Бы�
 
 function Studio() {
   const s = useSettings();
+  // Dragging a slider updates its visible value immediately, but writes to
+  // WebView localStorage only when the gesture finishes. This prevents a
+  // synchronous storage write and whole-app redraw on every drag pixel.
+  const [moodDraft,setMoodDraft]=useState(s.mood);
+  const [speedDraft,setSpeedDraft]=useState(s.speed);
+  useEffect(()=>setMoodDraft(s.mood),[s.mood]);
+  useEffect(()=>setSpeedDraft(s.speed),[s.speed]);
   const favCount = s.favoriteInstrumentIds.length;
   const disCount = Object.keys(s.dislikes).length;
   const dirs = effectiveDirections(s).length;
@@ -56,12 +63,12 @@ function Studio() {
         </Section>
 
         <Section>
-          <Item n={1} title="Настроение" value={`${sign(s.mood)} · ${MOOD_WORD(s.mood)}`} help="Влево — грустнее, вправо — веселее. Это эмоция музыки, а не её скорость.">
-            <Slider aria-label="Настроение" min={-5} max={5} step={1} value={[s.mood]} onValueChange={([v]) => set("mood", v ?? 0)} className="py-2" />
+          <Item n={1} title="Настроение" value={`${sign(moodDraft)} · ${MOOD_WORD(moodDraft)}`} help="Влево — грустнее, вправо — веселее. Это эмоция музыки, а не её скорость.">
+            <Slider aria-label="Настроение" min={-5} max={5} step={1} value={[moodDraft]} onValueChange={([v]) => setMoodDraft(v ?? 0)} onValueCommit={([v]) => set("mood", v ?? 0)} className="py-2" />
             <div className="flex justify-between text-xs text-muted-foreground"><span>Грустная</span><span>Нейтральная</span><span>Весёлая</span></div>
           </Item>
-          <Item n={2} title="Скорость музыки" value={`${sign(s.speed)} · ${SPEED_WORD(s.speed)}`} help="Меняет темп новой музыки, а не ускоряет готовую запись. Ваш выбор важнее, чем бег или ходьба.">
-            <Slider aria-label="Скорость музыки" min={-3} max={3} step={1} value={[s.speed]} onValueChange={([v]) => set("speed", v ?? 0)} className="py-2" />
+          <Item n={2} title="Скорость музыки" value={`${sign(speedDraft)} · ${SPEED_WORD(speedDraft)}`} help="Меняет темп новой музыки, а не ускоряет готовую запись. Ваш выбор важнее, чем бег или ходьба.">
+            <Slider aria-label="Скорость музыки" min={-3} max={3} step={1} value={[speedDraft]} onValueChange={([v]) => setSpeedDraft(v ?? 0)} onValueCommit={([v]) => set("speed", v ?? 0)} className="py-2" />
             <div className="flex justify-between text-xs text-muted-foreground"><span>Медленно</span><span>Средняя</span><span>Быстро</span></div>
           </Item>
           <Item n={3} title="Любимые инструменты" help="Выбери инструменты, которые хочешь слышать чаще. Без выбора инструменты подбираются сами. Редкие инструменты не гарантированы.">

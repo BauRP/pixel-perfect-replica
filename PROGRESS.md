@@ -1375,3 +1375,10 @@
 - The red CI check was caused solely by the publisher requesting a draft GitHub Release by tag, which returned 404.
 - Publisher now creates a prerelease with APK and checksum, verifies the uploaded asset details, and deletes any incomplete release on failed verification. Tests updated.
 - Actual green CI status and availability of a new APK must be verified from the next GitHub run.
+
+### 2026-11-24 — User bugfix focus: four issues, other directions paused
+- User-provided screen recording and screenshot inspected: player cover rendered as a flattened banner; selected bottom tab used a large bright pill obscuring the icon; help was a full modal; user reports an eventual unresponsive app.
+- UI changed only for four user-reported problems: square 1:1 cover with Player scrolling; thin glowing active-tab underline, no pill; round visible question-mark controls opening compact anchored popovers; responsiveness safeguards on Studio slider persistence and Player microphone event rendering.
+- Reduced synchronous WebView localStorage writes while dragging Mood/Speed sliders, using local immediate feedback and onValueCommit to persist only at gesture end; capped Player mic-label React updates at 1 Hz rather than one update per native level callback.
+- These are code-level mitigations for possible JavaScript stalls. A complete explanation for the user's phone freeze is not proven without a native crash/ANR log; do not claim physical freeze resolved solely from CI.
+- All previously tracked feature directions are paused until these four issues are stabilized. No UI pages/AI generation functions outside the four were changed. Keep original feature completion figures unchanged.

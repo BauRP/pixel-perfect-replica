@@ -103,11 +103,15 @@ export function AppShell({ children }: { children: ReactNode }) {
                     onClick={() => console.info("SW_NAV_CLICK", t.label, "from", loc.pathname)}
                     aria-current={on ? "page" : undefined}
                     className={cn(
-                      "sw-tab-link flex min-h-13 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-colors",
+                      "sw-tab-link relative flex min-h-13 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-colors",
                       on ? "text-primary" : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    <span className={cn("sw-tab-icon grid h-7 w-12 place-items-center rounded-full", on && "bg-primary/15")}>
+                    <span aria-hidden="true" className={cn(
+                      "absolute left-1/2 top-0 h-[2px] w-9 -translate-x-1/2 rounded-full transition-opacity",
+                      on ? "bg-primary opacity-100 shadow-[0_0_10px_rgba(45,166,250,0.85)]" : "opacity-0",
+                    )} />
+                    <span className="sw-tab-icon grid h-7 w-12 place-items-center">
                       <t.icon className="size-[18px]" />
                     </span>
                     {t.label}

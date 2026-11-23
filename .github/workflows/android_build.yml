@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m unittest scripts.test_upload_apk_external scripts.test_android_workflow_release_contract
+          python3 -m unittest scripts.test_upload_apk_external scripts.test_android_workflow_release_contract scripts.test_ui_stability_fixes
           bunx tsc --noEmit
           bun run test
 

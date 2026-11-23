@@ -160,8 +160,15 @@ function Player() {
       const next=pace.ingest(event.timestamp);
       if(next.activity!=="unknown")setLastActivity({kind:next.activity,at:Date.now()});
     });
+    // The native audio meter can emit many times per second. Its only Player
+    // purpose is an active/inactive label: throttle React updates to 1 Hz.
+    let lastMicUiAt=0;
     const offMicrophone=observeMicrophoneLevel(event=>{
-      if(!getSettingsSnapshot().musicOnlyMode)setMicrophone({active:true,input:event.input,at:Date.now()});
+      if(getSettingsSnapshot().musicOnlyMode)return;
+      const now=Date.now();
+      if(now-lastMicUiAt<1000)return;
+      lastMicUiAt=now;
+      setMicrophone({active:true,input:event.input,at:now});
     });
     // Never show old sensor readings as if detection was still active.
     const interval=window.setInterval(()=>{
