@@ -28,6 +28,9 @@ elif args[:2] == ["release", "edit"]:
 elif args[:2] == ["release", "delete"]:
     Path("deleted").touch()
 elif args[0] == "api":
+    if mode == "api":
+        print("HTTP 500: verification request failed", file=sys.stderr)
+        sys.exit(1)
     tag = args[1].split("/")[-1]
     assets = []
     for name in ("soundworld-ar-debug.apk", "soundworld-ar-debug.apk.sha256"):
@@ -87,7 +90,7 @@ class ApkReleasePublishingTests(unittest.TestCase):
         result, calls, summary, outputs = self.run_publisher(failure="quota")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("HTTP 403", result.stderr)
-        self.assertEqual(len(calls), 1)
+        self.assertEqual([c[:2] for c in calls], [["release", "create"], ["release", "delete"]])
         self.assertEqual((summary, outputs), ("", ""))
 
     def test_incomplete_asset_never_publishes(self):
@@ -103,8 +106,8 @@ class ApkReleasePublishingTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((summary, outputs), ("", ""))
 
-    def test_publication_failure_never_reports_success(self):
-        result, _, summary, outputs = self.run_publisher(failure="edit")
+    def test_release_verification_http_failure_never_reports_success(self):
+        result, _, summary, outputs = self.run_publisher(failure="api")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((summary, outputs), ("", ""))
 
