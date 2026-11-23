@@ -60,6 +60,17 @@ import java.io.IOException;
 )
 public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListener {
   private final Object captureLock = new Object();
+  // Model asset is immutable for the lifetime of this installed APK.
+  // Avoid reopening the asset file on each status poll/navigation.
+  private volatile Boolean yamnetAssetPresent;
+  // System Binder calls for RAM/battery/thermal info may stall. Never issue
+  // them on Capacitor's request thread or queue unbounded overlapping polls.
+  private final ExecutorService snapshotWorker = Executors.newSingleThreadExecutor(r -> {
+    Thread t = new Thread(r, "SoundWorld-Health-Snapshot");
+    t.setDaemon(true);
+    return t;
+  });
+  private final AtomicBoolean snapshotInFlight = new AtomicBoolean(false);
   private final AtomicBoolean capturing = new AtomicBoolean(false);
   private final AtomicLong captureEpoch = new AtomicLong();
   private volatile long lastStopEpoch = 0;
@@ -224,8 +235,20 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   }
 
   private boolean hasYamnetAsset() {
-    try (java.io.InputStream in = getContext().getAssets().open("yamnet.tflite")) { return in.read() != -1; }
-    catch (IOException e) { return false; }
+    Boolean cached = yamnetAssetPresent;
+    if (cached != null) return cached;
+    synchronized (this) {
+      cached = yamnetAssetPresent;
+      if (cached != null) return cached;
+      boolean found;
+      try (java.io.InputStream in = getContext().getAssets().open("yamnet.tflite")) {
+        found = in.read() != -1;
+      } catch (IOException e) {
+        found = false;
+      }
+      yamnetAssetPresent = found;
+      return found;
+    }
   }
 
   private boolean granted(String permission) {
@@ -493,6 +516,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         if (n <= 0) {
           if (n < 0) sendError("Ошибка чтения микрофона: " + n);
           if (n < 0) break;
+          // Some vendor AudioRecord implementations return zero repeatedly
+          // while switching audio routes. A tight retry loop saturates CPU.
+          SystemClock.sleep(10);
           continue;
         }
         // Do not combine samples from two distinct microphones into one
@@ -699,33 +725,52 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
 
   @PluginMethod
   public void performanceSnapshot(PluginCall call) {
-    JSObject result = new JSObject();
-    ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
-    if (am != null) {
-      ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
-      am.getMemoryInfo(memory);
-      result.put("ramMb", memory.availMem / (1024L * 1024L));
-      result.put("lowMemory", memory.lowMemory);
+    // A slow Android Binder call must never block navigation/WebView work.
+    // Reject overlapping requests rather than building up an executor backlog.
+    if (!snapshotInFlight.compareAndSet(false, true)) {
+      call.reject("Предыдущее измерение устройства ещё выполняется");
+      return;
     }
-    BatteryManager battery = (BatteryManager) getContext().getSystemService(Context.BATTERY_SERVICE);
-    if (battery != null) {
-      int capacity = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
-      if (capacity >= 0 && capacity <= 100) result.put("battery", capacity);
+    try {
+      snapshotWorker.execute(() -> {
+        try {
+          JSObject result = new JSObject();
+          ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
+          if (am != null) {
+            ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
+            am.getMemoryInfo(memory);
+            result.put("ramMb", memory.availMem / (1024L * 1024L));
+            result.put("lowMemory", memory.lowMemory);
+          }
+          BatteryManager battery = (BatteryManager) getContext().getSystemService(Context.BATTERY_SERVICE);
+          if (battery != null) {
+            int capacity = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+            if (capacity >= 0 && capacity <= 100) result.put("battery", capacity);
+          }
+          PowerManager power = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+          if (power != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            result.put("thermalStatus", power.getCurrentThermalStatus());
+          }
+          result.put("elapsedSec", (SystemClock.elapsedRealtime() - appStartedAt) / 1000L);
+          result.put("inferenceSkipped", skippedInferenceWindows);
+          result.put("inferenceThrottled", batteryThrottledWindows);
+          result.put("analysisStride", analysisStride);
+          result.put("analysisActive", analysisActive);
+          result.put("captureRateHz", captureRateHz);
+          result.put("batteryMode", batteryMode);
+          result.put("recording", capturing.get());
+          // Never invent CPU temperature or audio glitches.
+          call.resolve(result);
+        } catch (Exception ex) {
+          call.reject("Не удалось измерить состояние устройства: " + ex.getMessage());
+        } finally {
+          snapshotInFlight.set(false);
+        }
+      });
+    } catch (java.util.concurrent.RejectedExecutionException ex) {
+      snapshotInFlight.set(false);
+      call.reject("Служба измерения устройства остановлена");
     }
-    PowerManager power = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
-    if (power != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      result.put("thermalStatus", power.getCurrentThermalStatus());
-    }
-    result.put("elapsedSec", (SystemClock.elapsedRealtime() - appStartedAt) / 1000L);
-    result.put("inferenceSkipped", skippedInferenceWindows);
-    result.put("inferenceThrottled", batteryThrottledWindows);
-    result.put("analysisStride", analysisStride);
-    result.put("analysisActive", analysisActive);
-    result.put("captureRateHz", captureRateHz);
-    result.put("batteryMode", batteryMode);
-    result.put("recording", capturing.get());
-    // Never invent CPU temperature or audio glitches: they are not measured here.
-    call.resolve(result);
   }
 
   @PluginMethod
@@ -798,6 +843,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       audioDeviceObserver = null;
     }
     routeWorker.shutdownNow();
+    snapshotWorker.shutdownNow();
     stopForLifecycle("SoundWorld-Destroy-Stop");
     stopStepsInternal();
     super.handleOnDestroy();

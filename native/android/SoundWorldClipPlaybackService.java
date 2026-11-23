@@ -26,6 +26,9 @@ import android.util.Log;
 import java.io.File;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Real WAV playback independently of the WebView lifecycle. This service never
@@ -61,6 +64,14 @@ public final class SoundWorldClipPlaybackService extends Service {
   }
 
   private final Handler main = new Handler(Looper.getMainLooper());
+  // MediaPlayer.release can block on vendor media codecs / Binder.
+  // Retire replaced players off the Android main thread without delaying
+  // playback controls, with one serial worker and daemon thread.
+  private final ExecutorService mediaReleaseWorker = Executors.newSingleThreadExecutor(r -> {
+    Thread t = new Thread(r, "SoundWorld-Wav-Release");
+    t.setDaemon(true);
+    return t;
+  });
   private volatile String state = "stopped";
   private volatile String clipId = "";
   private volatile String lastError = "";
@@ -424,7 +435,17 @@ public final class SoundWorldClipPlaybackService extends Service {
       try { previous.setOnCompletionListener(null); } catch (Exception ignored) {}
       try { previous.setOnPreparedListener(null); } catch (Exception ignored) {}
       try { previous.setOnErrorListener(null); } catch (Exception ignored) {}
-      try { previous.release(); } catch (Exception ignored) {}
+      try {
+        mediaReleaseWorker.execute(() -> {
+          try { previous.release(); } catch (Exception ignored) {}
+        });
+      } catch (RejectedExecutionException shuttingDown) {
+        Thread fallback = new Thread(() -> {
+          try { previous.release(); } catch (Exception ignored) {}
+        }, "SoundWorld-Wav-Late-Release");
+        fallback.setDaemon(true);
+        fallback.start();
+      }
     }
     abandonFocus();
   }
@@ -483,6 +504,7 @@ public final class SoundWorldClipPlaybackService extends Service {
   @Override public void onDestroy() {
     generation++;
     releasePlayer();
+    mediaReleaseWorker.shutdown();
     clipId = "";
     publish("stopped");
     if (noisyReceiver != null) {

@@ -7,6 +7,7 @@ import { registerAdapters, type Adapters, type ClipMeta, type Result } from "./e
 import { getSettingsSnapshot, type Settings } from "./settings";
 import { pcmToBase64 } from "./pcm-base64";
 import { manageNativeListener } from "./native-listener";
+import { withNativeDeadline } from "./native-call-deadline";
 import { confirmedFinishedClip } from "./clip-verification";
 interface LibraryPlugin {
   beginClip(args:{genreIdsJson:string;instrumentIdsJson:string;mood:number;speed:number}):Promise<{id:string}>;
@@ -34,7 +35,9 @@ export function validNativeRecordingId(id:unknown):id is string {
 }
 export async function currentStoredPlayback(){
   if(!nativeMusicLibraryAvailable())return null;
-  try{return await native.playbackStatus();}catch{return null;}
+  // A lost Android/WebView callback must not pin Settings/History/Player
+  // polling forever. This bounds the UI wait, not the actual MediaPlayer.
+  try{return await withNativeDeadline(()=>native.playbackStatus(),2500);}catch{return null;}
 }
 /** Only the approved, genuinely running instrumental model may begin this transaction. */
 export async function beginGenuineClip(settings:Settings,genreIds:string[]):Promise<Result<string>> {

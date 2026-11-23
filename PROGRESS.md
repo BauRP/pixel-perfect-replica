@@ -1382,3 +1382,9 @@
 - Reduced synchronous WebView localStorage writes while dragging Mood/Speed sliders, using local immediate feedback and onValueCommit to persist only at gesture end; capped Player mic-label React updates at 1 Hz rather than one update per native level callback.
 - These are code-level mitigations for possible JavaScript stalls. A complete explanation for the user's phone freeze is not proven without a native crash/ANR log; do not claim physical freeze resolved solely from CI.
 - All previously tracked feature directions are paused until these four issues are stabilized. No UI pages/AI generation functions outside the four were changed. Keep original feature completion figures unchanged.
+
+### 2026-11-24 — Full repository freeze audit (priority only)
+- Inspected full recursive repository tree (254 entries), reviewed Android services/plugins, React routes/settings, native bridge, CI scripts and test contracts. Other 14 feature directions remain paused.
+- Corrected concrete hang hazards without removing features: AudioRecord zero-byte busy spin now sleeps 10 ms before retry; YAMNet bundled-asset status probe cached; RAM/battery/thermal Binder reads moved to a single-flight background executor (properly shut down on Activity destruction); blocking vendor MediaPlayer.release moved off Android main thread through a serial daemon executor; lost native playback-status callbacks bounded at 2.5s to prevent indefinite UI polling.
+- New regression contracts added to Python CI to retain these safety guarantees. Existing Android YAMNet, microphone, steps, media audio, settings and three-tab interface remain enabled. No fabricated AI music.
+- Risk assessment: blocking Android HAL / Binder behavior and stale bridge callbacks can cause apparent freezes. Successful CI cannot establish root cause of user-specific freeze or demonstrate device runtime stability without reproducing it; code mitigations are verified via CI separately.
