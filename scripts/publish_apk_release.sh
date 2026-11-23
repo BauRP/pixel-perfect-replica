@@ -19,10 +19,19 @@ tag="soundworld-ar-build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 title="SoundWorld AR — diagnostic APK #${GITHUB_RUN_NUMBER:-$GITHUB_RUN_ID}"
 notes="Automatic Android 12+ debug APK from commit ${GITHUB_SHA}. Device startup has not been verified. Offline Fermata music AI is not connected. A different debug signature may require uninstalling the previous version. Private repository: GitHub access is required to download."
 
-# Keep incomplete uploads unpublished. Any GitHub failure fails the step.
+# Create prerelease with both files, then verify the real uploaded assets.
+# GitHub's release-by-tag API returns 404 for draft releases.
+published_ok=0
+cleanup_incomplete_release() {
+  if [[ "$published_ok" != "1" ]]; then
+    gh release delete "$tag" --yes >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_incomplete_release EXIT
+
 gh release create "$tag" "$apk" "$checksum" \
   --target "$GITHUB_SHA" --title "$title" --notes "$notes" \
-  --draft --prerelease --latest=false
+  --prerelease --latest=false
 
 verify_assets() {
   gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" | \
@@ -47,9 +56,9 @@ print(url)
 ' "$GITHUB_REPOSITORY" "$tag" "$1"
 }
 
-verify_assets true >/dev/null
-gh release edit "$tag" --draft=false
 download_url="$(verify_assets false)"
+published_ok=1
+trap - EXIT
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   echo "download_url=$download_url" >> "$GITHUB_OUTPUT"
 fi

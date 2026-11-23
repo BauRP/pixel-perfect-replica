@@ -1369,3 +1369,9 @@
 - Исправлены тестовые данные (300 bpm является допустимым граничным значением в текущей логике, поэтому недопустимое значение = 301; UUID теперь содержит буквенные символы, чтобы upper-case действительно отличался от lower-case).
 - Android PCM тесты синхронизированы с фактическим сериализованным вызовом START, вместо предположения, что одного microtask достаточно. Рабочая логика PCM не менялась.
 - Подтверждение зелёной APK сборки и новой публикации только после исполнения GitHub Actions, не по этим правкам.
+
+### 2026-11-23 — APK #10 compiled; GitHub Release 404 fix
+- GitHub Actions #10: TypeScript, 198 Vitest and Python tests passed; Gradle BUILD SUCCESSFUL; genuine debug APK verified at 65,273,574 bytes, with YAMNet bundled and AndroidManifest checked.
+- The red CI check was caused solely by the publisher requesting a draft GitHub Release by tag, which returned 404.
+- Publisher now creates a prerelease with APK and checksum, verifies the uploaded asset details, and deletes any incomplete release on failed verification. Tests updated.
+- Actual green CI status and availability of a new APK must be verified from the next GitHub run.

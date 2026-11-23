@@ -25,6 +25,8 @@ elif args[:2] == ["release", "edit"]:
         print("HTTP 500: publication failed", file=sys.stderr)
         sys.exit(1)
     Path("published").touch()
+elif args[:2] == ["release", "delete"]:
+    Path("deleted").touch()
 elif args[0] == "api":
     tag = args[1].split("/")[-1]
     assets = []
@@ -37,7 +39,7 @@ elif args[0] == "api":
             asset["browser_download_url"] = "https://github.com/BauRP/test/actions/runs/100"
         if mode != "missing" or not name.endswith(".apk"):
             assets.append(asset)
-    print(json.dumps({"tag_name": tag, "draft": not Path("published").exists(), "assets": assets}))
+    print(json.dumps({"tag_name": tag, "draft": False, "assets": assets}))
 else:
     sys.exit(2)
 '''
@@ -73,8 +75,8 @@ class ApkReleasePublishingTests(unittest.TestCase):
         url = "https://github.com/BauRP/test/releases/download/soundworld-ar-build-100-2/soundworld-ar-debug.apk"
         self.assertIn(f"[Download APK]({url})", summary)
         self.assertEqual(outputs, f"download_url={url}\n")
-        self.assertEqual([c[:2] for c in calls], [["release", "create"], ["api", "repos/BauRP/test/releases/tags/soundworld-ar-build-100-2"], ["release", "edit"], ["api", "repos/BauRP/test/releases/tags/soundworld-ar-build-100-2"]])
-        self.assertIn("--draft", calls[0])
+        self.assertEqual([c[:2] for c in calls], [["release", "create"], ["api", "repos/BauRP/test/releases/tags/soundworld-ar-build-100-2"]])
+        self.assertNotIn("--draft", calls[0])
         self.assertIn("output/soundworld-ar-debug.apk", calls[0])
 
     def test_each_build_and_retry_gets_its_own_release(self):
@@ -93,7 +95,7 @@ class ApkReleasePublishingTests(unittest.TestCase):
             with self.subTest(failure=failure):
                 result, calls, summary, outputs = self.run_publisher(failure=failure)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertNotIn(["release", "edit"], [c[:2] for c in calls])
+                self.assertIn(["release", "delete"], [c[:2] for c in calls])
                 self.assertEqual((summary, outputs), ("", ""))
 
     def test_non_apk_link_is_rejected(self):
@@ -104,6 +106,12 @@ class ApkReleasePublishingTests(unittest.TestCase):
     def test_publication_failure_never_reports_success(self):
         result, _, summary, outputs = self.run_publisher(failure="edit")
         self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((summary, outputs), ("", ""))
+
+    def test_failed_release_verification_cleans_up_assets(self):
+        result, calls, summary, outputs = self.run_publisher(failure="size")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(["release", "delete"], [c[:2] for c in calls])
         self.assertEqual((summary, outputs), ("", ""))
 
     def test_checksum_mismatch_never_uploads(self):
