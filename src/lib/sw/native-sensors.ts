@@ -183,14 +183,23 @@ export function startStepOnlyDiagnostics(): Promise<Result> {
   });
 }
 
+// A privacy opt-out or route leave may request STOP multiple times from
+// AppShell, Settings and Diagnostics. Coalesce only overlapping STOP calls;
+// never skip the next STOP after the previous request has settled.
+let diagnosticsStopInFlight: Promise<void> | null = null;
 export function stopSensorDiagnostics(): Promise<void> {
-  ++diagnosticEpoch; // revoke permission to complete before awaiting older work
+  ++diagnosticEpoch; // revoke pending START immediately, even for coalesced STOP
   if (!androidSensorsAvailable()) return Promise.resolve();
-  // Immediately tell Android to revoke capture, even if an older permission
-  // or start callback has not returned to JavaScript. A second ordered stop
-  // after the older work guarantees it cannot resurrect the microphone.
+  if (diagnosticsStopInFlight) return diagnosticsStopInFlight;
+  // Immediate STOP plus serialized final STOP protect against a delayed start
+  // that arrives after the user leaves the screen.
   void stopNativeDiagnostics();
-  return diagnosticOperations.enqueue(stopNativeDiagnostics);
+  const pending=diagnosticOperations.enqueue(stopNativeDiagnostics);
+  diagnosticsStopInFlight=pending;
+  void pending.finally(()=>{
+    if (diagnosticsStopInFlight===pending) diagnosticsStopInFlight=null;
+  }).catch(()=>{});
+  return pending;
 }
 function subscribe<T>(event: "yamnet"|"step"|"analysisError"|"micLevel"|"audioRouteChanged", cb: (data:T)=>void):Unsubscribe {
   if (!androidSensorsAvailable()) return () => {};

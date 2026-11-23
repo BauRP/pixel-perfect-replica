@@ -12,8 +12,8 @@ describe("Studio question-mark help on Android WebView", () => {
     const sign = button.querySelector(".sw-help-mark") as HTMLElement;
     expect(sign?.textContent).toBe("?");
     expect(sign.style.background).toBe("transparent");
-    expect(sign.style.color).toBe("rgb(255, 255, 255)");
-    expect(sign.style.borderColor).toBe("rgb(255, 255, 255)");
+    expect(["#ffffff", "rgb(255, 255, 255)"]).toContain(sign.style.color);
+    expect(["#ffffff", "rgb(255, 255, 255)"]).toContain(sign.style.borderColor);
     fireEvent.click(button);
     expect(button.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("dialog", { name: "Настроение" })).toBeTruthy();

@@ -1394,3 +1394,8 @@
 - HelpDot now uses explicit transparent background and white outlined 26px circle/white '?' with 44px touch target; a small anchored popup opens directly from React onClick, displayed in a portal over scrollable Studio sections; escape, outside tap, scroll and close control dismiss it. All existing setting descriptions preserved; no heavy Radix popover per row.
 - Studio counter numbers are again visibly white with a subtle semitransparent blue border/background, removing invisible text on old WebViews.
 - Added interactive Vitest UI coverage for open/close/outside tap/Escape and updated source-regression checks. The user's screenshot, not an assumption, motivated the contrast correction.
+
+### 2026-11-24 — follow-up Android freeze/load and interactive help test
+- GitHub APK #15 CI: 199/200 Vitest passed; single failure was the test demanding CSS color in rgb form when JSDOM returned exactly equivalent #ffffff. Corrected test to accept either representation without weakening white-color requirement.
+- Sensor stop requests from the app shell, settings and diagnostics are now coalesced while one stop sequence remains pending. The epoch still invalidates late START immediately on every stop request; the immediate and serialized native release sequence remain intact. Eliminates redundant stop thread bursts across navigation without removing microphone or steps.
+- Re-run CI; Android-specific freeze still needs empirical evidence before claiming complete resolution.
