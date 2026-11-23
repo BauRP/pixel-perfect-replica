@@ -100,6 +100,17 @@ class CodemagicAndroidContract(unittest.TestCase):
             ROOT / "scripts/publish_codemagic_release.py"
         ).read_text(encoding="utf-8"))
 
+    def test_verified_apk_has_external_publication_fallback(self):
+        source = self.source
+        self.assertIn("Publish verified APK via GitHub Releases or external download", source)
+        self.assertIn("hashlib.sha256(apk.read_bytes())", source)
+        self.assertIn('if [[ -n "${GITHUB_RELEASE_TOKEN:-}" ]]', source)
+        self.assertIn("python3 scripts/publish_codemagic_release.py", source)
+        self.assertIn("python3 scripts/upload_apk_external.py", source)
+        self.assertLess(source.index("python3 scripts/publish_codemagic_release.py"),
+                        source.index("python3 scripts/upload_apk_external.py"))
+        self.assertIn("APK checksum mismatch; publishing stopped", source)
+
     def test_lockfile_discrepancy_is_handled(self):
         import json
         pkg = json.loads(PACKAGE.read_text(encoding="utf-8"))

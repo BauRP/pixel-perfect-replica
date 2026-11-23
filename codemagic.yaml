@@ -189,10 +189,34 @@ workflows:
           print(f"SoundWorld AR APK verified: {apk.stat().st_size} bytes, sha256={sha}")
           PY
 
-      - name: Publish APK to GitHub Releases when token is configured
+      - name: Publish verified APK via GitHub Releases or external download
         script: |
           set -euo pipefail
-          python3 scripts/publish_codemagic_release.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          apk = Path("output/soundworld-ar-debug.apk")
+          checksum = Path("output/soundworld-ar-debug.apk.sha256")
+          if not apk.is_file() or apk.is_symlink() or apk.stat().st_size < 1000000:
+              raise SystemExit("Verified APK is unavailable or too small")
+          expected = f"{hashlib.sha256(apk.read_bytes()).hexdigest()}  {apk.name}"
+          if not checksum.is_file() or checksum.read_text().strip() != expected:
+              raise SystemExit("APK checksum mismatch; publishing stopped")
+          print("Verified APK checksum before delivery")
+          PY
+          # Prefer private GitHub Releases. If Codemagic has no write token,
+          # use the external APK-host fallback already present in this repo.
+          # Only the APK is uploaded publicly, never the private source.
+          if [[ -n "${GITHUB_RELEASE_TOKEN:-}" ]]; then
+            if python3 scripts/publish_codemagic_release.py; then
+              echo "APK uploaded to private GitHub Releases"
+              exit 0
+            fi
+            echo "GitHub Releases failed; trying external APK delivery"
+          else
+            echo "No GitHub Releases token; trying external APK delivery"
+          fi
+          python3 scripts/upload_apk_external.py output/soundworld-ar-debug.apk
 
     artifacts:
       - output/soundworld-ar-debug.apk
