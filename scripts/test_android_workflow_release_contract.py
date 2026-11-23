@@ -71,12 +71,16 @@ class AndroidWorkflowReleaseContract(unittest.TestCase):
                 self.assertLess(source.index("source_apk="), publishing)
                 self.assertNotIn("continue-on-error: true", source[publishing:publishing + 250])
 
-    def test_existing_build_schedule_and_runner_are_preserved(self):
+    def test_public_repo_builds_on_main_push_with_github_runner(self):
         source = APK_WORKFLOW.read_text(encoding="utf-8")
-        self.assertNotIn("\n  push:", source)
+        self.assertIn("\n  push:\n", source)
+        self.assertIn("branches: [main]", source)
+        self.assertIn("paths-ignore:\n      - 'PROGRESS.md'", source)
         self.assertIn("workflow_dispatch:", source)
+        self.assertIn("runs-on: ubuntu-latest", source)
+        self.assertNotIn("blacksmith-", source)
+        self.assertNotIn("SOUNDWORLD_RUNNER", source)
         self.assertIn("id: prepare_download", source)
-        self.assertIn("blacksmith-4vcpu-ubuntu-2404", source)
         self.assertIn("scripts.test_upload_apk_external scripts.test_android_workflow_release_contract", source)
         self.assertNotIn("multi-cam-pov", source)
 

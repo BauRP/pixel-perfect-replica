@@ -1,9 +1,12 @@
 name: Android APK
 
-# Codemagic is the active Android APK builder for pushes to main.
-# Keep this GitHub runner workflow only as a manual fallback to prevent
-# indefinitely queued Blacksmith jobs and misleading yellow checks.
+# Public-repository APK builds use GitHub-hosted runners (as in Wave Notes and Multi-Cam).
+# Release publishing bypasses Actions artifact storage.
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'PROGRESS.md'
   workflow_dispatch:
 
 permissions:
@@ -20,11 +23,7 @@ env:
 jobs:
   build:
     name: Build and publish SoundWorld AR APK
-    # The external Blacksmith runner is activated after its GitHub App is
-    # authorized for this private repository. No additional project copies.
-    # Set repository variable SOUNDWORLD_RUNNER=ubuntu-24.04 only if GitHub
-    # hosted Actions allowance is available and you want to switch back.
-    runs-on: ${{ vars.SOUNDWORLD_RUNNER || 'blacksmith-4vcpu-ubuntu-2404' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - name: Checkout
