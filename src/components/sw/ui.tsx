@@ -1,7 +1,7 @@
 import { Link, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, Check, Minus, HelpCircle } from "lucide-react";
-import type { ReactNode } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ArrowLeft, Check, Minus } from "lucide-react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({ title, back, right, subtitle }: { title: string; back?: boolean; right?: ReactNode; subtitle?: string }) {
@@ -28,28 +28,125 @@ export function PageHeader({ title, back, right, subtitle }: { title: string; ba
   );
 }
 
+/** Simple touch-friendly help popup. Avoid unsupported color-mix
+ * translucent-blue utility backgrounds on older Android WebViews, and avoid
+ * the many pointer/focus/portal handlers of a third-party Popover on Studio.
+ * No app feature is changed; the same eleven explanations are preserved.
+ */
 export function HelpDot({ title, text }: { title: string; text: string }) {
+  const id = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const popup = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number; width: number } | null>(null);
+  const visible = position !== null;
+
+  useEffect(() => {
+    if (!visible) return;
+    const outside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (trigger.current?.contains(target) || popup.current?.contains(target)) return;
+      setPosition(null);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPosition(null);
+        trigger.current?.focus();
+      }
+    };
+    const dismissOnScroll = (event: Event) => {
+      if (popup.current?.contains(event.target as Node)) return;
+      setPosition(null);
+    };
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("keydown", key);
+    document.addEventListener("scroll", dismissOnScroll, true);
+    window.addEventListener("resize", dismissOnScroll);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("keydown", key);
+      document.removeEventListener("scroll", dismissOnScroll, true);
+      window.removeEventListener("resize", dismissOnScroll);
+    };
+  }, [visible]);
+
+  const toggle = () => {
+    if (visible) {
+      setPosition(null);
+      return;
+    }
+    const rect = trigger.current?.getBoundingClientRect();
+    if (!rect) return;
+    const viewportWidth = Math.max(window.innerWidth, 240);
+    const viewportHeight = Math.max(window.innerHeight, 240);
+    const width = Math.min(272, viewportWidth - 24);
+    const left = Math.min(Math.max(12, rect.right - width), viewportWidth - width - 12);
+    const estimatedHeight = 148;
+    const showAbove = rect.bottom + estimatedHeight + 8 > viewportHeight && rect.top > estimatedHeight + 12;
+    const top = showAbove
+      ? Math.max(12, rect.top - estimatedHeight - 8)
+      : Math.max(12, Math.min(rect.bottom + 8, viewportHeight - estimatedHeight - 12));
+    setPosition({ left, top, width });
+  };
+
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={`Что такое «${title}»?`}
-          className="grid size-9 shrink-0 place-items-center rounded-full border border-primary/50 bg-primary/10 text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    <>
+      <button
+        ref={trigger}
+        type="button"
+        aria-label={`Что такое «${title}»?`}
+        aria-expanded={visible}
+        aria-controls={visible ? id : undefined}
+        onClick={toggle}
+        className="sw-help-trigger"
+        style={{
+          width: 44, height: 44, padding: 0, border: 0, outlineOffset: 2,
+          appearance: "none", background: "transparent", color: "#ffffff",
+          display: "grid", placeItems: "center", flexShrink: 0, cursor: "pointer",
+        }}
+      >
+        <span aria-hidden="true" className="sw-help-mark"
+          style={{
+            width: 26, height: 26, display: "grid", placeItems: "center",
+            border: "1.5px solid #ffffff", borderRadius: "50%",
+            background: "transparent", color: "#ffffff",
+            fontFamily: "Arial, sans-serif", fontSize: 17, fontWeight: 700,
+            lineHeight: 1,
+          }}>?</span>
+      </button>
+      {visible && position && typeof document !== "undefined" && createPortal(
+        <div
+          ref={popup}
+          id={id}
+          role="dialog"
+          aria-modal="false"
+          aria-label={title}
+          className="sw-help-popup"
+          style={{
+            position: "fixed", zIndex: 9999,
+            left: position.left, top: position.top, width: position.width,
+            maxHeight: "calc(100vh - 24px)", overflowY: "auto",
+            boxSizing: "border-box", padding: "12px 14px",
+            border: "1px solid #50637a", borderRadius: 14,
+            background: "#132235", color: "#f6f8ff",
+            boxShadow: "0 12px 30px rgba(0,0,0,0.65)",
+          }}
         >
-          <span aria-hidden="true" className="text-base font-bold leading-none">?</span>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent side="left" align="center" sideOffset={8}
-        collisionPadding={12}
-        className="z-50 w-64 max-w-[calc(100vw-1.5rem)] rounded-xl border border-primary/30 bg-popover px-3 py-3 text-left shadow-xl">
-        <div className="flex items-center gap-2 font-semibold text-foreground">
-          <HelpCircle className="size-4 shrink-0 text-primary" aria-hidden="true" />
-          <span>{title}</span>
-        </div>
-        <p className="mt-1 text-xs leading-relaxed text-foreground/90">{text}</p>
-      </PopoverContent>
-    </Popover>
+          <div className="flex items-start justify-between gap-2">
+            <strong className="text-sm font-semibold">{title}</strong>
+            <button type="button" aria-label="Закрыть подсказку"
+              onClick={() => setPosition(null)}
+              style={{
+                width: 26, height: 26, flexShrink: 0, fontSize: 18,
+                lineHeight: 1, color: "#ffffff", border: 0,
+                background: "transparent", cursor: "pointer",
+              }}>×</button>
+          </div>
+          <p className="mt-1 text-xs leading-relaxed" style={{color:"#e1eaf5"}}>{text}</p>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 

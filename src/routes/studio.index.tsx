@@ -27,7 +27,7 @@ function Item({ n, title, help, children, value }: { n: number; title: string; h
   return (
     <div className="border-b border-border/50 px-3 py-2 last:border-0">
       <div className="flex items-center gap-2">
-        <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-xs text-primary">{n}</span>
+        <span className="sw-studio-step grid size-6 shrink-0 place-items-center rounded-full font-display text-xs" style={{background:"rgba(45,166,250,0.18)",border:"1px solid #2da6fa",color:"#ffffff"}}>{n}</span>
         <h3 className="min-w-0 flex-1 font-sans text-[13px] font-semibold leading-snug">{title}</h3>
         {value && <span className="max-w-[35%] truncate text-xs text-muted-foreground">{value}</span>}
         <HelpDot title={title} text={help} />

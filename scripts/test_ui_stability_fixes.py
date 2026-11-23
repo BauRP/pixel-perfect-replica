@@ -27,13 +27,17 @@ class UserReportedUiFixes(unittest.TestCase):
         self.assertIn("aria-current={on", source)
         self.assertNotIn('on && "bg-primary/15"', source)
 
-    def test_help_is_round_small_popover(self):
+    def test_help_is_white_question_in_transparent_circle_with_reliable_click(self):
         source = self.text("src/components/sw/ui.tsx")
-        self.assertIn("<Popover>", source)
-        self.assertIn("<PopoverTrigger asChild>", source)
-        self.assertIn('<PopoverContent side="left"', source)
-        self.assertIn('rounded-full border border-primary/50', source)
-        self.assertNotIn("<DialogContent", source)
+        self.assertIn("aria-expanded={visible}", source)
+        self.assertIn("onClick={toggle}", source)
+        self.assertIn('role="dialog"', source)
+        self.assertIn("createPortal(", source)
+        self.assertIn('background: "transparent"', source)
+        self.assertIn('color: "#ffffff"', source)
+        self.assertIn('border: "1.5px solid #ffffff"', source)
+        self.assertIn('}}>?</span>', source)
+        self.assertNotIn("<PopoverTrigger", source)
 
     def test_sliders_persist_on_commit_not_each_movement(self):
         source = self.text("src/routes/studio.index.tsx")

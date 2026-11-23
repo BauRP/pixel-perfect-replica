@@ -1388,3 +1388,9 @@
 - Corrected concrete hang hazards without removing features: AudioRecord zero-byte busy spin now sleeps 10 ms before retry; YAMNet bundled-asset status probe cached; RAM/battery/thermal Binder reads moved to a single-flight background executor (properly shut down on Activity destruction); blocking vendor MediaPlayer.release moved off Android main thread through a serial daemon executor; lost native playback-status callbacks bounded at 2.5s to prevent indefinite UI polling.
 - New regression contracts added to Python CI to retain these safety guarantees. Existing Android YAMNet, microphone, steps, media audio, settings and three-tab interface remain enabled. No fabricated AI music.
 - Risk assessment: blocking Android HAL / Binder behavior and stale bridge callbacks can cause apparent freezes. Successful CI cannot establish root cause of user-specific freeze or demonstrate device runtime stability without reproducing it; code mitigations are verified via CI separately.
+
+### 2026-11-24 — White question-mark help regression fix
+- The user's Android screenshot showed two blue solid circles: HelpDot icon and Studio item counter. Android WebView's legacy CSS compilation cannot consistently handle Tailwind alpha utility rendering.
+- HelpDot now uses explicit transparent background and white outlined 26px circle/white '?' with 44px touch target; a small anchored popup opens directly from React onClick, displayed in a portal over scrollable Studio sections; escape, outside tap, scroll and close control dismiss it. All existing setting descriptions preserved; no heavy Radix popover per row.
+- Studio counter numbers are again visibly white with a subtle semitransparent blue border/background, removing invisible text on old WebViews.
+- Added interactive Vitest UI coverage for open/close/outside tap/Escape and updated source-regression checks. The user's screenshot, not an assumption, motivated the contrast correction.
