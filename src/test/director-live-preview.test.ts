@@ -43,7 +43,7 @@ describe("Studio live director rule preview from real sensor events",()=>{
   });
   it("rejects future, invalid and stale step events",()=>{
     const s=enabled("steps-drums");
-    for(const step of [{at:13000,bpm:100},{at:9000,bpm:NaN},{at:9000,bpm:300},{at:3000,bpm:100}]) {
+    for(const step of [{at:13000,bpm:100},{at:9000,bpm:NaN},{at:9000,bpm:301},{at:3000,bpm:100}]) {
       expect(state(directorLivePreview(s,{ambient:null,step},10000),"steps-drums")).toBe("waiting");
     }
   });

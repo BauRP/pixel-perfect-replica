@@ -33,6 +33,15 @@ vi.mock("@capacitor/core",()=>({
 }));
 import {requestNativeAudioSink,stopNativeAudioSink,pauseNativeAudioSink,appendRealPcm} from "../lib/sw/native-pcm";
 
+// The real bridge serializes lifecycle calls across multiple microtasks.
+// Wait until the native mock actually receives START, not a fixed one-tick guess.
+async function waitForNativeStart(count:number):Promise<void>{
+  for(let tick=0;tick<80 && driver.events.filter(x=>x==="start").length<count;tick++){
+    await Promise.resolve();
+  }
+  expect(driver.events.filter(x=>x==="start").length).toBe(count);
+}
+
 describe("Android real PCM lifecycle ordering",()=>{
   it("STOP is not trapped behind an unresponsive Android start callback",async()=>{
     vi.useFakeTimers();
@@ -68,7 +77,7 @@ describe("Android real PCM lifecycle ordering",()=>{
     driver.events.length=0;driver.packetValues.length=0;
     driver.receipts.length=0;driver.holdPackets=true;
     const start=requestNativeAudioSink();
-    await Promise.resolve();
+    await waitForNativeStart(1);
     driver.releaseStart?.();
     expect((await start).ok).toBe(true);
     const firstBytes=new Uint8Array([1,0,1,0]);
@@ -90,7 +99,7 @@ describe("Android real PCM lifecycle ordering",()=>{
   });
   it("refuses excessive concurrent PCM without allocating an unbounded queue",async()=>{
     driver.packetValues.length=0;driver.receipts.length=0;driver.holdPackets=true;
-    const start=requestNativeAudioSink();await Promise.resolve();driver.releaseStart?.();
+    const start=requestNativeAudioSink();await waitForNativeStart(1);driver.releaseStart?.();
     expect((await start).ok).toBe(true);
     const tasks=Array.from({length:8},()=>appendRealPcm(new Uint8Array(4)));
     const ninth=await appendRealPcm(new Uint8Array(4));
@@ -105,7 +114,7 @@ describe("Android real PCM lifecycle ordering",()=>{
   it("a late START cannot resurrect audio after STOP",async()=>{
     driver.events.length=0;
     const starting=requestNativeAudioSink();
-    await Promise.resolve();
+    await waitForNativeStart(1);
     expect(driver.events).toEqual(["start"]);
     const stopping=stopNativeAudioSink();
     expect(driver.events).toEqual(["start"]);
@@ -118,13 +127,14 @@ describe("Android real PCM lifecycle ordering",()=>{
   it("a late START cannot overtake PAUSE or a new START",async()=>{
     driver.events.length=0;
     const starting=requestNativeAudioSink();
-    await Promise.resolve();
+    await waitForNativeStart(1);
     const paused=pauseNativeAudioSink();
     const next=requestNativeAudioSink();
     driver.releaseStart?.();
     expect((await starting).ok).toBe(false);
     await paused;
     // The second START happens strictly after native PAUSE.
+    await waitForNativeStart(2);
     expect(driver.events).toEqual(["start","pause","start"]);
     driver.releaseStart?.();
     expect((await next).ok).toBe(true);

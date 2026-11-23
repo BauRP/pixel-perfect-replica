@@ -4,7 +4,7 @@ import type {ClipMeta} from "../lib/sw/engine";
 const mk=(id:string,createdAt:number,more:Partial<ClipMeta>={}):ClipMeta=>({
   id,createdAt,durationSec:120,genreIds:[],favorite:false,mood:0,speed:0,uri:"file:///data/user/0/kz.soundworld.ar/files/generated_music/"+id+".wav",...more,
 });
-const a="11111111-1111-4111-8111-111111111111";
+const a="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const b="22222222-2222-4222-8222-222222222222";
 describe("real saved recording selection",()=>{
   it("chooses newest genuinely completed recording",()=>{
