@@ -98,6 +98,7 @@ describe("Android real PCM lifecycle ordering",()=>{
     await stopNativeAudioSink();
   });
   it("refuses excessive concurrent PCM without allocating an unbounded queue",async()=>{
+    driver.events.length=0;
     driver.packetValues.length=0;driver.receipts.length=0;driver.holdPackets=true;
     const start=requestNativeAudioSink();await waitForNativeStart(1);driver.releaseStart?.();
     expect((await start).ok).toBe(true);
