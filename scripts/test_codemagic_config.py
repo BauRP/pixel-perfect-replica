@@ -91,7 +91,7 @@ class CodemagicAndroidContract(unittest.TestCase):
     def test_release_is_only_after_compiled_verified_apk(self):
         source = self.source
         verification = source.index("- name: Verify APK content and prepare download files")
-        publication = source.index("- name: Publish APK to GitHub Releases when token is configured")
+        publication = source.index("- name: Publish verified APK via GitHub Releases or external download")
         self.assertLess(verification, publication)
         self.assertIn("scripts/verify_android_apk.py", source)
         self.assertIn("scripts/publish_codemagic_release.py", source)
