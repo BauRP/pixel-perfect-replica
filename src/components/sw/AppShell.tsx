@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import { hydrateSettings, useSettings, useSettingsHydrated } from "@/lib/sw/settings";
 import { getAdapters } from "@/lib/sw/engine";
 import { stopSensorDiagnostics } from "@/lib/sw/native-sensors";
+import { installFreezeMonitoring, traceFreezeScreen } from "@/lib/sw/freeze-report";
 import { cn } from "@/lib/utils";
 
 /** EXACTLY three destinations, fixed order and labels. */
@@ -20,6 +21,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
   useEffect(() => hydrateSettings(), []);
+  // Low-cost diagnostic heartbeat, only while Android app is visible.
+  useEffect(() => installFreezeMonitoring(), []);
+  useEffect(() => {traceFreezeScreen(loc.pathname);}, [loc.pathname]);
   useEffect(() => {
     if (hydrated) void getAdapters().performance.applyBatteryMode(settings.batteryMode);
   }, [hydrated, settings.batteryMode]);

@@ -1399,3 +1399,11 @@
 - GitHub APK #15 CI: 199/200 Vitest passed; single failure was the test demanding CSS color in rgb form when JSDOM returned exactly equivalent #ffffff. Corrected test to accept either representation without weakening white-color requirement.
 - Sensor stop requests from the app shell, settings and diagnostics are now coalesced while one stop sequence remains pending. The epoch still invalidates late START immediately on every stop request; the immediate and serialized native release sequence remain intact. Eliminates redundant stop thread bursts across navigation without removing microphone or steps.
 - Re-run CI; Android-specific freeze still needs empirical evidence before claiming complete resolution.
+
+### 2026-11-24 — Встроенный «Отчёт об ошибках» для LDPlayer/MuMu; остальные направления на паузе
+- Пользователь просил получать отчёт об ошибках из самого приложения, без Android Studio/ADB, и разместить его последним пунктом в Настройках.
+- Добавлены независимый нативный монитор SoundWorldFreezeMonitor и плагин SoundWorldFreeze. Монитор на отдельном daemon потоке наблюдает MAIN и heartbeat WebView, различает зависание Android MAIN и пропадание JS-ответов, сохраняет ограниченную запись в локальные SharedPreferences даже при остановке WebView. На паузе Activity монитор не пишет ложные ANR. Никогда не перезапускает приложение и не выключает датчики/музыку.
+- Внизу экрана Настройки добавлен пункт «Отчёт об ошибках». Отдельный экран позволяет обновить и скопировать последний сохранённый отчёт через Android ClipboardManager с резервным методом браузера. В отчёте только агрегированные аппаратные состояния, категорийные ошибки JS, стек MAIN для зависания; без аудио, текста исключений, пути к файлам, имён устройств, геолокации или сообщений других приложений. Автоматической отправки на сервер нет.
+- При запуске установлен лёгкий heartbeat с ограничением на зависшие запросы; путь экрана сохраняется как категория, а не полный адрес. Отчёт после перезапуска не очищается автоматически.
+- Добавлены тесты форматирования и безопасной выгрузки и CI-контракты нативной установки; фактическая APK/зелёная сборка подтверждаются только по последующему GitHub Actions.
+- 14 функциональных направлений по-прежнему на паузе; их проценты не менялись. Отдельная проверка LDPlayer/MuMu не учитывается как незавершённая программная работа.

@@ -49,8 +49,19 @@ public class MainActivity extends BridgeActivity {
     if (hasFocus) getWindow().getDecorView().post(this::logMeasuredWebView);
   }
 
+  @Override public void onPause() {
+    SoundWorldFreezeMonitor.setForeground(false);
+    super.onPause();
+  }
+
+  @Override public void onDestroy() {
+    SoundWorldFreezeMonitor.stop();
+    super.onDestroy();
+  }
+
   @Override public void onResume() {
     super.onResume();
+    SoundWorldFreezeMonitor.setForeground(true);
     // Two bounded one-shot probes cover WebView creation and first layout
     // without a polling loop or changing UI geometry. Both run on UI thread.
     final View decor = getWindow().getDecorView();
@@ -62,6 +73,7 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(SoundWorldSensorsPlugin.class);
     registerPlugin(SoundWorldPlaybackPlugin.class);
     registerPlugin(SoundWorldMusicLibraryPlugin.class);
+    registerPlugin(SoundWorldFreezePlugin.class);
 
     // Android 15+ enforces edge-to-edge. Some cutout/splash configurations
     // throw on a real phone before the WebView exists (Pixel 4 emulator has
@@ -73,6 +85,8 @@ public class MainActivity extends BridgeActivity {
     getWindow().setAttributes(params);
 
     super.onCreate(savedInstanceState);
+    SoundWorldFreezeMonitor.start(getApplicationContext(),
+        getBridge() == null ? null : getBridge().getWebView());
     WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
 
     final View contentRoot = findViewById(android.R.id.content);

@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m unittest scripts.test_upload_apk_external scripts.test_android_workflow_release_contract scripts.test_ui_stability_fixes scripts.test_freeze_mitigations
+          python3 -m unittest scripts.test_upload_apk_external scripts.test_android_workflow_release_contract scripts.test_ui_stability_fixes scripts.test_freeze_mitigations scripts.test_freeze_report_contract
           bunx tsc --noEmit
           bun run test
 
@@ -104,6 +104,8 @@ jobs:
           cp native/android/SoundWorldPowerPolicy.java "$target/SoundWorldPowerPolicy.java"
           cp native/android/SoundWorldPowerEpochGuard.java "$target/SoundWorldPowerEpochGuard.java"
           cp native/android/MainActivity.java "$target/MainActivity.java"
+          cp native/android/SoundWorldFreezeMonitor.java "$target/SoundWorldFreezeMonitor.java"
+          cp native/android/SoundWorldFreezePlugin.java "$target/SoundWorldFreezePlugin.java"
           cp native/android/SoundWorldPlaybackService.java "$target/SoundWorldPlaybackService.java"
           cp native/android/SoundWorldPcmLifecyclePolicy.java "$target/SoundWorldPcmLifecyclePolicy.java"
           cp native/android/SoundWorldPlaybackPlugin.java "$target/SoundWorldPlaybackPlugin.java"

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Mic, Shield, FileText, Wrench } from "lucide-react";
+import { Mic, Shield, FileText, Wrench, Bug } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavRow, PageHeader, PendingBadge, Section, Segmented } from "@/components/sw/ui";
 import { Switch } from "@/components/ui/switch";
@@ -153,6 +153,11 @@ function SettingsPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Last Settings entry, kept separate from developer-only diagnostics. */}
+        <Section title="Помощь и диагностика">
+          <NavRow to="/settings/report" title="Отчёт об ошибках" icon={<Bug className="size-5" />} />
+        </Section>
       </div>
     </>
   );
