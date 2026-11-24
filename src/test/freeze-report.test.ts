@@ -12,7 +12,7 @@ describe("locally saved Android freeze evidence",()=>{
     expect(report).toContain("studio");
     expect(report).toContain("Ошибка JavaScript");
     expect(report).toContain(snapshot);
-    expect(report).toContain("не является полным системным Logcat");
+    expect(report).toContain("Не является полным системным Logcat");
   });
   it("does not manufacture an actual freeze when none was captured",()=>{
     const report=buildSupportReport(null,snapshot);
