@@ -27,17 +27,29 @@ class UserReportedUiFixes(unittest.TestCase):
         self.assertIn("aria-current={on", source)
         self.assertNotIn('on && "bg-primary/15"', source)
 
-    def test_help_is_white_question_in_transparent_circle_with_reliable_click(self):
+    def test_help_is_small_white_question_with_mobile_dialog(self):
         source = self.text("src/components/sw/ui.tsx")
-        self.assertIn("aria-expanded={visible}", source)
-        self.assertIn("onClick={toggle}", source)
-        self.assertIn('role="dialog"', source)
-        self.assertIn("createPortal(", source)
-        self.assertIn('background: "transparent"', source)
-        self.assertIn('color: "#ffffff"', source)
-        self.assertIn('border: "1.5px solid #ffffff"', source)
-        self.assertIn('}}>?</span>', source)
-        self.assertNotIn("<PopoverTrigger", source)
+        self.assertIn("aria-expanded={open}",source)
+        self.assertIn("onTouchEnd={event =>",source)
+        self.assertIn("onClick={() => {",source)
+        self.assertIn('aria-modal="true"',source)
+        self.assertIn("createPortal(",source)
+        self.assertIn('width:22,height:22',source)
+        self.assertIn('width:44,height:44',source)
+        self.assertIn('background:"transparent",color:"#ffffff"',source)
+        self.assertIn('border:"1.5px solid #ffffff"',source)
+        self.assertIn('}}>?</span>',source)
+        self.assertNotIn('addEventListener("scroll"',source)
+        self.assertNotIn("<PopoverTrigger",source)
+
+    def test_each_studio_setting_has_real_help_and_no_extra_features(self):
+        studio = self.text("src/routes/studio.index.tsx")
+        self.assertEqual(studio.count("<Item n="),11)
+        self.assertEqual(studio.count('help="'),11)
+        for value in ("Слабо:","Средне:","Сильно:","Плавно:","Быстро:",
+                      "Автоматически:","Привычная:","Экспериментальная:",
+                      "Только управление:","Слабое:","Активное:"):
+            self.assertIn(value,studio)
 
     def test_sliders_persist_on_commit_not_each_movement(self):
         source = self.text("src/routes/studio.index.tsx")

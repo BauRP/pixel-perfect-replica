@@ -33,61 +33,33 @@ export function PageHeader({ title, back, right, subtitle }: { title: string; ba
  * the many pointer/focus/portal handlers of a third-party Popover on Studio.
  * No app feature is changed; the same eleven explanations are preserved.
  */
+/** Small help dialog compatible with legacy Android WebViews / MuMu.
+ * The previous floating popup was dismissed by incidental scroll events
+ * while calculating viewport placement. A compact centered portal avoids
+ * scroll clipping and does not affect music settings or controls.
+ */
 export function HelpDot({ title, text }: { title: string; text: string }) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
-  const popup = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ left: number; top: number; width: number } | null>(null);
-  const visible = position !== null;
+  const [open, setOpen] = useState(false);
+  const lastTouchAt = useRef(-Infinity);
+  const touchStart = useRef<{x:number;y:number}|null>(null);
+
+  const close = () => {
+    setOpen(false);
+    trigger.current?.focus({preventScroll:true});
+  };
 
   useEffect(() => {
-    if (!visible) return;
-    const outside = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (trigger.current?.contains(target) || popup.current?.contains(target)) return;
-      setPosition(null);
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
     };
-    const key = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setPosition(null);
-        trigger.current?.focus();
-      }
-    };
-    const dismissOnScroll = (event: Event) => {
-      if (popup.current?.contains(event.target as Node)) return;
-      setPosition(null);
-    };
-    document.addEventListener("pointerdown", outside, true);
-    document.addEventListener("keydown", key);
-    document.addEventListener("scroll", dismissOnScroll, true);
-    window.addEventListener("resize", dismissOnScroll);
-    return () => {
-      document.removeEventListener("pointerdown", outside, true);
-      document.removeEventListener("keydown", key);
-      document.removeEventListener("scroll", dismissOnScroll, true);
-      window.removeEventListener("resize", dismissOnScroll);
-    };
-  }, [visible]);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
 
-  const toggle = () => {
-    if (visible) {
-      setPosition(null);
-      return;
-    }
-    const rect = trigger.current?.getBoundingClientRect();
-    if (!rect) return;
-    const viewportWidth = Math.max(window.innerWidth, 240);
-    const viewportHeight = Math.max(window.innerHeight, 240);
-    const width = Math.min(272, viewportWidth - 24);
-    const left = Math.min(Math.max(12, rect.right - width), viewportWidth - width - 12);
-    const estimatedHeight = 148;
-    const showAbove = rect.bottom + estimatedHeight + 8 > viewportHeight && rect.top > estimatedHeight + 12;
-    const top = showAbove
-      ? Math.max(12, rect.top - estimatedHeight - 8)
-      : Math.max(12, Math.min(rect.bottom + 8, viewportHeight - estimatedHeight - 12));
-    setPosition({ left, top, width });
-  };
+  const toggle = () => setOpen(value => !value);
 
   return (
     <>
@@ -95,54 +67,96 @@ export function HelpDot({ title, text }: { title: string; text: string }) {
         ref={trigger}
         type="button"
         aria-label={`Что такое «${title}»?`}
-        aria-expanded={visible}
-        aria-controls={visible ? id : undefined}
-        onClick={toggle}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        onClick={() => {
+          // Touch WebViews may dispatch a compatibility click right after
+          // touchend. A duplicate must not immediately close the dialog.
+          if (Date.now() - lastTouchAt.current < 700) return;
+          toggle();
+        }}
+        onTouchStart={event => {
+          const t=event.touches[0];
+          touchStart.current=t?{x:t.clientX,y:t.clientY}:null;
+        }}
+        onTouchEnd={event => {
+          const initial=touchStart.current;
+          const t=event.changedTouches[0];
+          touchStart.current=null;
+          if(!initial || !t || Math.abs(t.clientX-initial.x)>14 ||
+             Math.abs(t.clientY-initial.y)>14) return;
+          lastTouchAt.current=Date.now();
+          toggle();
+        }}
         className="sw-help-trigger"
         style={{
-          width: 44, height: 44, padding: 0, border: 0, outlineOffset: 2,
-          appearance: "none", background: "transparent", color: "#ffffff",
-          display: "grid", placeItems: "center", flexShrink: 0, cursor: "pointer",
+          width:44,height:44,padding:0,border:0,outlineOffset:2,
+          appearance:"none",background:"transparent",color:"#ffffff",
+          display:"grid",placeItems:"center",flexShrink:0,cursor:"pointer",
+          touchAction:"manipulation",
         }}
       >
         <span aria-hidden="true" className="sw-help-mark"
           style={{
-            width: 26, height: 26, display: "grid", placeItems: "center",
-            border: "1.5px solid #ffffff", borderRadius: "50%",
-            background: "transparent", color: "#ffffff",
-            fontFamily: "Arial, sans-serif", fontSize: 17, fontWeight: 700,
-            lineHeight: 1,
+            width:22,height:22,display:"grid",placeItems:"center",
+            border:"1.5px solid #ffffff",borderRadius:"50%",
+            background:"transparent",color:"#ffffff",
+            fontFamily:"Arial, sans-serif",fontSize:15,fontWeight:600,lineHeight:1,
           }}>?</span>
       </button>
-      {visible && position && typeof document !== "undefined" && createPortal(
+      {open && typeof document !== "undefined" && createPortal(
         <div
-          ref={popup}
-          id={id}
-          role="dialog"
-          aria-modal="false"
-          aria-label={title}
-          className="sw-help-popup"
+          data-testid="sw-help-overlay"
+          onClick={event => {if(event.target===event.currentTarget)close();}}
           style={{
-            position: "fixed", zIndex: 9999,
-            left: position.left, top: position.top, width: position.width,
-            maxHeight: "calc(100vh - 24px)", overflowY: "auto",
-            boxSizing: "border-box", padding: "12px 14px",
-            border: "1px solid #50637a", borderRadius: 14,
-            background: "#132235", color: "#f6f8ff",
-            boxShadow: "0 12px 30px rgba(0,0,0,0.65)",
+            position:"fixed",inset:0,zIndex:2147483000,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            padding:"20px",boxSizing:"border-box",
+            background:"rgba(0,0,0,0.56)",
           }}
         >
-          <div className="flex items-start justify-between gap-2">
-            <strong className="text-sm font-semibold">{title}</strong>
-            <button type="button" aria-label="Закрыть подсказку"
-              onClick={() => setPosition(null)}
-              style={{
-                width: 26, height: 26, flexShrink: 0, fontSize: 18,
-                lineHeight: 1, color: "#ffffff", border: 0,
-                background: "transparent", cursor: "pointer",
-              }}>×</button>
+          <div
+            id={id}
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
+            className="sw-help-popup"
+            style={{
+              boxSizing:"border-box",width:"100%",maxWidth:310,
+              maxHeight:"calc(100vh - 40px)",overflowY:"auto",
+              padding:"15px 16px 16px",borderRadius:16,
+              border:"1px solid #395d77",background:"#122235",color:"#f6f8ff",
+              boxShadow:"0 18px 46px rgba(0,0,0,0.8), 0 0 20px rgba(45,166,250,0.1)",
+            }}
+          >
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span aria-hidden="true"
+                style={{
+                  display:"grid",placeItems:"center",flexShrink:0,
+                  width:20,height:20,border:"1px solid #d4e8fa",
+                  color:"#ffffff",borderRadius:"50%",fontSize:13,
+                  fontWeight:600,lineHeight:1,
+                }}>?</span>
+              <strong style={{fontSize:14,lineHeight:1.35,flex:1}}>{title}</strong>
+              <button type="button" aria-label="Закрыть подсказку"
+                onClick={close}
+                style={{
+                  width:36,height:36,flexShrink:0,display:"grid",placeItems:"center",
+                  padding:0,border:0,borderRadius:8,
+                  background:"transparent",color:"#e8f1ff",fontSize:23,
+                  cursor:"pointer",
+                }}>×</button>
+            </div>
+            <p style={{
+              margin:"9px 0 0",color:"#dbe5f2",
+              fontSize:12.5,lineHeight:1.55,whiteSpace:"normal",
+            }}>{text}</p>
+            <p style={{
+              margin:"10px 0 0",paddingTop:8,borderTop:"1px solid #29435b",
+              color:"#9eafc2",fontSize:10.5,lineHeight:1.4,
+            }}>Настройки сохраняются. Новая музыка заработает после подключения движка.</p>
           </div>
-          <p className="mt-1 text-xs leading-relaxed" style={{color:"#e1eaf5"}}>{text}</p>
         </div>,
         document.body,
       )}
