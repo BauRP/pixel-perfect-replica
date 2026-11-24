@@ -27,10 +27,10 @@ class FreezeReportContract(unittest.TestCase):
 
     def test_report_is_final_settings_item(self):
         src=self.read("src/routes/settings.index.tsx")
-        self.assertGreater(src.index('to="/settings/report"'),
+        self.assertGreater(src.index("<ErrorReportPanel />"),
                            src.index("Сбросить настройки"))
-        self.assertIn("Отчёт об ошибках",src)
-        page=self.read("src/routes/settings.report.tsx")
+        page=self.read("src/components/sw/ErrorReportPanel.tsx")
+        self.assertIn("Отчёт об ошибках",page)
         self.assertIn("Скопировать отчёт",page)
         self.assertIn("buildSafeDiagnosticsReport(",page)
         self.assertIn("readFreezeEvidence()",page)

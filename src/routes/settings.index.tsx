@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Mic, Shield, FileText, Wrench, Bug } from "lucide-react";
+import { Mic, Shield, FileText, Wrench } from "lucide-react";
+import { ErrorReportPanel } from "@/components/sw/ErrorReportPanel";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavRow, PageHeader, PendingBadge, Section, Segmented } from "@/components/sw/ui";
 import { Switch } from "@/components/ui/switch";
@@ -154,10 +155,8 @@ function SettingsPage() {
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* Last Settings entry, kept separate from developer-only diagnostics. */}
-        <Section title="Помощь и диагностика">
-          <NavRow to="/settings/report" title="Отчёт об ошибках" icon={<Bug className="size-5" />} />
-        </Section>
+        {/* Last Settings entry. Expands in place without a new router page. */}
+        <ErrorReportPanel />
       </div>
     </>
   );
