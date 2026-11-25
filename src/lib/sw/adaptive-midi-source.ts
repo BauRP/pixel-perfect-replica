@@ -24,11 +24,16 @@ export interface LiveMusicRequestInputs {
   revision():number;
 }
 export class AdaptiveMidiSource implements RealScoreSource {
+  // Keep a timed-out native operation counted until it actually settles.
+  // A JS timeout alone does not stop CPU-heavy MNN inference.
+  private nativeInFlight=false;
   constructor(private readonly generator:LicensedLocalMidiGenerator,
     private readonly inputs:LiveMusicRequestInputs,
     private readonly maxWaitMs=120_000) {}
 
   async next(signal?:AbortSignal):Promise<unknown|null>{
+    if(this.nativeInFlight)
+      throw new Error("Предыдущая генерация ещё завершает работу");
     const revision=this.inputs.revision();
     if(!Number.isSafeInteger(revision)||revision<0)
       throw new Error("Неверная версия настроек музыкального генератора");
@@ -84,7 +89,13 @@ export class AdaptiveMidiSource implements RealScoreSource {
       const value=await Promise.race([
         Promise.resolve().then(()=>{
           if(controller.signal.aborted)return null;
-          return this.generator.generate(frozen,controller.signal,conditioning.value);
+          if(this.nativeInFlight)
+            throw new Error("Предыдущая генерация ещё завершает работу");
+          this.nativeInFlight=true;
+          return Promise.resolve().then(()=>{
+            if(controller.signal.aborted)return null;
+            return this.generator.generate(frozen,controller.signal,conditioning.value);
+          }).finally(()=>{this.nativeInFlight=false;});
         }),
         guard,
       ]);
@@ -95,6 +106,13 @@ export class AdaptiveMidiSource implements RealScoreSource {
       if(value===null)return null;
       const checked=validateDecodedMidiScore(value);
       if(!checked.ok)throw new Error("Генератор вернул неправильную партитуру: "+checked.reason);
+      // Conditioning is guidance, not enforcement: reject model output that
+      // introduces instruments outside the actual selected plan.
+      const allowedPrograms=new Set(conditioning.value.programs);
+      for(const note of checked.value.notes){
+        if(note.channel===9 ? !conditioning.value.drums : !allowedPrograms.has(note.program))
+          throw new Error("Fermata вернула запрещённую или незапланированную партию");
+      }
       return checked.value;
     }finally {
       if(timeout!==undefined)clearTimeout(timeout);
