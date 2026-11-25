@@ -74,6 +74,7 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(SoundWorldPlaybackPlugin.class);
     registerPlugin(SoundWorldMusicLibraryPlugin.class);
     registerPlugin(SoundWorldFreezePlugin.class);
+    registerPlugin(SoundWorldFermataPlugin.class);
 
     // Android 15+ enforces edge-to-edge. Some cutout/splash configurations
     // throw on a real phone before the WebView exists (Pixel 4 emulator has
