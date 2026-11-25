@@ -30,6 +30,7 @@ export async function runNativeFermataSession(
   let opened=false;
   let monitor:ReturnType<typeof setInterval>|undefined;
   let checking=false,missed=0;
+  let nativeSessionId:number|null=null;
   let interrupted=false;
   const externalCancelled=options.isCancelled;
   const cancelled=()=>interrupted||options.signal?.aborted===true||externalCancelled?.()===true;
@@ -43,7 +44,7 @@ export async function runNativeFermataSession(
     const source=new AdaptiveMidiSource({
       generate:async(request,signal,header)=>{
         if(signal.aborted)throw new Error("Генерация остановлена");
-        const tokens=await generateNativeFermataTokens(header,4096-header.tokens.length,request.diversity,signal);
+        const tokens=await generateNativeFermataTokens(header,4096-header.tokens.length,request.diversity,signal,inputs.currentSettings().batteryMode==="maxPerformance");
         if(signal.aborted)throw new Error("Генерация остановлена");
         return decoder.decode(tokens,header);
       },
@@ -67,8 +68,11 @@ export async function runNativeFermataSession(
             void currentAudioSinkStatus().then(status=>{
               if(!status){if(++missed>=2)interrupted=true;return;}
               missed=0;
-              if(!status.serviceActive||!status.readyForPcm||status.lastAudioError)interrupted=true;
-            }).finally(()=>{checking=false;});
+              if(!status.serviceActive||!status.readyForPcm||status.lastAudioError||
+                 !Number.isSafeInteger(status.sessionId)||status.sessionId<=0||
+                 (nativeSessionId!==null&&nativeSessionId!==status.sessionId))interrupted=true;
+              else nativeSessionId=status.sessionId;
+            }).catch(()=>{if(++missed>=2)interrupted=true;}).finally(()=>{checking=false;});
           },1000);
           if(cancelled()){
             await stopNativeAudioSink();

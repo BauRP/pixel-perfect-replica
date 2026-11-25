@@ -135,6 +135,7 @@ export function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
       await stopNativeDiagnostics();
       return unavailable(SENSOR_MODE_BLOCKED);
     }
+    if (r.started)ambientEpoch++;
     if (!r.started) {
       await withNativeDeadline(()=>native.stopSteps(),5000).catch(()=>{});
       return unavailable("Проверка микрофона не запущена");

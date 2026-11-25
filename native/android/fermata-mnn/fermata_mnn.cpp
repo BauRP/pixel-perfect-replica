@@ -18,7 +18,7 @@ extern "C" JNIEXPORT jintArray JNICALL
 Java_kz_soundworld_ar_SoundWorldFermataPlugin_generateMnnIds(
     JNIEnv* env,jclass,jstring configPath,jintArray input,jint maximum,jint threads,jint diversity) {
     try {
-        if(!configPath||!input||maximum<1||maximum>4096||threads<1||threads>2||diversity<0||diversity>2)
+        if(!configPath||!input||maximum<1||maximum>4096||threads<1||threads>4||diversity<0||diversity>2)
             throw std::runtime_error("Invalid model request");
         const jsize count=env->GetArrayLength(input);
         if(count<1||count>32||count+maximum>4096)throw std::runtime_error("Invalid prompt length");

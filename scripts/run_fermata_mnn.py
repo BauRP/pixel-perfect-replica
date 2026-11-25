@@ -19,9 +19,11 @@ def main():
     vocab = original_vocabulary(model/"tokenizer/vocab.json")
     ids = [vocab[t] for t in HEADER]
     by_id = {v:k for k,v in vocab.items()}
-    for name in ("llm.mnn","llm.mnn.weight","llm_config.json","config.json"):
+    for name in ("llm.mnn","llm.mnn.weight","llm_config.json","config.json","tokenizer.txt"):
         if not (model/name).is_file() or not (model/name).stat().st_size:
             raise ValueError("Converted weights missing: "+name)
+    if json.loads((model/"config.json").read_text())["tokenizer_file"]!="tokenizer.txt":
+        raise ValueError("MNN configuration does not use the original ID table")
     import MNN.llm as llm
     runtime = llm.create(str(model/"config.json"))
     if not runtime.set_config({"backend_type":"cpu","thread_num":2,"max_new_tokens":512,

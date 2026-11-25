@@ -185,6 +185,9 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
     if(id==="g06-s04")return ["i6-01","i1-03","i3-04","i5-01"]; // smooth jazz
     if(id==="g09-s03")return ["i4-03","i7-03","i7-01"]; // suspense
     if(id==="g09-s04")return ["i1-01","i4-03","i7-01"]; // dramatic film score
+    if(id==="g09-s05")return ["i4-05","i6-06","i7-01"]; // fantasy score
+    if(id==="g03-s03")return ["i1-03","i3-04","i5-01"]; // lo-fi hip-hop
+    if(id==="g04-s05")return ["i3-02","i3-04","i6-01","i5-01"]; // funk
     if(id==="g12-s06")return ["i3-03"]; // acoustic fingerstyle
     if(id==="g02-s07")return ["i2-04","i3-04","i1-03"]; // downtempo
     if(id==="g08-s02")return ["i1-01","i4-01","i4-02","i4-03"]; // classical chamber

@@ -76,8 +76,15 @@ public final class SoundWorldFermataPlugin extends Plugin {
     if(new File(context.getApplicationInfo().nativeLibraryDir,fileName).isFile())
       return true;
     try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)) {
-      return apk.getEntry("lib/arm64-v8a/"+fileName)!=null;
-    }catch(Exception ignored) { return false; }
+      if(apk.getEntry("lib/arm64-v8a/"+fileName)!=null)return true;
+    }catch(Exception ignored) { /* check package-owned splits below */ }
+    String[] splits=context.getApplicationInfo().splitSourceDirs;
+    if(splits!=null)for(String split:splits){
+      try(ZipFile apk=new ZipFile(split)){
+        if(apk.getEntry("lib/arm64-v8a/"+fileName)!=null)return true;
+      }catch(Exception ignored){}
+    }
+    return false;
   }
 
   private static boolean isArm64() {
@@ -395,6 +402,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
     final JSONArray input=call.getArray("tokenIds");
     final Integer maximum=call.getInt("maxTokens");
     final Integer diversity=call.getInt("diversity",1);
+    final Boolean maxPerformance=call.getBoolean("maxPerformance",false);
     if(input==null||input.length()<1||input.length()>32||
        maximum==null||maximum<1||maximum+input.length()>4096||
        diversity==null||diversity<0||diversity>2) {
@@ -421,7 +429,11 @@ public final class SoundWorldFermataPlugin extends Plugin {
             memory.getMemoryInfo(info);
             if(info.lowMemory)throw new IllegalStateException("Not enough memory for MNN");
           }
-          int threads=Math.max(1,Math.min(2,Runtime.getRuntime().availableProcessors()-1));
+          int threads=Math.max(1,Math.min(Boolean.TRUE.equals(maxPerformance)?4:2,
+              Runtime.getRuntime().availableProcessors()-1));
+          android.os.BatteryManager battery=(android.os.BatteryManager)getContext().getSystemService(Context.BATTERY_SERVICE);
+          int charge=battery==null?-1:battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+          if(!Boolean.TRUE.equals(maxPerformance)&&charge>=0&&charge<=15)threads=1;
           if(power!=null&&power.getCurrentThermalStatus()>=4)
             throw new IllegalStateException("Device thermal status critical");
           if(power!=null&&(power.isPowerSaveMode()||power.getCurrentThermalStatus()>=3))threads=1;

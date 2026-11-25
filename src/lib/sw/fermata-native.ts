@@ -24,7 +24,7 @@ export type FermataPackageStatus = {
   arm64Supported:boolean;
   generationReady:false;
 };
-type NativeFermata = {inspect():Promise<unknown>;encodeHeader(input:{tokens:string[]}):Promise<unknown>;decodeTokens(input:{tokenIds:number[]}):Promise<unknown>;prepareModel():Promise<unknown>;generateIds(input:{tokenIds:number[];maxTokens:number;diversity:number}):Promise<unknown>;
+type NativeFermata = {inspect():Promise<unknown>;encodeHeader(input:{tokens:string[]}):Promise<unknown>;decodeTokens(input:{tokenIds:number[]}):Promise<unknown>;prepareModel():Promise<unknown>;generateIds(input:{tokenIds:number[];maxTokens:number;diversity:number;maxPerformance:boolean}):Promise<unknown>;
   renderMidi(input:{midi:string;frames:number}):Promise<unknown>;
   readMidiPcm(input:{fromFrame:number;frameCount:number}):Promise<unknown>;
   releaseMidiPcm():Promise<void>};
@@ -101,7 +101,7 @@ export async function prepareNativeFermataModel():Promise<string> {
 let nativeGenerationBusy=false;
 export async function generateNativeFermataTokens(header:Readonly<FermataHeader>,
     maxTokens=2048,diversity:"familiar"|"moderate"|"experimental"="moderate",
-    signal?:AbortSignal):Promise<readonly string[]> {
+    signal?:AbortSignal,maxPerformance=false):Promise<readonly string[]> {
   if(!Number.isSafeInteger(maxTokens)||maxTokens<1||maxTokens+header.tokens.length>4096)
     throw new Error("Некорректное ограничение генерации");
   if(signal?.aborted)throw new Error("Музыкальная генерация остановлена");
@@ -115,7 +115,7 @@ export async function generateNativeFermataTokens(header:Readonly<FermataHeader>
   // The native call remains occupied until MNN returns; do not create a
   // second model in response to a JavaScript timeout.
   const sampling=diversity==="familiar"?0:diversity==="experimental"?2:1;
-  const value=await native.generateIds({tokenIds:[...ids],maxTokens,diversity:sampling});
+  const value=await native.generateIds({tokenIds:[...ids],maxTokens,diversity:sampling,maxPerformance});
   if(signal?.aborted)throw new Error("Музыкальная генерация остановлена");
   const output=(value as {tokenIds?:unknown}|null)?.tokenIds;
   if(!Array.isArray(output)||output.length<1||output.length>maxTokens||

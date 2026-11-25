@@ -6,6 +6,7 @@ local MNN checkout and its official exporter dependencies. A conversion is
 not an Android runtime or a licensed complete offline-music package.
 """
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -47,6 +48,35 @@ def sha256(path):
         for chunk in iter(lambda: file.read(1024*1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+def write_mnn_atomic_tokenizer(path, vocab, config):
+    """MNN v3.6.1 tokenizer type 1, used only for numerical token inference.
+
+    The original music codec stays separate. Never invoke MNN text encoding
+    for musical headers. Header layout follows MNN utils/tokenizer.py.
+    """
+    eos = config.get("eos_token_id")
+    stops = eos if isinstance(eos, list) else [eos]
+    if not stops or any(type(i) is not int or not 0 <= i < VOCAB_SIZE for i in stops):
+        raise ValueError("Invalid original EOS identifiers")
+    stops = list(dict.fromkeys(stops))
+    special = sorted(set(stops + [vocab["<BOS>"]]))
+    with path.open("w", encoding="utf-8", newline="\n") as file:
+        file.write(f"430 1\n{len(special)} {len(stops)} 0\n")
+        file.write(" ".join(map(str, special + stops)) + "\n")
+        file.write(str(len(vocab)) + "\n")
+        for token, _ in sorted(vocab.items(), key=lambda pair: pair[1]):
+            file.write(base64.b64encode(token.encode("utf-8")).decode("ascii") + "\n")
+    # Prove byte-for-byte roundtrip and exact stop list, not a new codec.
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if len(lines) != VOCAB_SIZE + 4 or lines[0] != "430 1":
+        raise ValueError("Incomplete MNN tokenizer export")
+    for index, encoded in enumerate(lines[4:]):
+        token = base64.b64decode(encoded, validate=True).decode("utf-8")
+        if vocab.get(token) != index:
+            raise ValueError("MNN export changed original token ID")
+    if list(map(int, lines[2].split())) != special + stops:
+        raise ValueError("MNN export changed original stop tokens")
 
 def run(args):
     from huggingface_hub import HfApi, snapshot_download
@@ -115,6 +145,16 @@ def run(args):
     if args.mnnconvert:
         command += ["--mnnconvert",str(args.mnnconvert.resolve())]
     subprocess.run(command,cwd=exporter.parent,check=True)
+    # Official exporter emits tokenizer.mtok for tokenizer.json; its
+    # generic text-tokenizer probes can also add the unknown ID as EOS.
+    # The numeric musical pipeline needs only the exact original ID table.
+    write_mnn_atomic_tokenizer(mnn/"tokenizer.txt",vocab,config)
+    runtime_config=read_json(mnn/"config.json")
+    runtime_config["tokenizer_file"]="tokenizer.txt"
+    (mnn/"config.json").write_text(json.dumps(runtime_config,indent=2),encoding="utf-8")
+    alternate=mnn/"tokenizer.mtok"
+    if alternate.is_file():
+        alternate.unlink()
     for name in ("llm.mnn","llm.mnn.weight","config.json","llm_config.json","tokenizer.txt"):
         file=mnn/name
         if not file.is_file() or not file.stat().st_size:

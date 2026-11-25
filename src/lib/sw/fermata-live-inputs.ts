@@ -21,10 +21,11 @@ export function createLiveFermataInputs(favorites:()=>ClipMeta[]):{
   let closed=false,revision=0,lastBird=0;
   const lifecycle=new SerialNativeOperations();
   let requested=false,ownsMic=false,ownsSteps=false;
+  const visible=()=>typeof document==="undefined"||document.visibilityState!=="hidden";
   let lastRoute=getSettingsSnapshot().microphonePreference;
   let lastAuto=getSettingsSnapshot().autoAudioRouting;
   const reconcile=()=>lifecycle.enqueue(async()=>{
-    const allowed=()=>requested&&!closed&&!getSettingsSnapshot().musicOnlyMode;
+    const allowed=()=>requested&&!closed&&visible()&&!getSettingsSnapshot().musicOnlyMode;
     if(!allowed()){
       if(ownsMic){await adapters.environment.stopCapture().catch(()=>undefined);ownsMic=false;}
       if(ownsSteps){await adapters.activity.stopCapture?.().catch(()=>undefined);ownsSteps=false;}
@@ -54,6 +55,14 @@ export function createLiveFermataInputs(favorites:()=>ClipMeta[]):{
     planner.reset();
   };
   try{
+    if(typeof document!=="undefined"){
+      const onVisibility=()=>{
+        if(!visible()){planner.reset();lastBird=0;}
+        if(requested)void reconcile().catch(()=>undefined);
+      };
+      document.addEventListener("visibilitychange",onVisibility);
+      cleanup.push(()=>document.removeEventListener("visibilitychange",onVisibility));
+    }
     cleanup.push(subscribeSettings(()=>{
       if(closed)return;
       revision++;
@@ -61,7 +70,7 @@ export function createLiveFermataInputs(favorites:()=>ClipMeta[]):{
       if(settings.musicOnlyMode){planner.reset();lastBird=0;}
       if(requested){
         void reconcile().catch(()=>undefined);
-        if(!settings.musicOnlyMode&&ownsMic&&
+        if(visible()&&!settings.musicOnlyMode&&ownsMic&&
            (lastRoute!==settings.microphonePreference||lastAuto!==settings.autoAudioRouting))
           void adapters.router.chooseBestSupportedRoute().catch(()=>undefined);
       }
@@ -71,7 +80,7 @@ export function createLiveFermataInputs(favorites:()=>ClipMeta[]):{
       if(!closed){planner.invalidateAmbient();lastBird=0;}
     }));
     cleanup.push(adapters.environment.observeEnvironment(e=>{
-      if(closed)return;
+      if(closed||!requested||!visible())return;
       const settings=getSettingsSnapshot();
       const age=Date.now()-e.timestamp;
       if(settings.musicOnlyMode||!Number.isSafeInteger(e.timestamp)||age<0||age>12000||
@@ -85,7 +94,7 @@ export function createLiveFermataInputs(favorites:()=>ClipMeta[]):{
       }else lastBird=0;
     }));
     cleanup.push(adapters.activity.observeWalkingRunningTransportRest(e=>{
-      if(closed||getSettingsSnapshot().musicOnlyMode||
+      if(closed||!requested||!visible()||getSettingsSnapshot().musicOnlyMode||
          (e.activity!=="walking"&&e.activity!=="running")||
          typeof e.bpm!=="number"||typeof e.timestamp!=="number")return;
       const age=Date.now()-e.timestamp;
