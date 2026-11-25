@@ -37,6 +37,7 @@ import org.json.JSONObject;
 @CapacitorPlugin(name = "SoundWorldFermata")
 public final class SoundWorldFermataPlugin extends Plugin {
   private File preparedModelDirectory;
+  private JSONObject cachedVocabulary;
   private volatile boolean destroyed=false;
   private final ThreadPoolExecutor synthWorker = new ThreadPoolExecutor(
     1,1,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(2), r -> {
@@ -175,7 +176,8 @@ public final class SoundWorldFermataPlugin extends Plugin {
   // This checkpoint was trained on atomic tokens (the author's known BPE
   // training issue). Use the actual upstream dictionary, not generic Llama
   // text tokenization. Do not guess a mapping if the format differs.
-  private static JSONObject loadAtomicVocabulary(Context context) throws Exception {
+  private JSONObject loadAtomicVocabulary(Context context) throws Exception {
+    if(cachedVocabulary!=null)return cachedVocabulary;
     JSONObject manifest=new JSONObject(new String(
         readBounded(context,"manifest.json",256*1024),StandardCharsets.UTF_8));
     if(manifest.optInt("schemaVersion")!=1 ||
@@ -212,6 +214,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
       int id=(Integer)value;
       if(id<0||id>=9507||!ids.add(id))throw new IllegalArgumentException("Invalid vocabulary ID");
     }
+    cachedVocabulary=map;
     return map;
   }
 
@@ -345,7 +348,8 @@ public final class SoundWorldFermataPlugin extends Plugin {
             }finally {if(temp.exists())temp.delete();}
           }
           if(!names.contains("config.json")||!names.contains("llm_config.json")||
-             !names.contains("llm.mnn")||!names.contains("llm.mnn.weight"))
+             !names.contains("llm.mnn")||!names.contains("llm.mnn.weight")||
+             !names.contains("tokenizer.txt"))
             throw new java.io.IOException("Incomplete MNN model");
           // Refuse old unlisted artifacts in this dedicated private directory.
           File[] installed=dir.listFiles();

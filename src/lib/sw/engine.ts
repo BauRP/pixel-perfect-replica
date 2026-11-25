@@ -36,7 +36,8 @@ export interface MusicEngine {
 }
 
 export interface EnvironmentEvent {
-  label: string; // YAMNet class
+  label: string; // stable atmosphere or YAMNet class
+  rawLabel?: string; // actual classifier label, when available
   confidence: number; // 0..1
   timestamp: number;
   source: "headsetMic" | "phoneMic" | "bluetoothMic";
@@ -57,7 +58,7 @@ export interface AudioDeviceRouter {
 
 export type Activity = "walking" | "running" | "transport" | "rest" | "unknown";
 export interface ActivityProvider {
-  observeWalkingRunningTransportRest(cb: (a: { activity: Activity; confidence: number }) => void): Unsubscribe;
+  observeWalkingRunningTransportRest(cb: (a: { activity: Activity; confidence: number; bpm?:number; timestamp?:number }) => void): Unsubscribe;
 }
 
 export interface ClipMeta {

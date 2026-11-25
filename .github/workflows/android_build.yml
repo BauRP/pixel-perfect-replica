@@ -94,6 +94,40 @@ jobs:
           npx cap sync android
           sed -i 's/minSdkVersion = [0-9]*/minSdkVersion = 31/' android/variables.gradle
 
+      - name: Restore reviewed model conversion
+        if: github.event_name == 'workflow_dispatch' && inputs.require_music_bundle
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            fermata-conversion/mnn
+            fermata-conversion/conversion.json
+            fermata-conversion/FERMATA_UPSTREAM_README.md
+            fermata-conversion/MNN_LICENSE
+          key: fermata-int8-18b6470-mnn-3.6.1-${{ hashFiles('scripts/prepare_fermata_mnn.py') }}
+      - name: Restore exact ARM64 MNN runtime
+        if: github.event_name == 'workflow_dispatch' && inputs.require_music_bundle
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/fermata-arm64/libsoundworld_fermata_mnn.so
+          key: fermata-arm64-mnn-3.6.1-${{ hashFiles('native/android/fermata-mnn/**') }}
+      - name: Restore exact ARM64 synthesizer candidate
+        if: github.event_name == 'workflow_dispatch' && inputs.require_music_bundle
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/sonivox-arm64/libsoundworld_sonivox.so
+          key: sonivox-candidate-d07f6b3-${{ hashFiles('native/android/sonivox/**') }}
+      - name: Assemble reviewed offline package from matching build outputs
+        if: github.event_name == 'workflow_dispatch' && inputs.require_music_bundle
+        run: |
+          set -euo pipefail
+          if [[ ! -f offline-music/manifest.json ]]; then
+            python3 scripts/assemble_reviewed_music_bundle.py \
+              --review offline-music-review/manifest.json \
+              --conversion fermata-conversion/mnn \
+              --mnn "$RUNNER_TEMP/fermata-arm64/libsoundworld_fermata_mnn.so" \
+              --synth "$RUNNER_TEMP/sonivox-arm64/libsoundworld_sonivox.so"
+          fi
+
       - name: Stage optional verified Fermata/MNN/music assets into Android package
         env:
           REQUIRE_MUSIC_BUNDLE: ${{ github.event_name == 'workflow_dispatch' && inputs.require_music_bundle }}
@@ -188,7 +222,7 @@ jobs:
           print("Android splash and Activity cutout mode:", ", ".join(changed))
           PY
 
-      - name: Build shell-only debug APK
+      - name: Build debug APK with selected offline assets
         working-directory: android
         shell: bash
         run: |

@@ -116,6 +116,7 @@ if (requireComplete) {
   const expected = [
     ["model/config.json","model"],["model/llm_config.json","model"],
     ["model/llm.mnn","model"],["model/llm.mnn.weight","model"],
+    ["model/tokenizer.txt","model"],
     ["tokenizer/vocab.json","tokenizer"],
     ["libsoundworld_fermata_mnn.so","mnn-arm64"],
     ["libsoundworld_sonivox.so","synth-arm64"],

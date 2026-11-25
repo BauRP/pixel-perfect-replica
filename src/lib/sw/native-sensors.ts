@@ -303,7 +303,7 @@ export function installNativeSensorAdapters(): void {
         if(route==="changed")stability.reset();
         const stable=stability.update(e);
         if (!stable) return;
-        const mapped:EnvironmentEvent={label:stable.atmosphere,confidence:stable.confidence,timestamp:stable.timestamp,source:e.source};
+        const mapped:EnvironmentEvent={label:stable.atmosphere,rawLabel:e.label,confidence:stable.confidence,timestamp:stable.timestamp,source:e.source};
         cb(mapped);
       }),
     },
@@ -313,7 +313,7 @@ export function installNativeSensorAdapters(): void {
         const age=Date.now()-e.timestamp;
         if(!Number.isSafeInteger(e.timestamp)||age< -1000||age>4500)return;
         const rate=pace.ingest(e.timestamp);
-        if(rate.activity!=="unknown")cb({activity:rate.activity,confidence:rate.confidence});
+        if(rate.activity!=="unknown")cb({activity:rate.activity,confidence:rate.confidence,bpm:rate.bpm,timestamp:e.timestamp});
       }),
     },
     performance: {

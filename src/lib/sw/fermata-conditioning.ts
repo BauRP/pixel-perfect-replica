@@ -231,8 +231,10 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
   if(automatic.length>0) {
     if(effects.has("accent-step-percussion")&&!automatic.includes("i5-01"))
       automatic.push("i5-01");
-    if(effects.has("soften-arrangement")||effects.has("sparser-arrangement"))
-      automatic=automatic.filter(id=>id!=="i5-01"||effects.has("accent-step-percussion"));
+    if(effects.has("soften-arrangement")||effects.has("sparser-arrangement")){
+      const reduced=automatic.filter(id=>id!=="i5-01"||effects.has("accent-step-percussion"));
+      if(reduced.some(canUse))automatic=reduced;
+    }
     if(effects.has("brighter-melody")&&!automatic.includes("i6-06"))
       automatic.push("i6-06");
     if(effects.has("deeper-pads")&&!automatic.includes("i2-04"))

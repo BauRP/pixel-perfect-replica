@@ -121,7 +121,9 @@ export async function generateNativeFermataTokens(header:Readonly<FermataHeader>
 
 /** Actual native file-rendering adapter. It is not installed as the
  * production engine until real model decoding and licensed assets exist. */
+let synthOwner:symbol|null=null;
 export function createNativeSonivoxRenderer():VerifiedMidiRenderer {
+  const owner=Symbol("Sonivox session");
   let total=0;
   return {
     ready:async()=>{
@@ -129,6 +131,8 @@ export function createNativeSonivoxRenderer():VerifiedMidiRenderer {
       return state?.packageComplete===true&&state.arm64Supported;
     },
     beginScore:async(score,frames)=>{
+      if(synthOwner!==null)throw new Error("Синтезатор занят другой партитурой");
+      synthOwner=owner;
       total=0;
       const midi=encodeDecodedMidiFile(score);
       let binary="";
@@ -140,7 +144,7 @@ export function createNativeSonivoxRenderer():VerifiedMidiRenderer {
       total=frames;
     },
     render:async({fromFrame,frameCount})=>{
-      if(total<1||fromFrame<0||frameCount<1||fromFrame+frameCount>total)
+      if(synthOwner!==owner||total<1||fromFrame<0||frameCount<1||fromFrame+frameCount>total)
         throw new Error("Некорректный диапазон готового PCM");
       const response=await native.readMidiPcm({fromFrame,frameCount});
       const encoded=(response as {pcm?:unknown}|null)?.pcm;
@@ -150,7 +154,11 @@ export function createNativeSonivoxRenderer():VerifiedMidiRenderer {
       if(raw.length!==frameCount*4)throw new Error("Неполный PCM");
       return Uint8Array.from(raw,c=>c.charCodeAt(0));
     },
-    endScore:async()=>{total=0;await native.releaseMidiPcm();},
+    endScore:async()=>{
+      total=0;
+      if(synthOwner!==owner)return;
+      try{await native.releaseMidiPcm();}finally{if(synthOwner===owner)synthOwner=null;}
+    },
   };
 }
 
