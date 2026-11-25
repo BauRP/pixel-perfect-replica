@@ -1491,3 +1491,5 @@
 | 14 | Приватность и лицензии | 90% | 90% | 0 |
 
 Программная часть этого цикла не включает установку APK на реальный телефон/MuMu: эти действия не ставятся в очередь незавершённой работы. **Аудиогенерация Fermata пока не работает.**
+
+**Итоговая проверка после исправления JNI/датчиков:** GitHub Actions `Android APK #39`, run `45554409488`, SHA `8deca8f22c5c4dad4e9eab390d38765c4eda9287` **completed / success**. TypeScript, Vitest, Python, Gradle/Android сборка и публикация настоящего debug APK прошли. GitHub Release `soundworld-ar-build-45554409488-1` содержит `soundworld-ar-debug.apk` (**65 317 062 байт**) и `soundworld-ar-debug.apk.sha256` (90 байт), оба `uploaded`, релиз опубликован (`draft=false`). Это подтверждённая программная сборка, не воспроизведение/качество Fermata на телефоне. Fermata остаётся без нейросетевой генерации до завершения конкретной Android MNN + tokenizer_v2 + licensed synth интеграции.
