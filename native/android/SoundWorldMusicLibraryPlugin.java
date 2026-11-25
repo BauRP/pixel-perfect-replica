@@ -57,15 +57,17 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   // MediaStore item have unchanged metadata. A size match alone is not proof.
   private static final class VerifiedExport {
     final String uri; final long bytes; final long sourceModified; final long mediaModified;
-    VerifiedExport(String u,long b,long sourceTime,long externalTime) {
+    final String mediaStoreVersion;
+    VerifiedExport(String u,long b,long sourceTime,long externalTime,String version) {
       uri=u;bytes=b;sourceModified=sourceTime;mediaModified=externalTime;
+      mediaStoreVersion=version;
     }
   }
   private final Map<String,VerifiedExport> verifiedExportCache = new HashMap<>();
 
   private long exportedModifiedAt(String uriText) {
     try (Cursor c=getContext().getContentResolver().query(
-        Uri.parse(uriText),new String[]{MediaStore.MediaColumns.DATE_MODIFIED},
+        Uri.parse(uriText),new String[]{MediaStore.MediaColumns.GENERATION_MODIFIED},
         null,null,null)) {
       if(c!=null && c.moveToFirst() && !c.isNull(0))return c.getLong(0);
     } catch(Exception ignored){}
@@ -134,16 +136,17 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
       return false;
     }
     long changedAt=exportedModifiedAt(uriText);
+    String storeVersion=MediaStore.getVersion(getContext());
     VerifiedExport cached=verifiedExportCache.get(source.getName());
     if(changedAt>=0 && cached!=null && cached.uri.equals(uriText) &&
         cached.bytes==source.length() && cached.sourceModified==source.lastModified() &&
-        cached.mediaModified==changedAt) return true;
+        cached.mediaModified==changedAt && cached.mediaStoreVersion.equals(storeVersion)) return true;
     try (InputStream original=new FileInputStream(source);
          InputStream saved=getContext().getContentResolver().openInputStream(Uri.parse(uriText))) {
       SoundWorldWavExportPolicy.verifyExactCopy(original,saved,source.length());
       if(changedAt>=0)
         verifiedExportCache.put(source.getName(),
-          new VerifiedExport(uriText,source.length(),source.lastModified(),changedAt));
+          new VerifiedExport(uriText,source.length(),source.lastModified(),changedAt,storeVersion));
       return true;
     } catch (Exception ignored) {
       verifiedExportCache.remove(source.getName());
@@ -412,7 +415,8 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
         // This copy was just fully hash-verified before publication.
         long modified=exportedModifiedAt(outputUri.toString());
         if(modified>=0) verifiedExportCache.put(file.getName(),
-          new VerifiedExport(outputUri.toString(),file.length(),file.lastModified(),modified));
+          new VerifiedExport(outputUri.toString(),file.length(),file.lastModified(),modified,
+            MediaStore.getVersion(getContext())));
         record.put("exportedUri",outputUri.toString());
         saveIndex(index);
         JSObject r=new JSObject();r.put("uri",outputUri.toString());call.resolve(r);
