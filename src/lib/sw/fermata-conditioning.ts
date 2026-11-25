@@ -168,9 +168,11 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
   // with the same coarse token. Familiar keeps favorite/history priority.
   const pool=notWeak.length?notWeak:permitted;
   const ranked=[...pool.filter(id=>emph.has(id)),...pool.filter(id=>!emph.has(id))];
-  const distinct=ranked.filter((id,i)=>ranked.findIndex(other=>
+  const playable=request.preferredInstruments.length>0?ranked:
+    ranked.filter(id=>DEFAULT_INSTRUMENTS[COARSE_GENRE[id.slice(0,3)]!]?.length>0);
+  const distinct=playable.filter((id,i)=>playable.findIndex(other=>
     COARSE_GENRE[other.slice(0,3)]===COARSE_GENRE[id.slice(0,3)])===i);
-  const preferred=request.diversity==="familiar"?ranked[0]:
+  const preferred=request.diversity==="familiar"?playable[0]:
     distinct[sequenceIndex%Math.max(1,distinct.length)];
   if(!preferred)return {ok:false,reason:"Нет разрешённого жанра Fermata"};
   const genre=COARSE_GENRE[preferred.slice(0,3)];

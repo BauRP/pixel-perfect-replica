@@ -9,6 +9,8 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
 import java.io.ByteArrayOutputStream;
+import java.io.FileOutputStream;
+import java.io.FileInputStream;
 import java.util.Iterator;
 import java.security.MessageDigest;
 import java.io.InputStream;
@@ -258,6 +260,99 @@ public final class SoundWorldFermataPlugin extends Plugin {
         }catch(Exception e){call.reject("Не удалось прочитать оригинальные музыкальные токены");}
       });
     }catch(RejectedExecutionException e){call.reject("Музыкальный токенизатор занят");}
+  }
+
+  /** Materialize actual verified model files to app-private storage for MNN.
+   * Assets compressed inside an APK are not ordinary mmap-able files.
+   * Never run on startup/UI thread; no network or shared storage. */
+  @PluginMethod public void prepareModel(PluginCall call) {
+    final Context context=getContext().getApplicationContext();
+    try {
+      inspector.execute(()->{
+        try {
+          JSONObject manifest=new JSONObject(new String(
+            readBounded(context,"manifest.json",256*1024),StandardCharsets.UTF_8));
+          if(manifest.optInt("schemaVersion")!=1 ||
+             !"haster/Fermata-0.2B-v1".equals(manifest.optString("model")) ||
+             !"Alibaba/MNN".equals(manifest.optString("runtime")))
+            throw new IllegalArgumentException("Wrong model manifest");
+          JSONArray entries=manifest.getJSONArray("files");
+          if(entries.length()>128)throw new IllegalArgumentException("Too many assets");
+          File dir=new File(context.getFilesDir(),"fermata-mnn-v1");
+          if(!dir.isDirectory()&&!dir.mkdirs())throw new java.io.IOException("Model directory unavailable");
+          Set<String> names=new HashSet<>();
+          for(int i=0;i<entries.length();i++) {
+            JSONObject item=entries.getJSONObject(i);
+            if(!"model".equals(item.optString("role")))continue;
+            String path=item.getString("path");
+            // MNN model files are stored as model/<flat filename>.
+            if(!path.matches("model/[A-Za-z0-9_.-]+")||path.contains("..")||
+               !"Apache-2.0".equals(item.optString("license")))
+              throw new IllegalArgumentException("Invalid MNN asset");
+            String name=path.substring(6);
+            if(!names.add(name))throw new IllegalArgumentException("Duplicate MNN asset");
+            long size=item.getLong("sizeBytes");
+            String expected=item.getString("sha256");
+            if(size<1||size>900000000L||!expected.matches("[a-f0-9]{64}"))
+              throw new IllegalArgumentException("Invalid MNN asset inventory");
+            File dest=new File(dir,name);
+            if(dest.isFile()&&dest.length()==size&&expected.equals(hashFile(dest)))continue;
+            if(dir.getUsableSpace()<size+16L*1024*1024)
+              throw new java.io.IOException("Not enough local storage for Fermata");
+            File temp=new File(dir,name+".tmp");
+            try {
+              MessageDigest digest=MessageDigest.getInstance("SHA-256");
+              long copied=0;
+              byte[] buffer=new byte[65536];
+              try(InputStream in=context.getAssets().open("offline-music/"+path);
+                  FileOutputStream out=new FileOutputStream(temp)) {
+                int n;
+                while((n=in.read(buffer))!=-1) {
+                  if(Thread.currentThread().isInterrupted())throw new java.io.IOException("Cancelled");
+                  copied+=n;
+                  if(copied>size)throw new java.io.IOException("Unexpected model size");
+                  out.write(buffer,0,n);
+                  digest.update(buffer,0,n);
+                }
+              }
+              if(copied!=size||!expected.equals(hexDigest(digest.digest())))
+                throw new java.io.IOException("MNN asset checksum mismatch");
+              if(!temp.renameTo(dest))throw new java.io.IOException("Cannot install verified model file");
+            }finally {if(temp.exists())temp.delete();}
+          }
+          if(!names.contains("config.json")||!names.contains("llm_config.json")||
+             !names.contains("llm.mnn")||!names.contains("llm.mnn.weight"))
+            throw new java.io.IOException("Incomplete MNN model");
+          // Refuse old unlisted artifacts in this dedicated private directory.
+          File[] installed=dir.listFiles();
+          if(installed==null)throw new java.io.IOException("Cannot list model directory");
+          for(File file:installed)if(!names.contains(file.getName())&&
+             (!file.isFile()||!file.delete()))throw new java.io.IOException("Stale model asset");
+          JSObject result=new JSObject();
+          result.put("modelDirectory",dir.getAbsolutePath());
+          result.put("generationReady",false);
+          call.resolve(result);
+        }catch(Exception e){call.reject("Не удалось подготовить локальные файлы MNN");}
+      });
+    }catch(RejectedExecutionException e){call.reject("Музыкальный движок занят");}
+  }
+
+  private static String hexDigest(byte[] bytes) {
+    StringBuilder result=new StringBuilder();
+    for(byte b:bytes)result.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
+    return result.toString();
+  }
+  private static String hashFile(File file) throws Exception {
+    MessageDigest hash=MessageDigest.getInstance("SHA-256");
+    try(InputStream in=new FileInputStream(file)) {
+      byte[] buffer=new byte[65536];
+      int n;
+      while((n=in.read(buffer))!=-1) {
+        if(Thread.currentThread().isInterrupted())throw new java.io.IOException("Cancelled");
+        hash.update(buffer,0,n);
+      }
+    }
+    return hexDigest(hash.digest());
   }
 
   @PluginMethod public void inspect(PluginCall call) {

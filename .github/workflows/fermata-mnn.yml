@@ -1,0 +1,48 @@
+name: Fermata MNN conversion
+# Developer-side only. Never changes the normal APK or downloads on a phone.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/prepare_fermata_mnn.py'
+      - 'scripts/run_fermata_mnn.py'
+      - '.github/workflows/fermata-mnn.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: soundworld-fermata-conversion
+  cancel-in-progress: false
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore exact converted public model files
+        id: weights
+        uses: actions/cache@v4
+        with:
+          path: |
+            fermata-conversion/mnn
+            fermata-conversion/conversion.json
+            fermata-conversion/FERMATA_UPSTREAM_README.md
+            fermata-conversion/MNN_LICENSE
+          key: fermata-int8-18b6470-mnn-3.6.1-${{ hashFiles('scripts/prepare_fermata_mnn.py') }}
+      - name: Install official developer-side MNN
+        run: python -m pip install 'mnn==3.6.1'
+      - name: Convert original Fermata weights
+        if: steps.weights.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch 3.6.1 https://github.com/alibaba/MNN.git "$RUNNER_TEMP/MNN"
+          python -m pip install -r "$RUNNER_TEMP/MNN/transformers/llm/export/requirements.txt"
+          python -m pip install 'mnn==3.6.1' huggingface_hub tokenizers transformers
+          python scripts/prepare_fermata_mnn.py --mnn-source "$RUNNER_TEMP/MNN" --output fermata-conversion
+      - name: Run real original-token inference on the build host
+        run: |
+          python scripts/run_fermata_mnn.py fermata-conversion/mnn --output "$RUNNER_TEMP/fermata-result.json"
+          python -c 'import json,sys; p=json.load(open(sys.argv[1])); print("Generated real token count:", len(p["generatedTokenIds"])); print("Seconds:", p["elapsedSeconds"])' "$RUNNER_TEMP/fermata-result.json"
+          echo 'Actual host inference completed; this is not Android playback or a music-ready APK.' >> "$GITHUB_STEP_SUMMARY"

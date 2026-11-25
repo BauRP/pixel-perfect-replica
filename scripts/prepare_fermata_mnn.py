@@ -96,10 +96,16 @@ def run(args):
     # codec. Atomic strings map to the author's exact original integer IDs.
     tok = Tokenizer(models.WordLevel(vocab=vocab,unk_token=unknown))
     tok.pre_tokenizer = pre_tokenizers.WhitespaceSplit()
+    reverse = {index: token for token,index in vocab.items()}
+    eos = config.get("eos_token_id")
+    if isinstance(eos,list):
+        eos = eos[0] if eos else None
+    if type(eos) is not int or eos not in reverse:
+        raise ValueError("Original EOS not identified")
     wrapped = PreTrainedTokenizerFast(tokenizer_object=tok,unk_token=unknown,
-        bos_token="<BOS>")
+        bos_token="<BOS>",eos_token=reverse[eos])
     wrapped.save_pretrained(model)
-    if any(tok.token_to_id(name)!=index for name,index in vocab.items()):
+    if any(wrapped.convert_tokens_to_ids(name)!=index for name,index in vocab.items()):
         raise ValueError("Export tokenizer changed original IDs")
     mnn = output/"mnn"
     command = [sys.executable,str(exporter),"--path",str(model),"--export","mnn",

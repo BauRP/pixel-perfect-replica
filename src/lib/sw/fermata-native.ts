@@ -22,7 +22,7 @@ export type FermataPackageStatus = {
   arm64Supported:boolean;
   generationReady:false;
 };
-type NativeFermata = {inspect():Promise<unknown>;encodeHeader(input:{tokens:string[]}):Promise<unknown>;decodeTokens(input:{tokenIds:number[]}):Promise<unknown>};
+type NativeFermata = {inspect():Promise<unknown>;encodeHeader(input:{tokens:string[]}):Promise<unknown>;decodeTokens(input:{tokenIds:number[]}):Promise<unknown>;prepareModel():Promise<unknown>};
 const native=registerPlugin<NativeFermata>("SoundWorldFermata");
 const fields=[
   "manifestPresent","modelPackaged","tokenizerPackaged","mnnPackaged",
@@ -78,6 +78,17 @@ export async function decodeNativeFermataTokens(ids:readonly number[]):Promise<r
      tokens.some(token=>typeof token!=="string"||token.length===0))
     throw new Error("Некорректные музыкальные токены Fermata");
   return Object.freeze([...tokens] as string[]);
+}
+
+/** Explicit developer/runtime preparation, never invoked during UI startup. */
+export async function prepareNativeFermataModel():Promise<string> {
+  if(Capacitor.getPlatform()!=="android")throw new Error("MNN доступен только в Android");
+  const value=await withNativeDeadline(()=>native.prepareModel(),120_000);
+  const directory=(value as {modelDirectory?:unknown}|null)?.modelDirectory;
+  if(typeof directory!=="string"||!directory.startsWith("/")||
+     !directory.endsWith("/fermata-mnn-v1"))
+    throw new Error("Не подготовлены локальные файлы MNN");
+  return directory;
 }
 
 export function explainFermataAvailability(status:FermataPackageStatus|null):string {
