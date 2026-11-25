@@ -120,7 +120,7 @@ export async function streamRealMidiScores(
   options?:SequenceOptions,
 ):Promise<SequenceOutcome> {
   const maxScores=options?.maxScores??10_000;
-  const lead=options?.prefetchLeadFrames??12*48000;
+  const lead=options?.prefetchLeadFrames??60*48000;
   const maxWait=options?.maxScoreWaitMs??120_000;
   const renderWait=options?.maxRenderWaitMs??180_000;
   if(!Number.isSafeInteger(maxScores)||maxScores<1||maxScores>10_000||

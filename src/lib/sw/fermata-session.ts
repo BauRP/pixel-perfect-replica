@@ -29,9 +29,9 @@ export async function runNativeFermataSession(
     if(!packageState?.packageComplete||!packageState.arm64Supported)
       return {ok:false,code:"UNAVAILABLE",message:"Полный локальный музыкальный пакет отсутствует",completedScores:0,totalFrames:0};
     const source=new AdaptiveMidiSource({
-      generate:async(_request,signal,header)=>{
+      generate:async(request,signal,header)=>{
         if(signal.aborted)throw new Error("Генерация остановлена");
-        const tokens=await generateNativeFermataTokens(header,4096-header.tokens.length);
+        const tokens=await generateNativeFermataTokens(header,4096-header.tokens.length,request.diversity,signal);
         if(signal.aborted)throw new Error("Генерация остановлена");
         return decoder.decode(tokens,header);
       },

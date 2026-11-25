@@ -52,7 +52,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
     renderedFrames=0;
     if(renderedPcm!=null){renderedPcm.delete();renderedPcm=null;}
   }
-  private static native int[] generateMnnIds(String configPath, int[] inputIds, int maxTokens, int threads);
+  private static native int[] generateMnnIds(String configPath, int[] inputIds, int maxTokens, int threads, int diversity);
   private final ThreadPoolExecutor inspector = new ThreadPoolExecutor(
     1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(2), r -> {
       Thread t = new Thread(r, "SoundWorld-Fermata-Package");
@@ -82,6 +82,9 @@ public final class SoundWorldFermataPlugin extends Plugin {
 
   private static boolean isArm64() {
     if(!android.os.Process.is64Bit())return false;
+    String architecture=System.getProperty("os.arch","");
+    if(!"aarch64".equalsIgnoreCase(architecture)&&!"arm64".equalsIgnoreCase(architecture))
+      return false;
     for (String abi : Build.SUPPORTED_ABIS) {
       if ("arm64-v8a".equals(abi)) return true;
     }
@@ -391,8 +394,10 @@ public final class SoundWorldFermataPlugin extends Plugin {
   @PluginMethod public void generateIds(PluginCall call) {
     final JSONArray input=call.getArray("tokenIds");
     final Integer maximum=call.getInt("maxTokens");
+    final Integer diversity=call.getInt("diversity",1);
     if(input==null||input.length()<1||input.length()>32||
-       maximum==null||maximum<1||maximum>4096) {
+       maximum==null||maximum<1||maximum+input.length()>4096||
+       diversity==null||diversity<0||diversity>2) {
       call.reject("Некорректный запрос MNN");return;
     }
     try {
@@ -411,8 +416,11 @@ public final class SoundWorldFermataPlugin extends Plugin {
           System.loadLibrary("soundworld_fermata_mnn");
           android.os.PowerManager power=(android.os.PowerManager)getContext().getSystemService(Context.POWER_SERVICE);
           int threads=Math.max(1,Math.min(2,Runtime.getRuntime().availableProcessors()-1));
+          if(power!=null&&power.getCurrentThermalStatus()>=4)
+            throw new IllegalStateException("Device thermal status critical");
           if(power!=null&&(power.isPowerSaveMode()||power.getCurrentThermalStatus()>=3))threads=1;
-          int[] output=generateMnnIds(new File(dir,"config.json").getAbsolutePath(),ids,maximum,threads);
+          int[] output=generateMnnIds(new File(dir,"config.json").getAbsolutePath(),ids,maximum,threads,diversity);
+          if(destroyed)throw new IllegalStateException("Destroyed model");
           if(output==null||output.length<1||output.length>maximum)
             throw new IllegalStateException("No actual model output");
           JSONArray resultIds=new JSONArray();

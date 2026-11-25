@@ -327,7 +327,8 @@ public final class SoundWorldPlaybackService extends Service {
     foregroundReady.set(false);
     paused.set(true);
     running.set(false);
-    chunks.clear();
+    byte[] pending;
+    while((pending=chunks.poll())!=null)java.util.Arrays.fill(pending,(byte)0);
     // Stopping the JS queue alone is insufficient: AudioTrack may still hold
     // buffered real PCM that would otherwise spill into a phone call or the
     // loudspeaker after a headset is disconnected.

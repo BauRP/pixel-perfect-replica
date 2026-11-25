@@ -16,9 +16,9 @@ static void fail(JNIEnv* env, const char* text) {
 
 extern "C" JNIEXPORT jintArray JNICALL
 Java_kz_soundworld_ar_SoundWorldFermataPlugin_generateMnnIds(
-    JNIEnv* env,jclass,jstring configPath,jintArray input,jint maximum,jint threads) {
+    JNIEnv* env,jclass,jstring configPath,jintArray input,jint maximum,jint threads,jint diversity) {
     try {
-        if(!configPath||!input||maximum<1||maximum>4096||threads<1||threads>2)
+        if(!configPath||!input||maximum<1||maximum>4096||threads<1||threads>2||diversity<0||diversity>2)
             throw std::runtime_error("Invalid model request");
         const jsize count=env->GetArrayLength(input);
         if(count<1||count>32||count+maximum>4096)throw std::runtime_error("Invalid prompt length");
@@ -34,7 +34,12 @@ Java_kz_soundworld_ar_SoundWorldFermataPlugin_generateMnnIds(
         std::unique_ptr<Llm,decltype(&Llm::destroy)> model(
             Llm::createLLM(config),&Llm::destroy);
         if(!model)throw std::runtime_error("Cannot open MNN config");
-        const std::string options="{\"backend_type\":\"cpu\",\"thread_num\":"+std::to_string(threads)+",\"reuse_kv\":false}";
+        // Keep the checkpoint and original IDs intact. Diversity controls
+        // sampling of actual model logits rather than fabricated melodies.
+        const char* temperature=diversity==0?"0.65":diversity==1?"0.85":"1.0";
+        const std::string options="{\"backend_type\":\"cpu\",\"thread_num\":"+std::to_string(threads)+
+            ",\"reuse_kv\":false,\"sampler_type\":\"topP\",\"top_p\":0.9,\"temperature\":"+temperature+
+            ",\"timeout_ms\":110000}";
         if(!model->set_config(options)||
            !model->load())throw std::runtime_error("Cannot load actual weights");
         model->generate_init();

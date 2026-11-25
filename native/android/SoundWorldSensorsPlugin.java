@@ -105,6 +105,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private SensorManager sensorManager;
   private Sensor stepDetector;
   private volatile long lastCounterValue=-1;
+  private boolean counterDiscontinuity=false;
   private volatile boolean listeningSteps = false;
   private volatile String actualInput = "";
   private volatile String actualKind = "";
@@ -887,6 +888,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       if(stepDetector==null)stepDetector=sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
       if(stepDetector==null){call.reject("Датчик шагов отсутствует");return;}
       lastCounterValue=-1;
+      counterDiscontinuity=false;
       listeningSteps=sensorManager.registerListener(this,stepDetector,SensorManager.SENSOR_DELAY_NORMAL);
     }
     if (!listeningSteps) {call.reject("Не удалось включить шагомер");return;}
@@ -915,7 +917,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       long value=(long)event.values[0];
       long previous=lastCounterValue;
       lastCounterValue=value;
-      if(previous<0||value-previous!=1)return;
+      if(previous<0)return;
+      if(value-previous!=1){counterDiscontinuity=true;return;}
     }else if(type!=Sensor.TYPE_STEP_DETECTOR)return;
     JSObject r = new JSObject();
     long when=SoundWorldStepTime.eventEpochMillis(
@@ -923,6 +926,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     if (when<0) return; // Reject stale or invalid hardware event clock.
     r.put("timestamp", when);
     r.put("sensor",type==Sensor.TYPE_STEP_COUNTER?"TYPE_STEP_COUNTER":"TYPE_STEP_DETECTOR");
+    r.put("discontinuity",counterDiscontinuity);
+    counterDiscontinuity=false;
     notifyListeners("step", r);
   }
 

@@ -182,8 +182,12 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
     if(id==="g06-s07")return ["i3-03","i6-01","i3-04","i5-01"]; // jazz bossa nova
     if(id==="g06-s01")return ["i6-01","i1-01","i3-04","i5-01"]; // swing
     if(id==="g06-s02")return ["i6-02","i6-01","i4-04","i5-01"]; // bebop
+    if(id==="g08-s08")return ["i1-01","i4-01"]; // minimalism
+    if(id==="g08-s03")return ["i1-01","i4-01","i4-03"]; // romantic
     if(id==="g07-s01")return ["i3-01","i6-10"]; // delta blues
     if(id==="g07-s02")return ["i3-02","i6-10","i3-04","i5-01"]; // Chicago blues
+    if(id==="g07-s04")return ["i3-01","i6-10","i4-04"]; // acoustic blues
+    if(id==="g15-s03")return ["i1-01","i6-02","i3-04","i5-01"]; // instrumental salsa
     if(id==="g08-s07")return ["i7-01","i6-04","i7-03"]; // symphonic
     if(id==="g11-s07")return ["i3-03","i4-05"]; // soft acoustic
     if(id==="g12-s03")return ["i8-09","i3-01"]; // Celtic folk

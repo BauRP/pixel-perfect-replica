@@ -19,7 +19,8 @@ permissions:
 
 concurrency:
   group: soundworld-download-apk-${{ github.ref }}
-  cancel-in-progress: true
+  # Repeated development commits must not prevent any APK finishing.
+  cancel-in-progress: false
 
 env:
   APP_ID: kz.soundworld.ar

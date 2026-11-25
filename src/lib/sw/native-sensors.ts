@@ -35,7 +35,7 @@ export interface RawSound {
   source: "headsetMic" | "phoneMic" | "bluetoothMic";
   routeGeneration?: number;
 }
-export interface RawStep { timestamp: number; sensor: string }
+export interface RawStep { timestamp: number; sensor: string; discontinuity?:boolean }
 interface SensorsPlugin {
   status(): Promise<SensorsStatus>;
   requestMicrophone(): Promise<{ granted: boolean }>;
@@ -220,9 +220,8 @@ export function observeSensorErrors(cb:(message:string)=>void):Unsubscribe {
 /** Use real native data only. No microphone/sensor capture before an explicit Play/test action. */
 export function installNativeSensorAdapters(): void {
   if (!androidSensorsAvailable()) return;
-  const stability = new AmbientStabilizer();
-  const pace = new StepPaceEstimator();
-  const routeFence = new SoundRouteFence();
+  let ambientEpoch=0;
+  let activityEpoch=0;
   const adapters: Partial<Adapters> = {
     permissions: {
       microphone: async () => {
@@ -267,7 +266,7 @@ export function installNativeSensorAdapters(): void {
             if(cancelled())return unavailable("Запуск анализа отменён");
             const result=await withNativeDeadline(()=>native.startAnalysis(),12_000);
             if(cancelled())return unavailable("Запуск анализа отменён");
-            if(result.started){stability.reset();routeFence.reset();}
+            if(result.started)ambientEpoch++;
             return result.started
               ? {ok:true as const,value:undefined}
               : unavailable("Модель YAMNet недоступна");
@@ -289,11 +288,20 @@ export function installNativeSensorAdapters(): void {
             await withNativeDeadline(()=>native.stopAnalysis(),5000);
             return {ok:true as const,value:undefined};
           }catch(e){return safeError(e);}
-          finally{stability.reset();routeFence.reset();pace.reset();}
+          finally{ambientEpoch++;}
         });
       },
-      observeEnvironment: cb => observeRawSound(e=>{
-        if (!sensorsAllowed(getSettingsSnapshot())) return;
+      observeEnvironment: cb => {
+        const stability=new AmbientStabilizer();
+        const routeFence=new SoundRouteFence();
+        let seenEpoch=ambientEpoch;
+        return observeRawSound(e=>{
+        if (!sensorsAllowed(getSettingsSnapshot())) {
+          stability.reset();routeFence.reset();return;
+        }
+        if(seenEpoch!==ambientEpoch){
+          seenEpoch=ambientEpoch;stability.reset();routeFence.reset();
+        }
         const age=Date.now()-e.timestamp;
         if(!Number.isSafeInteger(e.timestamp)||age< -1000||age>12000)return;
         // One physical Android mic route = one evidence stream. Different
@@ -305,16 +313,25 @@ export function installNativeSensorAdapters(): void {
         if (!stable) return;
         const mapped:EnvironmentEvent={label:stable.atmosphere,rawLabel:e.label,confidence:stable.confidence,timestamp:stable.timestamp,source:e.source};
         cb(mapped);
-      }),
+        });
+      },
     },
     activity: {
-      observeWalkingRunningTransportRest: cb => observeRawSteps(e=>{
-        if (!sensorsAllowed(getSettingsSnapshot())) return;
+      observeWalkingRunningTransportRest: cb => {
+        const pace=new StepPaceEstimator();
+        let seenEpoch=activityEpoch;
+        return observeRawSteps(e=>{
+        if (!sensorsAllowed(getSettingsSnapshot())) {
+          activityEpoch++;pace.reset();return;
+        }
+        if(seenEpoch!==activityEpoch){seenEpoch=activityEpoch;pace.reset();}
+        if(e.discontinuity===true)pace.reset();
         const age=Date.now()-e.timestamp;
         if(!Number.isSafeInteger(e.timestamp)||age< -1000||age>4500)return;
         const rate=pace.ingest(e.timestamp);
         if(rate.activity!=="unknown")cb({activity:rate.activity,confidence:rate.confidence,bpm:rate.bpm,timestamp:e.timestamp});
-      }),
+        });
+      },
     },
     performance: {
       snapshot: async () => {
