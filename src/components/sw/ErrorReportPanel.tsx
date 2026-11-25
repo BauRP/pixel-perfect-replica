@@ -7,6 +7,7 @@ import { currentStoredPlayback } from "@/lib/sw/native-music-library";
 import { getSettingsSnapshot } from "@/lib/sw/settings";
 import { buildSafeDiagnosticsReport } from "@/lib/sw/safe-diagnostics-report";
 import { buildSupportReport, copySupportReport, readFreezeEvidence } from "@/lib/sw/freeze-report";
+import { inspectFermataPackage } from "@/lib/sw/fermata-native";
 
 /** The very last Settings section. It does not start any microphone or audio.
  * No native requests or timers are made until the user opens the report. */
@@ -24,10 +25,10 @@ export function ErrorReportPanel() {
     setLoading(true);
     setCopyMessage("");
     try {
-      const [evidenceResult,sensorsResult,performanceResult,pcmResult,wavResult]=
+      const [evidenceResult,sensorsResult,performanceResult,pcmResult,wavResult,fermataResult]=
         await Promise.allSettled([
           readFreezeEvidence(),sensorStatus(),getNativePerformanceSnapshot(),
-          currentAudioSinkStatus(),currentStoredPlayback(),
+          currentAudioSinkStatus(),currentStoredPlayback(),inspectFermataPackage(),
         ]);
       const value=<T,>(entry:PromiseSettledResult<T>):T|null =>
         entry.status==="fulfilled"?entry.value:null;
@@ -39,6 +40,7 @@ export function ErrorReportPanel() {
         performance:value(performanceResult),
         pcm:value(pcmResult),
         wav:value(wavResult),
+        fermata:value(fermataResult),
       });
       if(alive.current){
         setReport(buildSupportReport(value(evidenceResult),diagnostic));

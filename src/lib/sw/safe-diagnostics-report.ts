@@ -10,6 +10,7 @@ export type DiagnosticSnapshot = {
   performance?:{battery?:number;ramMb?:number;thermalStatus?:number;lowMemory?:boolean;inferenceSkipped?:number;inferenceThrottled?:number;analysisStride?:number;analysisActive?:boolean}|null;
   pcm?:{serviceActive?:boolean;readyForPcm?:boolean;underruns?:number}|null;
   wav?:{state?:string}|null;
+  fermata?:{manifestPresent?:boolean;modelPackaged?:boolean;tokenizerPackaged?:boolean;mnnPackaged?:boolean;synthPackaged?:boolean;soundbankPackaged?:boolean;packageComplete?:boolean;arm64Supported?:boolean}|null;
 };
 const yn=(x:unknown):string=>x===true?"да":x===false?"нет":"нет данных";
 const integer=(v:unknown,min:number,max:number):string=>
@@ -47,6 +48,14 @@ export function buildSafeDiagnosticsReport(s:DiagnosticSnapshot):string {
       s.wav?.state==="preparing"?"подготовка":
       s.wav?.state==="stopped"?"остановлен":"нет данных"),
     "Fermata/MNN: не подключена",
+    "Пакет Fermata в APK: "+yn(s.fermata?.manifestPresent),
+    "Веса Fermata в APK: "+yn(s.fermata?.modelPackaged),
+    "Оригинальный токенизатор Fermata: "+yn(s.fermata?.tokenizerPackaged),
+    "Библиотека MNN для Android: "+yn(s.fermata?.mnnPackaged),
+    "Синтезатор инструментов в APK: "+yn(s.fermata?.synthPackaged),
+    "Банк инструментов в APK: "+yn(s.fermata?.soundbankPackaged),
+    "Пакет музыки полностью укомплектован: "+yn(s.fermata?.packageComplete),
+    "Android ARM64: "+yn(s.fermata?.arm64Supported),
   ].join("\n");
 }
 /** Never report success until Clipboard API or WebView fallback confirms. */

@@ -32,7 +32,7 @@ const fields=[
 export function parseFermataPackageStatus(value:unknown):FermataPackageStatus|null {
   if(value===null || typeof value!=="object")return null;
   const data=value as Record<string,unknown>;
-  if(data.model!=="haster/Fermata-0.2B-v1" || data.runtime!=="Alibaba/MNN")return null;
+  if(data["model"]!=="haster/Fermata-0.2B-v1" || data["runtime"]!=="Alibaba/MNN")return null;
   const status:Record<string,unknown>={
     model:"haster/Fermata-0.2B-v1",runtime:"Alibaba/MNN",generationReady:false,
   };

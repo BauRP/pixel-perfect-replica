@@ -8,6 +8,7 @@ describe("offline diagnostic report without sensitive data",()=>{
       sensors:{stepsSupported:true,stepsActive:true,activityGranted:true,captureRateHz:48000},
       performance:{battery:10,ramMb:2500,thermalStatus:4,analysisActive:true,analysisStride:3},
       wav:{state:"playing",id:"SECRET-ID",actualOutput:"PRIVATE-HEADSET"} as {state:"playing"},
+      fermata:{manifestPresent:true,modelPackaged:true,tokenizerPackaged:true,mnnPackaged:false,synthPackaged:false,soundbankPackaged:false,packageComplete:false,arm64Supported:true},
     });
     expect(report).toContain("Шагов за проверку: 37");
     expect(report).toContain("Шагомер Android запущен: да");
@@ -15,6 +16,9 @@ describe("offline diagnostic report without sensitive data",()=>{
     expect(report).toContain("Анализ YAMNet запущен: да");
     expect(report).toContain("Частота проверки YAMNet, каждое N-е окно: 3");
     expect(report).toContain("Заряд (%): 10");
+    expect(report).toContain("Веса Fermata в APK: да");
+    expect(report).toContain("Библиотека MNN для Android: нет");
+    expect(report).toContain("Пакет музыки полностью укомплектован: нет");
     expect(report).toContain("Тепловой статус (0–6): 4");
     expect(report).not.toContain("SECRET-ID");
     expect(report).not.toContain("PRIVATE-HEADSET");
@@ -30,6 +34,7 @@ describe("offline diagnostic report without sensitive data",()=>{
     expect(report).toContain("Анализ YAMNet запущен: нет данных");
     expect(report).toContain("Заряд (%): нет данных");
     expect(report).toContain("Fermata/MNN: не подключена");
+    expect(report).toContain("Веса Fermata в APK: нет данных");
   });
   it("copies only after actual confirmation or a successful fallback",async()=>{
     const copied:string[]=[];
