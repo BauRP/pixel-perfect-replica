@@ -20,6 +20,7 @@ export interface SensorsStatus {
   microphoneGranted: boolean;
   activityGranted: boolean;
   stepsSupported: boolean;
+  stepsActive?: boolean;
   recording: boolean;
   actualInput: string;
   preferredInput?: "auto" | "headset" | "phone";

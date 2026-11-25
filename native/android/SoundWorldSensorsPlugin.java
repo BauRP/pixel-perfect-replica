@@ -104,7 +104,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private Thread captureThread;
   private SensorManager sensorManager;
   private Sensor stepDetector;
-  private boolean listeningSteps = false;
+  private volatile boolean listeningSteps = false;
   private volatile String actualInput = "";
   private volatile String actualKind = "";
   private volatile String inputPreference = "auto";
@@ -277,6 +277,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     SensorManager sm = (SensorManager) getContext().getSystemService(Context.SENSOR_SERVICE);
     o.put("stepsSupported", sm != null && sm.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR) != null);
     o.put("recording", capturing.get());
+    o.put("stepsActive", listeningSteps);
     o.put("actualInput", actualInput);
     o.put("preferredInput", inputPreference);
     o.put("actualInputCategory", actualInputType == AudioDeviceInfo.TYPE_BUILTIN_MIC ? "phone" :

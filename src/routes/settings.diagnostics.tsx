@@ -201,6 +201,44 @@ function Diagnostics() {
       setHardware(await getNativePerformanceSnapshot());
     } finally {if(operation===operationEpoch.current){pendingRef.current=false;setPending(false);}}
   };
+  // Android stops its microphone and step detector when the Activity loses
+  // foreground. Synchronize the UI after returning instead of showing "active"
+  // while the native sensors have already been released.
+  useEffect(()=>{
+    if(!active || pending)return;
+    let alive=true;
+    const reconcile=()=>{
+      if(document.hidden)return;
+      void sensorStatus().then(actual=>{
+        if(!alive || !actual)return;
+        setStatus(actual);
+        const running=stepsOnly ? actual.stepsActive===true : actual.recording===true;
+        if(running)return;
+        countingSteps.current=false;
+        collectingSound.current=false;
+        stepCounter.current.stop();
+        soundLog.current.stop();
+        resetEvidence.current();
+        routeFence.current.reset();
+        setActive(false);
+        setStepsOnly(false);
+        setMicRms(null);
+        setMicInput("");
+        setPlan(null);
+        setEnvironment("Обстановка не определена");
+        setSteps("Проверка остановлена Android при выходе из приложения");
+      });
+    };
+    const onVisibility=()=>{if(!document.hidden)reconcile();};
+    document.addEventListener("visibilitychange",onVisibility);
+    window.addEventListener("focus",reconcile);
+    return ()=>{
+      alive=false;
+      document.removeEventListener("visibilitychange",onVisibility);
+      window.removeEventListener("focus",reconcile);
+    };
+  },[active,pending,stepsOnly]);
+
   const copyReport=async()=>{
     const report=buildSafeDiagnosticsReport({
       android:androidSensorsAvailable(),musicOnly:settings.musicOnlyMode,
