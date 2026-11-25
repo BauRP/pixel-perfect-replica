@@ -1418,3 +1418,20 @@
 - Переписаны краткие тексты всех 11 подсказок с примерами лево/центр/право и слабая/средняя/сильная, без ложных обещаний музыкального движка. Настройки и обработчики музыкальных параметров не изменялись.
 - Обновлены Vitest и Python-тесты на размер, визуальный контраст, клик/касание, открытие/закрытие и наличие 11 подсказок.
 - Работы над зависаниями, диагностикой, AI и остальными направлениями по распоряжению пользователя НЕ ведутся. Проценты 14 направлений не меняются по одной косметической правке.
+
+### 2026-11-25 — Scope ONLY Astra findings #5–#16, all other directions paused
+- #5 urgent Stop/Pause no longer waits for History export or full reload.
+- #6 WAV exported-copy SHA-256 verification cached only while local source and MediaStore GENERATION_MODIFIED + DB version remain unchanged; invalid/missing provider metadata falls back to full digest.
+- #7 History duplicate refreshes coalesced in one in-flight request.
+- #8 microphone startup and stop use one bounded command worker; duplicated stop requests share one queued job instead of starting unlimited threads.
+- #9 YAMNet classifier ownership retained until the last inference worker actually exits. Further starts rejected during cleanup; no unsafe close of live classifier.
+- #10 Diagnostics Stop can cancel preparation. UI rechecks native recording/steps state after foreground return.
+- #11 rate-limited error reporting in JS and Android; a single background writer instead of per-error native threads.
+- #12 replaced Array.at(-1) for older WebView compatibility.
+- #13 dislike rows subscribe to specific selected settings; History displays first 30 cards per section with explicit Show More.
+- #14 History, Diagnostics and Dislikes code lazy-loaded on navigation, without editing generated router files.
+- #15 all three Android build configurations stage native freeze monitor and plugin.
+- #16 MIDI ready/render/submit and cleanup operations bounded with cancellation observation; audio queue drain checked before attempting WAV finalization.
+- Added 12 focused regression source contracts, in addition to existing real tests and native Gradle build. The test checks do not prove device-specific freeze elimination.
+- All 14 historic functional progress percentages remain unchanged; no new music engine, UI redesign or unrelated features.
+- Commit/code results must NOT be called a green APK until the actual GitHub Actions workflow and Release asset succeed.
