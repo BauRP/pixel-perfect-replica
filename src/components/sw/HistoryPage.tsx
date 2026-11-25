@@ -12,6 +12,16 @@ import { verifiedHistoryProgress, verifiedHistorySeek, reconcileHistoryPlayback,
 import { HISTORY_DISK_SCAN_TIMEOUT_MS, historyIsEmpty, type HistoryLoadPhase } from "@/lib/sw/history-loading";
 import { normalizeHistoryClips } from "@/lib/sw/history-metadata";
 
+type LibraryData={last:ClipMeta[];fav:ClipMeta[];exp:ClipMeta[];journey:ClipMeta[]};
+type Playback={state:"playing"|"paused"|"stopped"|"preparing";clipId:string};
+function Empty({ icon:I,title,text }: {icon:typeof Clock;title:string;text:string}) {
+  return <div className="flex flex-col items-center rounded-2xl border border-dashed border-border px-6 py-12 text-center">
+    <I className="size-8 text-muted-foreground"/>
+    <p className="mt-3 font-semibold">{title}</p>
+    <p className="mt-1 text-sm text-muted-foreground">{text}</p>
+  </div>;
+}
+
 export default function HistoryPage(){
   const [data,setData]=useState<LibraryData>({last:[],fav:[],exp:[],journey:[]});
   const [loadPhase,setLoadPhase]=useState<HistoryLoadPhase>("loading");
