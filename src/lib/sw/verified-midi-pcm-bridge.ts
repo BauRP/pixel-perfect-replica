@@ -118,11 +118,13 @@ export async function renderContinuousVerifiedMidiToPcm(
   source:RealScoreSource, renderer:VerifiedMidiRenderer, consumer:RealPcmConsumer,
   options?:SequenceOptions,
 ):Promise<SequenceOutcome> {
+  let finished=false;
   const result=await streamRealMidiScores(source,(score,onProgress)=>
     renderVerifiedMidiToPcm(score,renderer,consumer,{
-      isCancelled:()=>options?.signal?.aborted===true||options?.isCancelled?.()===true,
+      isCancelled:()=>finished||options?.signal?.aborted===true||options?.isCancelled?.()===true,
       onProgress,
     }),options);
+  finished=true;
   if(!result.ok&&consumer.stop){
     try{await awaitMidiExternal(()=>consumer.stop!());}
     catch{/* Preserve original cause; do not hold Stop forever. */}

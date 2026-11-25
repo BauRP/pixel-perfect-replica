@@ -102,6 +102,8 @@ const GM_BY_ID:Readonly<Record<string,number|"drums">>={
   "i1-05":6,   // harpsichord
   "i1-06":4,   // Rhodes / electric piano 1
   "i1-07":5,   // electric piano 2
+  "i2-03":38,  // synth bass 1
+  "i2-04":89,  // warm pad
   "i3-01":25,  // acoustic steel guitar
   "i3-02":27,  // clean electric guitar
   "i3-03":24,  // classical nylon guitar
@@ -193,6 +195,9 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
   const bannedPrograms=new Set(
     [...banned].map(id=>GM_BY_ID[id]).filter((p):p is number=>typeof p==="number"),
   );
+  if(banned.has("i2-01")||banned.has("i2-02")){
+    bannedPrograms.add(38);bannedPrograms.add(89);
+  }
   const explicit=request.preferredInstruments.length>0;
   const effects=new Set(request.directorEffects);
   let automatic=[...defaultsFor(preferred)];
@@ -203,8 +208,8 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
       automatic=automatic.filter(id=>id!=="i5-01"||effects.has("accent-step-percussion"));
     if(effects.has("brighter-melody")&&!automatic.includes("i6-06"))
       automatic.push("i6-06");
-    if(effects.has("deeper-pads")&&!automatic.includes("i7-01"))
-      automatic.push("i7-01"); // existing GM string ensemble, not invented synth pad
+    if(effects.has("deeper-pads")&&!automatic.includes("i2-04"))
+      automatic.push("i2-04"); // General MIDI warm pad
   }
   const ids=explicit?request.preferredInstruments:automatic;
   if(explicit && ids.some(id=>GM_BY_ID[id]===undefined))

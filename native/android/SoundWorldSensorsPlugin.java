@@ -625,6 +625,10 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
           actualInput = String.valueOf(routed.getProductName());
           actualKind = String.valueOf(routed.getType());
           actualInputType = routed.getType();
+        } else {
+          actualInput = "Маршрут ещё не определён";
+          actualKind = "unknown";
+          actualInputType = -1;
         }
         JSObject data = new JSObject();
         data.put("rms", rms); data.put("timestamp", System.currentTimeMillis());
@@ -852,6 +856,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     r.put("name", actualInput);
     r.put("kind", actualKind);
     r.put("output", "Не проверен");
+    r.put("inputType", actualInputType);
+    r.put("routeConfirmed", capturing.get() && actualInputType>=0);
     call.resolve(r);
   }
 

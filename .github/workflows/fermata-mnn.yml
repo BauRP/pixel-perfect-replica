@@ -6,6 +6,7 @@ on:
     paths:
       - 'scripts/prepare_fermata_mnn.py'
       - 'scripts/run_fermata_mnn.py'
+      - 'native/android/fermata-mnn/**'
       - '.github/workflows/fermata-mnn.yml'
   workflow_dispatch:
 permissions:
@@ -46,3 +47,31 @@ jobs:
           python scripts/run_fermata_mnn.py fermata-conversion/mnn --output "$RUNNER_TEMP/fermata-result.json"
           python -c 'import json,sys; p=json.load(open(sys.argv[1])); print("Generated real token count:", len(p["generatedTokenIds"])); print("Seconds:", p["elapsedSeconds"])' "$RUNNER_TEMP/fermata-result.json"
           echo 'Actual host inference completed; this is not Android playback or a music-ready APK.' >> "$GITHUB_STEP_SUMMARY"
+
+  android-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build actual Android ARM64 JNI and MNN (no network features)
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch 3.6.1 https://github.com/alibaba/MNN.git "$RUNNER_TEMP/MNN"
+          sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
+          ndk="$ANDROID_HOME/ndk/27.2.12479018"
+          cmake -S native/android/fermata-mnn -B "$RUNNER_TEMP/fermata-arm64" \
+            -DMNN_SOURCE="$RUNNER_TEMP/MNN" \
+            -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-31 \
+            -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/fermata-arm64" --target soundworld_fermata_mnn --parallel 2
+          lib="$RUNNER_TEMP/fermata-arm64/libsoundworld_fermata_mnn.so"
+          test -s "$lib"
+          "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h "$lib" | grep -F AArch64
+          "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D "$lib" | grep Java_kz_soundworld_ar_SoundWorldFermataPlugin_generateMnnIds
+          echo 'Android ARM64 MNN JNI compiled; not yet packaged or run on a phone.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Cache the built ARM64 runtime for eventual verified packaging
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/fermata-arm64/libsoundworld_fermata_mnn.so
+          key: fermata-arm64-mnn-3.6.1-${{ hashFiles('native/android/fermata-mnn/**') }}

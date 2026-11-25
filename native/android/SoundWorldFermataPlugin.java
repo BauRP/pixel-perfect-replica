@@ -36,6 +36,8 @@ import org.json.JSONObject;
  */
 @CapacitorPlugin(name = "SoundWorldFermata")
 public final class SoundWorldFermataPlugin extends Plugin {
+  private File preparedModelDirectory;
+  private static native int[] generateMnnIds(String configPath, int[] inputIds, int maxTokens);
   private final ThreadPoolExecutor inspector = new ThreadPoolExecutor(
     1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(2), r -> {
       Thread t = new Thread(r, "SoundWorld-Fermata-Package");
@@ -270,6 +272,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
     try {
       inspector.execute(()->{
         try {
+          preparedModelDirectory=null;
           JSONObject manifest=new JSONObject(new String(
             readBounded(context,"manifest.json",256*1024),StandardCharsets.UTF_8));
           if(manifest.optInt("schemaVersion")!=1 ||
@@ -328,6 +331,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
           if(installed==null)throw new java.io.IOException("Cannot list model directory");
           for(File file:installed)if(!names.contains(file.getName())&&
              (!file.isFile()||!file.delete()))throw new java.io.IOException("Stale model asset");
+          preparedModelDirectory=dir;
           JSObject result=new JSObject();
           result.put("modelDirectory",dir.getAbsolutePath());
           result.put("generationReady",false);
@@ -353,6 +357,44 @@ public final class SoundWorldFermataPlugin extends Plugin {
       }
     }
     return hexDigest(hash.digest());
+  }
+
+  /** Actual raw-ID MNN inference. No audio readiness claim. Only the
+   * previously verified model in the private directory can be opened. */
+  @PluginMethod public void generateIds(PluginCall call) {
+    final JSONArray input=call.getArray("tokenIds");
+    final Integer maximum=call.getInt("maxTokens");
+    if(input==null||input.length()<1||input.length()>32||
+       maximum==null||maximum<1||maximum>4096) {
+      call.reject("Некорректный запрос MNN");return;
+    }
+    try {
+      inspector.execute(()->{
+        try {
+          File dir=preparedModelDirectory;
+          if(dir==null)throw new IllegalStateException("Model not prepared");
+          final int[] ids=new int[input.length()];
+          for(int i=0;i<ids.length;i++){
+            Object value=input.get(i);
+            if(!(value instanceof Integer)||((Integer)value)<0||((Integer)value)>=9507)
+              throw new IllegalArgumentException("Invalid token ID");
+            ids[i]=(Integer)value;
+          }
+          System.loadLibrary("soundworld_fermata_mnn");
+          int[] output=generateMnnIds(new File(dir,"config.json").getAbsolutePath(),ids,maximum);
+          if(output==null||output.length<1||output.length>maximum)
+            throw new IllegalStateException("No actual model output");
+          JSONArray resultIds=new JSONArray();
+          for(int id:output){
+            if(id<0||id>=9507)throw new IllegalStateException("Invalid model output");
+            resultIds.put(id);
+          }
+          JSObject result=new JSObject();
+          result.put("tokenIds",resultIds);
+          call.resolve(result);
+        }catch(Exception | LinkageError e){call.reject("MNN: локальные вычисления недоступны");}
+      });
+    }catch(RejectedExecutionException e){call.reject("Музыкальный движок занят");}
   }
 
   @PluginMethod public void inspect(PluginCall call) {

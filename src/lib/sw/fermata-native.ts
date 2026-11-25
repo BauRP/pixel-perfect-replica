@@ -22,7 +22,7 @@ export type FermataPackageStatus = {
   arm64Supported:boolean;
   generationReady:false;
 };
-type NativeFermata = {inspect():Promise<unknown>;encodeHeader(input:{tokens:string[]}):Promise<unknown>;decodeTokens(input:{tokenIds:number[]}):Promise<unknown>;prepareModel():Promise<unknown>};
+type NativeFermata = {inspect():Promise<unknown>;encodeHeader(input:{tokens:string[]}):Promise<unknown>;decodeTokens(input:{tokenIds:number[]}):Promise<unknown>;prepareModel():Promise<unknown>;generateIds(input:{tokenIds:number[];maxTokens:number}):Promise<unknown>};
 const native=registerPlugin<NativeFermata>("SoundWorldFermata");
 const fields=[
   "manifestPresent","modelPackaged","tokenizerPackaged","mnnPackaged",
@@ -89,6 +89,24 @@ export async function prepareNativeFermataModel():Promise<string> {
      !directory.endsWith("/fermata-mnn-v1"))
     throw new Error("Не подготовлены локальные файлы MNN");
   return directory;
+}
+
+/** Run actual model inference with original atomic token IDs. The full
+ * player remains unavailable until the musical decoder and synth exist. */
+export async function generateNativeFermataTokens(header:Readonly<FermataHeader>,
+    maxTokens=2048):Promise<readonly string[]> {
+  if(!Number.isSafeInteger(maxTokens)||maxTokens<1||maxTokens>4096)
+    throw new Error("Некорректное ограничение генерации");
+  await prepareNativeFermataModel();
+  const ids=await encodeNativeFermataHeader(header);
+  // The native call remains occupied until MNN returns; do not create a
+  // second model in response to a JavaScript timeout.
+  const value=await native.generateIds({tokenIds:[...ids],maxTokens});
+  const output=(value as {tokenIds?:unknown}|null)?.tokenIds;
+  if(!Array.isArray(output)||output.length<1||output.length>maxTokens||
+     output.some(id=>typeof id!=="number"||!Number.isSafeInteger(id)||id<0||id>=9507))
+    throw new Error("MNN не вернула настоящие музыкальные токены");
+  return decodeNativeFermataTokens(output as number[]);
 }
 
 export function explainFermataAvailability(status:FermataPackageStatus|null):string {

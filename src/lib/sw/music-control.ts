@@ -117,10 +117,10 @@ export class MusicControlPlanner {
     const activity = settings.activityMode === "running" ? "running" : settings.activityMode === "walking" ? "walking" :
       settings.activityMode === "rest" || settings.activityMode === "transport" ? "unknown" :
       !fresh ? "unknown" : fresh.bpm >= 145 ? "running" : "walking";
-    const strength = settings.environmentReaction === "weak" ? .12 :
-      settings.environmentReaction === "medium" ? .28 : .44;
+    const stepStrength = settings.stepsInfluence === "weak" ? .12 :
+      settings.stepsInfluence === "active" ? .6 : .32;
     const density = clamp(.36 + Math.max(0, settings.mood) * .035 +
-      (activity === "running" ? .11 : 0) * strength / .28, .25, .7);
+      (activity === "running" && basePulse!==null ? .11 : 0) * stepStrength / .32, .25, .7);
     const ambientFresh = !settings.musicOnlyMode &&
       Number.isSafeInteger(now) && Number.isSafeInteger(this.lastAmbientEvidenceAt) &&
       this.lastAmbientEvidenceAt > 0 && now >= this.lastAmbientEvidenceAt &&
@@ -142,7 +142,7 @@ export class MusicControlPlanner {
     this.regenerationDue = false;
     return {
       atmosphere: env, tempoBpm, stepPulseBpm,
-      stepAccentStrength: settings.stepsInfluence === "weak" ? .12 : settings.stepsInfluence === "active" ? .6 : .32,
+      stepAccentStrength: stepStrength,
       mood: settings.mood,
       activity, density, transitionMs: transitions[settings.atmosphereTransition],
       regenerate, lockedAtmosphere: this.locked,
