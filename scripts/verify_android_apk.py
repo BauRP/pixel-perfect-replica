@@ -5,6 +5,8 @@ AndroidManifest.xml is AXML binary XML, so decode the uses-sdk tag directly
 rather than depending on aapt2's version-specific human-readable output.
 """
 import struct
+import hashlib
+import json
 import sys
 import zipfile
 
@@ -37,6 +39,21 @@ def verify(path):
         missing_arm64 = sorted(libs_by_abi["x86_64"] - libs_by_abi["arm64-v8a"])
         assert not missing_arm64, f"Native libraries absent for physical arm64 phones: {missing_arm64}"
         print(f"VERIFIED: {len(libs_by_abi['arm64-v8a'])} arm64 phone libraries and {len(libs_by_abi['x86_64'])} x86_64 emulator libraries")
+        manifest_name="assets/offline-music/manifest.json"
+        if manifest_name in z.namelist():
+            manifest=json.loads(z.read(manifest_name))
+            assert manifest.get("model")=="haster/Fermata-0.2B-v1"
+            assert manifest.get("runtime")=="Alibaba/MNN"
+            for item in manifest["files"]:
+                name=("lib/arm64-v8a/" if item["role"] in ("mnn-arm64","synth-arm64")
+                    else "assets/offline-music/")+item["path"]
+                assert z.getinfo(name).file_size==item["sizeBytes"], "Incorrect packaged music asset size"
+                digest=hashlib.sha256()
+                with z.open(name) as file:
+                    for chunk in iter(lambda:file.read(1024*1024),b""):
+                        digest.update(chunk)
+                assert digest.hexdigest()==item["sha256"], "Packaged music asset checksum mismatch"
+            print("VERIFIED: actual staged music files preserved in APK; inference not verified")
         data=z.read("AndroidManifest.xml")
     assert u16(data,0)==3, "Not an Android binary manifest"
     strings=[]

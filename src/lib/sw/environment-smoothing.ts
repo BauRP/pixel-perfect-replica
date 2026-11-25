@@ -10,9 +10,9 @@ export function classifyAtmosphere(label: string): Atmosphere {
   // Match whole sound-class words, never substrings: AudioSet "Train"
   // contains "rain", and "Window" contains "wind".
   const name = typeof label === "string" ? label.toLowerCase() : "";
-  if (/\b(?:rain|raining|rainfall|raindrops?|thunder|thunderstorm|drizzle)\b/.test(name)) return "rain";
+  if (/\b(?:rain|raining|rainfall|raindrops?|thunder|thunderstorm|drizzle|patter)\b/.test(name)) return "rain";
   if (/\b(?:car|cars|vehicle|vehicles|bus|buses|truck|trucks|motorcycle|motorcycles|traffic|engine|roadway|train|trains|railroad|railway|subway|tram)\b/.test(name)) return "traffic";
-  if (/\b(?:bird|birds|birdsong|wind|windy|insect|insects|forest|animal|animals)\b/.test(name)) return "nature";
+  if (/\b(?:bird|birds|birdsong|wind|windy|insect|insects|forest|animal|animals|stream|waterfall|ocean)\b/.test(name)) return "nature";
   if (/ventilation|air conditioning|inside, small room/.test(name)) return "indoor";
   // "Silence" is a real AudioSet/YAMNet output class, not a guessed lack of activity.
   if (name.trim() === "silence") return "quiet";
@@ -84,9 +84,13 @@ export class StepPaceEstimator {
     if (this.times.length < 4) return { activity: "unknown" as const, bpm: 0, confidence: 0 };
     const intervals = this.times.slice(1).map((t,i) => t-this.times[i]!).filter(ms => ms >= 200 && ms <= 2200).sort((a,b)=>a-b);
     if (intervals.length < 3) return { activity: "unknown" as const, bpm: 0, confidence: 0 };
-    const median = intervals[Math.floor(intervals.length/2)]!;
-    const bpm = Math.round(60000/median);
-    return { activity: bpm >= 145 ? "running" as const : "walking" as const, bpm, confidence: Math.min(.85, 0.45 + .05*intervals.length) };
+    const mid=Math.floor(intervals.length/2);
+    const median=intervals.length%2===0?(intervals[mid-1]!+intervals[mid]!)/2:intervals[mid]!;
+    const bpm=Math.round(60000/median);
+    const consistent=intervals.filter(ms=>Math.abs(ms-median)<=median*.30).length;
+    const confidence=Math.min(.85,0.45+.05*intervals.length)*consistent/intervals.length;
+    if(confidence<.55)return {activity:"unknown" as const,bpm:0,confidence:0};
+    return {activity:bpm>=145?"running" as const:"walking" as const,bpm,confidence};
   }
   reset() { this.times = []; }
 }

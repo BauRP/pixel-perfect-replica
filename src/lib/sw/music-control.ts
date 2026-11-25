@@ -127,7 +127,8 @@ export class MusicControlPlanner {
       now - this.lastAmbientEvidenceAt <= AMBIENT_EVIDENCE_MAX_AGE_MS;
     // Old YAMNet scenes must not keep affecting arrangement after analysis
     // ends or Bluetooth switches. Do not synthesize a new "quiet" observation.
-    const env: Atmosphere = ambientFresh ? this.atmosphere : "unknown";
+    const env: Atmosphere = !settings.musicOnlyMode && (ambientFresh || this.locked)
+      ? this.atmosphere : "unknown";
     const directorEffects: string[] = [];
     const enabled = new Set(settings.directorRules.filter(x=>x.enabled).map(x=>x.id));
     if (stepPulseBpm !== null && enabled.has("steps-drums")) directorEffects.push("accent-step-percussion");

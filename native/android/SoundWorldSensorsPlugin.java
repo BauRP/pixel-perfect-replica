@@ -187,8 +187,11 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       memory.getMemoryInfo(info);
       lowRam = info.lowMemory;
     }
-    return SoundWorldPowerPolicy.analysisStride(
+    int stride=SoundWorldPowerPolicy.analysisStride(
       batteryMode, thermal, batteryPercent, lowRam);
+    if (!"maxPerformance".equals(batteryMode) && power!=null && power.isPowerSaveMode())
+      stride=Math.max(stride,2);
+    return stride;
   }
 
   private void schedulePowerRefresh(long epoch) {

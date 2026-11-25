@@ -54,3 +54,57 @@ export function midiEventFrame(atUs:number,sampleRate=48000):number|null {
   const frames=Math.round(atUs*sampleRate/1_000_000);
   return Number.isSafeInteger(frames)?frames:null;
 }
+
+
+/** Serialize an authentic decoded score for a MIDI-file-based local synth.
+ * Format 0, fixed 1000 ticks/s (500 TPQN at 120 BPM); quantization <=1 ms.
+ * Does not invent notes or render audio. One GM program per melodic channel
+ * prevents an instrument change from corrupting a different sounding voice.
+ */
+export function encodeDecodedMidiFile(score:unknown):Uint8Array {
+  const scheduled=scheduleDecodedMidiNotes(score);
+  if(!scheduled.ok)throw new Error(scheduled.reason);
+  const programs=new Map<number,number>();
+  for(const e of scheduled.events) {
+    if(e.channel===9)continue;
+    const previous=programs.get(e.channel);
+    if(previous!==undefined&&previous!==e.program)
+      throw new Error("Multiple instruments on one MIDI channel");
+    programs.set(e.channel,e.program);
+  }
+  const body:number[]=[0,0xff,0x51,3,0x07,0xa1,0x20];
+  for(const [channel,program] of programs)body.push(0,0xc0|channel,program);
+  const delta=(value:number)=>{
+    if(!Number.isSafeInteger(value)||value<0||value>0x0fffffff)throw new Error("Invalid MIDI delta");
+    const bytes=[value&127];
+    while((value>>>=7)>0)bytes.unshift((value&127)|128);
+    body.push(...bytes);
+  };
+  let previous=0;
+  // Reject sub-millisecond notes when their times collapse on the grid.
+  // A score with overlapping equal channel/pitch is ambiguous in GM:
+  // reject rather than silently cut or invent a sustained voice.
+  const active=new Map<string,number>();
+  for(const e of scheduled.events) {
+    const tick=Math.round(e.atUs/1000);
+    const key=e.channel+":"+e.pitch;
+    if(e.kind==="noteOn"){
+      if(active.has(key))throw new Error("Overlapping identical MIDI notes");
+      active.set(key,tick);
+    }else{
+      const start=active.get(key);
+      if(start===undefined||tick<=start)throw new Error("MIDI note shorter than one tick");
+      active.delete(key);
+    }
+    delta(tick-previous);
+    body.push((e.kind==="noteOn"?0x90:0x80)|e.channel,e.pitch,e.velocity);
+    previous=tick;
+  }
+  delta(Math.round(scheduled.durationUs/1000)-previous);
+  body.push(0xff,0x2f,0);
+  const bytes=new Uint8Array(22+body.length);
+  bytes.set([0x4d,0x54,0x68,0x64,0,0,0,6,0,0,0,1,1,244,0x4d,0x54,0x72,0x6b]);
+  new DataView(bytes.buffer).setUint32(18,body.length,false);
+  bytes.set(body,22);
+  return bytes;
+}

@@ -278,7 +278,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
             throw new IllegalArgumentException("Wrong model manifest");
           JSONArray entries=manifest.getJSONArray("files");
           if(entries.length()>128)throw new IllegalArgumentException("Too many assets");
-          File dir=new File(context.getFilesDir(),"fermata-mnn-v1");
+          File dir=new File(context.getNoBackupFilesDir(),"fermata-mnn-v1");
           if(!dir.isDirectory()&&!dir.mkdirs())throw new java.io.IOException("Model directory unavailable");
           Set<String> names=new HashSet<>();
           for(int i=0;i<entries.length();i++) {

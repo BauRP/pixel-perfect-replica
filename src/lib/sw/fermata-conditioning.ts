@@ -168,8 +168,15 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
   // with the same coarse token. Familiar keeps favorite/history priority.
   const pool=notWeak.length?notWeak:permitted;
   const ranked=[...pool.filter(id=>emph.has(id)),...pool.filter(id=>!emph.has(id))];
+  const defaultsFor=(id:string):readonly string[]=>{
+    if(id.startsWith("g12-"))return ["i3-01","i3-03","i4-07"];
+    if(id==="g13-s04")return ["i8-05"]; // Japanese koto
+    if(id==="g15-s04")return ["i8-08"]; // tango accordion
+    if(id==="g15-s05")return ["i3-03"]; // flamenco guitar
+    return DEFAULT_INSTRUMENTS[COARSE_GENRE[id.slice(0,3)]!]??[];
+  };
   const playable=request.preferredInstruments.length>0?ranked:
-    ranked.filter(id=>DEFAULT_INSTRUMENTS[COARSE_GENRE[id.slice(0,3)]!]?.length>0);
+    ranked.filter(id=>defaultsFor(id).length>0);
   const distinct=playable.filter((id,i)=>playable.findIndex(other=>
     COARSE_GENRE[other.slice(0,3)]===COARSE_GENRE[id.slice(0,3)])===i);
   const preferred=request.diversity==="familiar"?playable[0]:
@@ -188,7 +195,7 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
   );
   const explicit=request.preferredInstruments.length>0;
   const effects=new Set(request.directorEffects);
-  let automatic=[...DEFAULT_INSTRUMENTS[genre]];
+  let automatic=[...defaultsFor(preferred)];
   if(automatic.length>0) {
     if(effects.has("accent-step-percussion")&&!automatic.includes("i5-01"))
       automatic.push("i5-01");
