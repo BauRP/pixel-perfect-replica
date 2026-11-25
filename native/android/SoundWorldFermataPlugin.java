@@ -225,6 +225,41 @@ public final class SoundWorldFermataPlugin extends Plugin {
     }catch(RejectedExecutionException e){call.reject("Музыкальный токенизатор занят");}
   }
 
+  /** Reverse the actual model output IDs. Musical parsing is a separate
+   * stage; never reinterpret numeric IDs using a guessed token grammar. */
+  @PluginMethod public void decodeTokens(PluginCall call) {
+    final JSONArray ids=call.getArray("tokenIds");
+    if(ids==null||ids.length()<1||ids.length()>4096) {
+      call.reject("Некорректная длина результата Fermata");return;
+    }
+    final Context context=getContext().getApplicationContext();
+    try {
+      inspector.execute(()->{
+        try {
+          JSONObject vocab=loadAtomicVocabulary(context);
+          String[] byId=new String[9507];
+          Iterator<String> keys=vocab.keys();
+          while(keys.hasNext()) {
+            String token=keys.next();
+            byId[vocab.getInt(token)]=token;
+          }
+          JSONArray tokens=new JSONArray();
+          for(int i=0;i<ids.length();i++) {
+            Object value=ids.get(i);
+            if(!(value instanceof Integer))throw new IllegalArgumentException("Invalid token ID");
+            int id=(Integer)value;
+            if(id<0||id>=byId.length||byId[id]==null)
+              throw new IllegalArgumentException("Unknown token ID");
+            tokens.put(byId[id]);
+          }
+          JSObject result=new JSObject();
+          result.put("tokens",tokens);
+          call.resolve(result);
+        }catch(Exception e){call.reject("Не удалось прочитать оригинальные музыкальные токены");}
+      });
+    }catch(RejectedExecutionException e){call.reject("Музыкальный токенизатор занят");}
+  }
+
   @PluginMethod public void inspect(PluginCall call) {
     final Context context=getContext().getApplicationContext();
     try {

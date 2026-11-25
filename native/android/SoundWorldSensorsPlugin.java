@@ -557,20 +557,19 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         AudioDeviceInfo inputNow = rec.getRoutedDevice();
         int newInputType = inputNow != null ? inputNow.getType() : -1;
         int newInputDeviceId = inputNow != null ? inputNow.getId() : -1;
-        if (newInputDeviceId >= 0 && priorInputDeviceId >= 0 &&
-            (newInputDeviceId != priorInputDeviceId || newInputType != priorInputType)) {
+        boolean routeChanged = newInputDeviceId != priorInputDeviceId ||
+            newInputType != priorInputType;
+        if (routeChanged) {
           micRouteGeneration.incrementAndGet();
           soundFilled = 0;
           java.util.Arrays.fill(soundWindow, 0f);
           if (resampler != null) resampler.reset();
         }
-        if (newInputDeviceId >= 0) {
-          priorInputType = newInputType;
-          priorInputDeviceId = newInputDeviceId;
-        }
+        priorInputType = newInputType;
+        priorInputDeviceId = newInputDeviceId;
         long now = SystemClock.elapsedRealtime();
         AudioClassifier cls = analyzer;
-        if (cls != null && healthy.get()) {
+        if (cls != null && healthy.get() && !routeChanged && newInputDeviceId >= 0) {
           for (int i = 0; i < n; i++) {
             float mapped = resampler == null ? samples[i] / 32768f : resampler.push(samples[i]);
             if (Float.isNaN(mapped)) continue; // 48kHz FIR emits one genuine 16kHz sample per 3 inputs
@@ -592,12 +591,13 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
                 float[] windowCopy = soundWindow.clone();
                 final long scheduledGeneration = micRouteGeneration.get();
                 final int scheduledInputType = priorInputType;
+                final long capturedAt = System.currentTimeMillis();
                 try { worker.execute(() -> {
                   try {
                     if (currentCapture(rec, epoch) &&
                         scheduledGeneration == micRouteGeneration.get())
                       classifyWindow(cls, windowCopy, rec, epoch, healthy,
-                        scheduledGeneration, scheduledInputType);
+                        scheduledGeneration, scheduledInputType, capturedAt);
                   } finally {
                     java.util.Arrays.fill(windowCopy, 0f);
                     busy.set(false);
@@ -642,7 +642,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
 
   private void classifyWindow(AudioClassifier cls, float[] samples,
                               AudioRecord rec, long epoch, AtomicBoolean healthy,
-                              long scheduledGeneration, int scheduledInputType) {
+                              long scheduledGeneration, int scheduledInputType, long capturedAt) {
     try {
       if (!currentCapture(rec, epoch)) return;
       AudioDataFormat format = AudioDataFormat.builder().setSampleRate(16000f).build();
@@ -661,7 +661,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
             JSObject data = new JSObject();
             data.put("label", label);
             data.put("confidence", category.score());
-            data.put("timestamp", System.currentTimeMillis());
+            data.put("timestamp", capturedAt);
             String source = (scheduledInputType == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
               scheduledInputType == AudioDeviceInfo.TYPE_BLE_HEADSET)
               ? "bluetoothMic" : (scheduledInputType == AudioDeviceInfo.TYPE_WIRED_HEADSET ||

@@ -340,7 +340,10 @@ public final class SoundWorldClipPlaybackService extends Service {
         } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
                    change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
           focusHeld = false;
-          focusResumePending = "playing".equals(state) && resumeAfterCall;
+          // Repeated temporary focus-loss callbacks must not erase the
+          // intent to resume an interrupted track. Manual Pause clears it.
+          focusResumePending = resumeAfterCall &&
+              (focusResumePending || "playing".equals(state));
           pauseInternal(true);
         }
       }, main).build();

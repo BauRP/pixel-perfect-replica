@@ -14,6 +14,7 @@ public final class SoundWorldPowerPolicy {
     if (thermalStatus >= 4) return 3;
     if (thermalStatus >= 3 || lowMemory) return 2;
     if ("maxPerformance".equals(mode)) return 1;
+    if (batteryPercent >= 0 && batteryPercent <= 5) return 3;
     if (batteryPercent >= 0 && batteryPercent <= 15) return 2;
     return 1;
   }

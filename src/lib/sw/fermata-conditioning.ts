@@ -150,7 +150,9 @@ const DEFAULT_INSTRUMENTS:Readonly<Record<FermataGenre,readonly string[]>>={
  * Hard dislikes always win, including aliases sharing a GM program and
  * percussion sub-instruments. Soft dislikes remain last-resort options.
  * A favorite with no faithful GM mapping fails instead of faking its sound. */
-export function buildFermataConditioning(request:Readonly<MusicRequest>):FermataHeaderResult {
+export function buildFermataConditioning(request:Readonly<MusicRequest>,sequenceIndex=0):FermataHeaderResult {
+  if(!Number.isSafeInteger(sequenceIndex)||sequenceIndex<0)
+    return {ok:false,reason:"Некорректный номер композиции"};
   if(request.instrumental!==true)
     return {ok:false,reason:"SoundWorld AR запрещает вокальную генерацию"};
   if(!validInt(request.compositionBpm,5,999))
@@ -162,8 +164,14 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>):Fermata
   const weak=new Set(request.deemphasizedGenres);
   const emph=new Set(request.emphasizedGenres);
   const notWeak=permitted.filter(id=>!weak.has(id) && !weak.has(id.slice(0,3)));
-  const preferred=notWeak.find(id=>emph.has(id)) ??
-    notWeak[0] ?? permitted.find(id=>emph.has(id)) ?? permitted[0];
+  // Rotate distinct model-supported genre families, not every UI subgenre
+  // with the same coarse token. Familiar keeps favorite/history priority.
+  const pool=notWeak.length?notWeak:permitted;
+  const ranked=[...pool.filter(id=>emph.has(id)),...pool.filter(id=>!emph.has(id))];
+  const distinct=ranked.filter((id,i)=>ranked.findIndex(other=>
+    COARSE_GENRE[other.slice(0,3)]===COARSE_GENRE[id.slice(0,3)])===i);
+  const preferred=request.diversity==="familiar"?ranked[0]:
+    distinct[sequenceIndex%Math.max(1,distinct.length)];
   if(!preferred)return {ok:false,reason:"Нет разрешённого жанра Fermata"};
   const genre=COARSE_GENRE[preferred.slice(0,3)];
   if(!genre)return {ok:false,reason:"Жанр не поддерживается оригинальной моделью"};
@@ -186,6 +194,8 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>):Fermata
       automatic=automatic.filter(id=>id!=="i5-01"||effects.has("accent-step-percussion"));
     if(effects.has("brighter-melody")&&!automatic.includes("i6-06"))
       automatic.push("i6-06");
+    if(effects.has("deeper-pads")&&!automatic.includes("i7-01"))
+      automatic.push("i7-01"); // existing GM string ensemble, not invented synth pad
   }
   const ids=explicit?request.preferredInstruments:automatic;
   if(explicit && ids.some(id=>GM_BY_ID[id]===undefined))
@@ -198,7 +208,11 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>):Fermata
   });
   // For automatic arrangements, avoid soft dislikes when possible, but
   // never treat them as hard bans.
-  const prioritized=explicit?permittedInstruments.slice(0,6):
+  // For large favorite sets, use successive windows so no favorite is
+  // permanently hidden behind the first six. Preserve hard exclusions.
+  const offset=permittedInstruments.length>6?(sequenceIndex*6)%permittedInstruments.length:0;
+  const rotated=[...permittedInstruments.slice(offset),...permittedInstruments.slice(0,offset)];
+  const prioritized=explicit?rotated.slice(0,6):
     [...permittedInstruments.filter(id=>!weakInstruments.has(id)),
      ...permittedInstruments.filter(id=>weakInstruments.has(id))];
   const programs=[...new Set(prioritized

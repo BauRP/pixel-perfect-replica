@@ -27,6 +27,7 @@ export class AdaptiveMidiSource implements RealScoreSource {
   // Keep a timed-out native operation counted until it actually settles.
   // A JS timeout alone does not stop CPU-heavy MNN inference.
   private nativeInFlight=false;
+  private sequenceIndex=0;
   constructor(private readonly generator:LicensedLocalMidiGenerator,
     private readonly inputs:LiveMusicRequestInputs,
     private readonly maxWaitMs=120_000) {}
@@ -44,7 +45,7 @@ export class AdaptiveMidiSource implements RealScoreSource {
     // subgenre must survive hard exclusions; never override user blocks.
     if(!request.genreCandidates.some(id=>/^g\d{2}-s\d{2}$/.test(id)))
       throw new Error("Все выбранные музыкальные направления исключены");
-    const conditioning=buildFermataConditioning(request);
+    const conditioning=buildFermataConditioning(request,this.sequenceIndex);
     if(!conditioning.ok)
       throw new Error("Fermata: "+conditioning.reason);
     if(!Number.isSafeInteger(this.maxWaitMs)||this.maxWaitMs<1000||
@@ -113,6 +114,7 @@ export class AdaptiveMidiSource implements RealScoreSource {
         if(note.channel===9 ? !conditioning.value.drums : !allowedPrograms.has(note.program))
           throw new Error("Fermata вернула запрещённую или незапланированную партию");
       }
+      this.sequenceIndex=(this.sequenceIndex+1)%1_000_000;
       return checked.value;
     }finally {
       if(timeout!==undefined)clearTimeout(timeout);

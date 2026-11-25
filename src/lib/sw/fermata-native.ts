@@ -22,7 +22,7 @@ export type FermataPackageStatus = {
   arm64Supported:boolean;
   generationReady:false;
 };
-type NativeFermata = {inspect():Promise<unknown>;encodeHeader(input:{tokens:string[]}):Promise<unknown>};
+type NativeFermata = {inspect():Promise<unknown>;encodeHeader(input:{tokens:string[]}):Promise<unknown>;decodeTokens(input:{tokenIds:number[]}):Promise<unknown>};
 const native=registerPlugin<NativeFermata>("SoundWorldFermata");
 const fields=[
   "manifestPresent","modelPackaged","tokenizerPackaged","mnnPackaged",
@@ -66,6 +66,18 @@ export async function encodeNativeFermataHeader(header:Readonly<FermataHeader>):
      ids.some(id=>typeof id!=="number"||!Number.isSafeInteger(id)||id<0||id>=9507))
     throw new Error("Неверные номера оригинальных токенов Fermata");
   return Object.freeze([...ids] as number[]);
+}
+
+export async function decodeNativeFermataTokens(ids:readonly number[]):Promise<readonly string[]> {
+  if(Capacitor.getPlatform()!=="android"||ids.length<1||ids.length>4096||
+     ids.some(id=>!Number.isSafeInteger(id)||id<0||id>=9507))
+    throw new Error("Неверный результат музыкальной модели Fermata");
+  const result=await withNativeDeadline(()=>native.decodeTokens({tokenIds:[...ids]}),5000);
+  const tokens=(result as {tokens?:unknown}|null)?.tokens;
+  if(!Array.isArray(tokens)||tokens.length!==ids.length||
+     tokens.some(token=>typeof token!=="string"||token.length===0))
+    throw new Error("Некорректные музыкальные токены Fermata");
+  return Object.freeze([...tokens] as string[]);
 }
 
 export function explainFermataAvailability(status:FermataPackageStatus|null):string {

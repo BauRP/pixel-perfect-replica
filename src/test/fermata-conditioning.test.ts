@@ -65,6 +65,22 @@ describe("Fermata original conditioning tokens without fake notes",()=>{
     const banned=buildFermataConditioning({...mk(active()),directorEffects:["accent-step-percussion"],excludedInstruments:["i2-07"]});
     expect(banned.ok&&banned.value.drums).toBe(false);
   });
+  it("rotates selected genre families for moderate diversity, but not familiar",()=>{
+    const request=mk({...DEFAULT_SETTINGS,chosenGenreIds:["g01-s01","g02-s01"]});
+    const first=buildFermataConditioning({...request,diversity:"moderate"},0);
+    const second=buildFermataConditioning({...request,diversity:"moderate"},1);
+    const familiar=buildFermataConditioning({...request,diversity:"familiar"},1);
+    expect(first.ok&&first.value.genre).toBe("popular");
+    expect(second.ok&&second.value.genre).toBe("electronic");
+    expect(familiar.ok&&familiar.value.genre).toBe("popular");
+  });
+  it("does not permanently discard the seventh supported favorite",()=>{
+    const s={...active(),favoriteInstrumentIds:["i1-01","i1-03","i1-05","i3-01","i3-02","i3-03","i6-06"]};
+    const first=buildFermataConditioning(mk(s),0);
+    const second=buildFermataConditioning(mk(s),1);
+    expect(first.ok&&first.value.programs.includes(73)).toBe(false);
+    expect(second.ok&&second.value.programs.includes(73)).toBe(true);
+  });
   it("never silently substitutes a favorite dombyra with a piano",()=>{
     const s={...active(),favoriteInstrumentIds:["i8-01"]};
     const v=buildFermataConditioning(mk(s));
