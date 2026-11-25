@@ -20,6 +20,12 @@ class FermataNativeContract(unittest.TestCase):
             self.assertIn(text,native)
         self.assertNotIn("HttpURLConnection",native)
         self.assertNotIn("getExternalStorage",native)
+    def test_native_libraries_can_be_staged_or_mapped_inside_apk(self):
+        native=src("native/android/SoundWorldFermataPlugin.java")
+        self.assertIn("nativeLibraryDir",native)
+        self.assertIn("new ZipFile(context.getApplicationInfo().sourceDir)",native)
+        self.assertIn('apk.getEntry("lib/arm64-v8a/"+fileName)',native)
+
     def test_adapter_preserves_unavailable_until_real_inference(self):
         adapter=src("src/lib/sw/fermata-native.ts")
         self.assertIn("registerAdapters({engine:",adapter)

@@ -9,6 +9,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
 import java.io.InputStream;
+import java.util.zip.ZipFile;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Set;
@@ -43,6 +44,18 @@ public final class SoundWorldFermataPlugin extends Plugin {
     try (InputStream stream=context.getAssets().open("offline-music/"+path)) {
       return stream.read()!=-1;
     } catch (Exception ignored) { return false; }
+  }
+
+  /** Modern Android may map native libraries directly from APK instead of
+   * extracting them to nativeLibraryDir. Both layouts are genuine packaged
+   * native code; a random external file must never count as installed. */
+  private static boolean nativeLibraryPresent(Context context, String fileName) {
+    if(!fileName.matches("lib[A-Za-z0-9_]+\\.so"))return false;
+    if(new File(context.getApplicationInfo().nativeLibraryDir,fileName).isFile())
+      return true;
+    try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)) {
+      return apk.getEntry("lib/arm64-v8a/"+fileName)!=null;
+    }catch(Exception ignored) { return false; }
   }
 
   private static boolean isArm64() {
@@ -101,7 +114,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
         final boolean exists;
         if("mnn-arm64".equals(role) || "synth-arm64".equals(role)) {
           if(!path.matches("lib[A-Za-z0-9_]+\\.so")) {filesPresent=false;break;}
-          exists=new File(context.getApplicationInfo().nativeLibraryDir,path).isFile();
+          exists=nativeLibraryPresent(context,path);
         } else {
           exists=assetPresent(context,path);
         }

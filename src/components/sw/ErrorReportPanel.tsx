@@ -32,11 +32,14 @@ export function ErrorReportPanel() {
         ]);
       const value=<T,>(entry:PromiseSettledResult<T>):T|null =>
         entry.status==="fulfilled"?entry.value:null;
+      const liveSensors=value(sensorsResult);
       const diagnostic=buildSafeDiagnosticsReport({
         android:androidSensorsAvailable(),
         musicOnly:getSettingsSnapshot().musicOnlyMode,
-        active:false,stepsOnly:false,stepCount:null,
-        sensors:value(sensorsResult),
+        active:liveSensors?.recording===true||liveSensors?.stepsActive===true,
+        stepsOnly:liveSensors?.stepsActive===true&&liveSensors?.recording!==true,
+        stepCount:null,
+        sensors:liveSensors,
         performance:value(performanceResult),
         pcm:value(pcmResult),
         wav:value(wavResult),
