@@ -7,6 +7,7 @@ import android.os.SystemClock;
 import android.webkit.WebView;
 import java.lang.ref.WeakReference;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -40,6 +41,15 @@ public final class SoundWorldFreezeMonitor {
   private static volatile WeakReference<WebView> webViewRef = new WeakReference<>(null);
   private static volatile Context app;
   private static ScheduledExecutorService watchdog;
+  // Error bursts must not spawn unlimited threads or disk writes.
+  private static final ExecutorService jsIssueWriter = Executors.newSingleThreadExecutor(r -> {
+    Thread t = new Thread(r, "SoundWorld-JS-Issue");
+    t.setDaemon(true);
+    return t;
+  });
+  private static final AtomicLong lastJsErrorAt = new AtomicLong();
+  private static final AtomicLong lastJsRejectionAt = new AtomicLong();
+  private static final long JS_ISSUE_MIN_INTERVAL_MS = 5000L;
   private SoundWorldFreezeMonitor() {}
 
   public static synchronized void start(Context context, WebView webView) {
@@ -88,14 +98,24 @@ public final class SoundWorldFreezeMonitor {
   }
 
   public static void recordJsIssue(Context context, String kind) {
-    if (!"javascript-error".equals(kind) && !"unhandled-rejection".equals(kind)) return;
+    final AtomicLong last;
+    if ("javascript-error".equals(kind)) last = lastJsErrorAt;
+    else if ("unhandled-rejection".equals(kind)) last = lastJsRejectionAt;
+    else return;
+    long now = SystemClock.uptimeMillis();
+    long prev;
+    do {
+      prev = last.get();
+      if (prev != 0 && now - prev < JS_ISSUE_MIN_INTERVAL_MS) return;
+    } while (!last.compareAndSet(prev, now));
     Context safe = context.getApplicationContext();
-    Thread t = new Thread(() -> {
-      safe.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-        .putString(ISSUE, kind).putLong(ISSUE_AT, System.currentTimeMillis()).commit();
-    }, "SoundWorld-JS-Issue");
-    t.setDaemon(true);
-    t.start();
+    try {
+      jsIssueWriter.execute(() -> safe.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .edit().putString(ISSUE, kind)
+        .putLong(ISSUE_AT, System.currentTimeMillis()).apply());
+    } catch (java.util.concurrent.RejectedExecutionException ignored) {
+      // Error reporting must never bring down the app.
+    }
   }
 
   /** A renderer probe bypasses the plugin callback queue. Only run when the

@@ -67,7 +67,7 @@ export class StepPaceEstimator {
   private times: number[] = [];
   ingest(timestamp: number): { activity: "walking" | "running" | "unknown"; bpm: number; confidence: number } {
     if (!Number.isFinite(timestamp) || timestamp <= 0) return { activity: "unknown", bpm: 0, confidence: 0 };
-    const prev = this.times.at(-1);
+    const prev = this.times.length ? this.times[this.times.length - 1] : undefined;
     // Hardware callbacks may arrive out of order after an Android pause.
     // Ignore delayed steps rather than replacing the valid cadence history.
     // Invalid/duplicated timestamps must not re-emit an OLD walking status:

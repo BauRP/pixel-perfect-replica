@@ -89,6 +89,8 @@ workflows:
           cp native/android/SoundWorldPowerPolicy.java "$target/SoundWorldPowerPolicy.java"
           cp native/android/SoundWorldPowerEpochGuard.java "$target/SoundWorldPowerEpochGuard.java"
           cp native/android/MainActivity.java "$target/MainActivity.java"
+          cp native/android/SoundWorldFreezeMonitor.java "$target/SoundWorldFreezeMonitor.java"
+          cp native/android/SoundWorldFreezePlugin.java "$target/SoundWorldFreezePlugin.java"
           cp native/android/SoundWorldPlaybackService.java "$target/SoundWorldPlaybackService.java"
           cp native/android/SoundWorldPcmLifecyclePolicy.java "$target/SoundWorldPcmLifecyclePolicy.java"
           cp native/android/SoundWorldPlaybackPlugin.java "$target/SoundWorldPlaybackPlugin.java"

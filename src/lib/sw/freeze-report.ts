@@ -52,12 +52,19 @@ export function installFreezeMonitoring():()=>void {
       ()=>{failures=0;},()=>{failures=Math.min(4,failures+1);},
     ).finally(()=>{outstanding=false;});
   };
-  const markError=()=>{void withNativeDeadline(
-    ()=>native.recordJsIssue({kind:"javascript-error"}),1500,
-  ).catch(()=>{});};
-  const markRejection=()=>{void withNativeDeadline(
-    ()=>native.recordJsIssue({kind:"unhandled-rejection"}),1500,
-  ).catch(()=>{});};
+  // Reporting itself must not flood Capacitor when one faulty handler loops.
+  const lastIssueRequest:Record<"javascript-error"|"unhandled-rejection",number>={
+    "javascript-error":0,"unhandled-rejection":0,
+  };
+  const markIssue=(kind:"javascript-error"|"unhandled-rejection")=>{
+    if(disposed)return;
+    const now=Date.now();
+    if(now-lastIssueRequest[kind]<5000)return;
+    lastIssueRequest[kind]=now;
+    void withNativeDeadline(()=>native.recordJsIssue({kind}),1500).catch(()=>{});
+  };
+  const markError=()=>markIssue("javascript-error");
+  const markRejection=()=>markIssue("unhandled-rejection");
   window.addEventListener("error",markError);
   window.addEventListener("unhandledrejection",markRejection);
   document.addEventListener("visibilitychange",beat);
