@@ -4,7 +4,7 @@ import type {MusicRequest} from "../lib/sw/music-preferences";
 import {DEFAULT_SETTINGS} from "../lib/sw/settings";
 import {MusicControlPlanner} from "../lib/sw/music-control";
 const score=()=>({durationUs:60_000_000,notes:[{
-  track:0,channel:0,program:2,pitch:60,velocity:96,startUs:0,endUs:60_000_000,
+  track:0,channel:0,program:4,pitch:60,velocity:96,startUs:0,endUs:60_000_000,
 }]});
 describe("local, instrument-only adaptive model handoff",()=>{
   const setup=()=>{
@@ -129,9 +129,7 @@ describe("local, instrument-only adaptive model handoff",()=>{
     await expect(source.next()).rejects.toThrow("Предыдущая генерация");
     expect(generate).toHaveBeenCalledTimes(1);
     release(score());
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise<void>(resolve=>setTimeout(resolve,0));
     const next=source.next();
     await Promise.resolve();
     await Promise.resolve();

@@ -97,14 +97,23 @@ const COARSE_GENRE:Readonly<Record<string,FermataGenre>>={
 const GM_BY_ID:Readonly<Record<string,number|"drums">>={
   "i1-01":0,   // concert grand piano
   "i1-02":0,   // acoustic piano
-  "i1-03":2,   // electric grand piano
+  "i1-03":4,   // electric piano
+  "i1-04":19,  // church organ
+  "i1-05":6,   // harpsichord
+  "i1-06":4,   // Rhodes / electric piano 1
+  "i1-07":5,   // electric piano 2
+  "i3-01":25,  // acoustic steel guitar
+  "i3-02":27,  // clean electric guitar
+  "i3-03":24,  // classical nylon guitar
   "i3-04":33,  // fingered electric bass
   "i4-01":40,  // violin
   "i4-02":41,  // viola
   "i4-03":42,  // cello
   "i4-04":43,  // double bass
   "i4-05":46,  // orchestral harp
+  "i4-07":105, // banjo
   "i5-01":"drums",
+  "i6-01":65,  // alto saxophone
   "i6-02":56,  // trumpet
   "i6-03":57,  // trombone
   "i6-04":60,  // French horn
@@ -113,7 +122,15 @@ const GM_BY_ID:Readonly<Record<string,number|"drums">>={
   "i6-07":71,  // clarinet
   "i6-08":68,  // oboe
   "i6-09":70,  // bassoon
+  "i6-10":22,  // harmonica
   "i7-01":48,  // string ensemble
+  "i7-03":47,  // timpani
+  "i7-06":13,  // xylophone
+  "i8-03":104, // sitar
+  "i8-05":107, // koto
+  "i8-07":106, // shamisen
+  "i8-08":21,  // accordion
+  "i8-09":109, // bagpipe
 };
 const DEFAULT_INSTRUMENTS:Readonly<Record<FermataGenre,readonly string[]>>={
   popular:["i1-01","i3-04","i5-01"],
@@ -155,16 +172,24 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>):Fermata
   const weakInstruments=new Set(request.deemphasizedInstruments);
   // A drum kit contains all percussion voices; excluding a single piece
   // makes the entire kit unavailable without a verified per-note filter.
-  const drumsBanned=[...banned].some(id=>/^i5-(0[1-9]|1[01])$/.test(id));
+  const drumsBanned=[...banned].some(id=>id==="i2-07"||id==="i7-04"||/^i5-(0[1-9]|1[01])$/.test(id));
   const bannedPrograms=new Set(
     [...banned].map(id=>GM_BY_ID[id]).filter((p):p is number=>typeof p==="number"),
   );
   const explicit=request.preferredInstruments.length>0;
-  const ids=explicit?request.preferredInstruments:DEFAULT_INSTRUMENTS[genre];
+  const effects=new Set(request.directorEffects);
+  let automatic=[...DEFAULT_INSTRUMENTS[genre]];
+  if(automatic.length>0) {
+    if(effects.has("accent-step-percussion")&&!automatic.includes("i5-01"))
+      automatic.push("i5-01");
+    if(effects.has("soften-arrangement")||effects.has("sparser-arrangement"))
+      automatic=automatic.filter(id=>id!=="i5-01"||effects.has("accent-step-percussion"));
+    if(effects.has("brighter-melody")&&!automatic.includes("i6-06"))
+      automatic.push("i6-06");
+  }
+  const ids=explicit?request.preferredInstruments:automatic;
   if(explicit && ids.some(id=>GM_BY_ID[id]===undefined))
     return {ok:false,reason:"Любимый инструмент не имеет подтверждённого соответствия General MIDI"};
-  if(explicit && ids.length>6)
-    return {ok:false,reason:"Для Fermata одновременно выбрано слишком много любимых инструментов"};
   const permittedInstruments=ids.filter(id=>{
     const program=GM_BY_ID[id];
     if(program===undefined || banned.has(id))return false;
@@ -173,7 +198,7 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>):Fermata
   });
   // For automatic arrangements, avoid soft dislikes when possible, but
   // never treat them as hard bans.
-  const prioritized=explicit?permittedInstruments:
+  const prioritized=explicit?permittedInstruments.slice(0,6):
     [...permittedInstruments.filter(id=>!weakInstruments.has(id)),
      ...permittedInstruments.filter(id=>weakInstruments.has(id))];
   const programs=[...new Set(prioritized

@@ -6,6 +6,7 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { registerAdapters, unavailableAdapters, type Result } from "./engine";
 import { withNativeDeadline } from "./native-call-deadline";
+import type { FermataHeader } from "./fermata-conditioning";
 
 export type FermataPackageStatus = {
   model:"haster/Fermata-0.2B-v1";
@@ -21,7 +22,7 @@ export type FermataPackageStatus = {
   arm64Supported:boolean;
   generationReady:false;
 };
-type NativeFermata = {inspect():Promise<unknown>};
+type NativeFermata = {inspect():Promise<unknown>;encodeHeader(input:{tokens:string[]}):Promise<unknown>};
 const native=registerPlugin<NativeFermata>("SoundWorldFermata");
 const fields=[
   "manifestPresent","modelPackaged","tokenizerPackaged","mnnPackaged",
@@ -52,6 +53,19 @@ export async function inspectFermataPackage():Promise<FermataPackageStatus|null>
       await withNativeDeadline(()=>native.inspect(),2500),
     );
   }catch {return null;}
+}
+
+/** Real atomic header encoding through the packaged, hash-checked vocabulary.
+ * No fallback tokenizer or invented IDs. Not a model-inference call. */
+export async function encodeNativeFermataHeader(header:Readonly<FermataHeader>):Promise<readonly number[]> {
+  if(Capacitor.getPlatform()!=="android")
+    throw new Error("Оригинальный токенизатор Fermata доступен только в Android");
+  const result=await withNativeDeadline(()=>native.encodeHeader({tokens:[...header.tokens]}),5000);
+  const ids=(result as {tokenIds?:unknown}|null)?.tokenIds;
+  if(!Array.isArray(ids)||ids.length!==header.tokens.length||
+     ids.some(id=>typeof id!=="number"||!Number.isSafeInteger(id)||id<0||id>=9507))
+    throw new Error("Неверные номера оригинальных токенов Fermata");
+  return Object.freeze([...ids] as number[]);
 }
 
 export function explainFermataAvailability(status:FermataPackageStatus|null):string {

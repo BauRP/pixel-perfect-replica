@@ -49,7 +49,21 @@ describe("Fermata original conditioning tokens without fake notes",()=>{
     if(!v.ok)return;
     expect(v.value.text).toContain("<GENRE_electronic>");
     expect(v.value.text).not.toContain("<TRACK_0>");
-    expect(v.value.text).toContain("<TRACK_2>");
+    expect(v.value.text).toContain("<TRACK_4>");
+  });
+  it("maps additional real GM instruments and aliases",()=>{
+    const s={...active(),favoriteInstrumentIds:["i3-03","i6-10","i8-03"]};
+    const v=buildFermataConditioning(mk(s));
+    expect(v.ok).toBe(true);
+    if(v.ok)expect(v.value.programs).toEqual([24,22,104]);
+  });
+  it("honors rain and step arrangement signals without violating drum exclusion",()=>{
+    const rain=buildFermataConditioning({...mk(active()),directorEffects:["soften-arrangement"]});
+    expect(rain.ok&&rain.value.drums).toBe(false);
+    const stepped=buildFermataConditioning({...mk(active()),directorEffects:["soften-arrangement","accent-step-percussion"]});
+    expect(stepped.ok&&stepped.value.drums).toBe(true);
+    const banned=buildFermataConditioning({...mk(active()),directorEffects:["accent-step-percussion"],excludedInstruments:["i2-07"]});
+    expect(banned.ok&&banned.value.drums).toBe(false);
   });
   it("never silently substitutes a favorite dombyra with a piano",()=>{
     const s={...active(),favoriteInstrumentIds:["i8-01"]};

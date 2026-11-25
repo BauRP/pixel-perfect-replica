@@ -8,6 +8,9 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
+import java.io.ByteArrayOutputStream;
+import java.util.Iterator;
+import java.security.MessageDigest;
 import java.io.InputStream;
 import java.util.zip.ZipFile;
 import java.nio.charset.StandardCharsets;
@@ -135,6 +138,91 @@ public final class SoundWorldFermataPlugin extends Plugin {
       // Missing or corrupt package: fail closed; never claim that Fermata ran.
     }
     return out;
+  }
+
+  private static byte[] readBounded(Context context,String path,int maximum) throws Exception {
+    try(InputStream in=context.getAssets().open("offline-music/"+path);
+        ByteArrayOutputStream out=new ByteArrayOutputStream()) {
+      byte[] buffer=new byte[8192];
+      int n;
+      while((n=in.read(buffer))!=-1) {
+        if(out.size()+n>maximum)throw new IllegalArgumentException("Fermata asset too large");
+        out.write(buffer,0,n);
+      }
+      return out.toByteArray();
+    }
+  }
+
+  // This checkpoint was trained on atomic tokens (the author's known BPE
+  // training issue). Use the actual upstream dictionary, not generic Llama
+  // text tokenization. Do not guess a mapping if the format differs.
+  private static JSONObject loadAtomicVocabulary(Context context) throws Exception {
+    JSONObject manifest=new JSONObject(new String(
+        readBounded(context,"manifest.json",256*1024),StandardCharsets.UTF_8));
+    if(manifest.optInt("schemaVersion")!=1 ||
+       !"haster/Fermata-0.2B-v1".equals(manifest.optString("model")) ||
+       !"Alibaba/MNN".equals(manifest.optString("runtime")))
+      throw new IllegalArgumentException("Wrong Fermata manifest");
+    JSONArray files=manifest.getJSONArray("files");
+    JSONObject item=null;
+    for(int i=0;i<files.length();i++) {
+      JSONObject candidate=files.getJSONObject(i);
+      String path=candidate.optString("path");
+      if("tokenizer".equals(candidate.optString("role")) &&
+         ("tokenizer/vocab.json".equals(path)||"vocab.json".equals(path))) {
+        if(item!=null)throw new IllegalArgumentException("Ambiguous Fermata vocabulary");
+        item=candidate;
+      }
+    }
+    if(item==null||!"Apache-2.0".equals(item.optString("license")))
+      throw new IllegalArgumentException("Original Fermata vocabulary missing");
+    byte[] bytes=readBounded(context,item.getString("path"),2*1024*1024);
+    if(bytes.length!=item.getLong("sizeBytes"))throw new IllegalArgumentException("Wrong vocabulary size");
+    byte[] digest=MessageDigest.getInstance("SHA-256").digest(bytes);
+    StringBuilder hex=new StringBuilder();
+    for(byte b:digest)hex.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
+    if(!hex.toString().equals(item.getString("sha256")))
+      throw new IllegalArgumentException("Wrong vocabulary checksum");
+    JSONObject map=new JSONObject(new String(bytes,StandardCharsets.UTF_8));
+    if(map.length()!=9507)throw new IllegalArgumentException("Unsupported Fermata vocabulary format");
+    Set<Integer> ids=new HashSet<>();
+    Iterator<String> keys=map.keys();
+    while(keys.hasNext()) {
+      Object value=map.get(keys.next());
+      if(!(value instanceof Integer))throw new IllegalArgumentException("Invalid vocabulary ID");
+      int id=(Integer)value;
+      if(id<0||id>=9507||!ids.add(id))throw new IllegalArgumentException("Invalid vocabulary ID");
+    }
+    return map;
+  }
+
+  /** Convert existing conditioning strings into the original model's IDs.
+   * This is only the input tokenizer stage; generationReady stays false. */
+  @PluginMethod public void encodeHeader(PluginCall call) {
+    final JSONArray tokens=call.getArray("tokens");
+    if(tokens==null||tokens.length()<8||tokens.length()>32) {
+      call.reject("Некорректный музыкальный заголовок Fermata");return;
+    }
+    final Context context=getContext().getApplicationContext();
+    try {
+      inspector.execute(()->{
+        try {
+          JSONObject vocab=loadAtomicVocabulary(context);
+          if(!"<BOS>".equals(tokens.getString(0)) ||
+             !"<PLAN_END>".equals(tokens.getString(tokens.length()-1)))
+            throw new IllegalArgumentException("Invalid Fermata header");
+          JSONArray ids=new JSONArray();
+          for(int i=0;i<tokens.length();i++) {
+            String token=tokens.getString(i);
+            if(!vocab.has(token))throw new IllegalArgumentException("Unknown original musical token");
+            ids.put(vocab.getInt(token));
+          }
+          JSObject result=new JSObject();
+          result.put("tokenIds",ids);
+          call.resolve(result);
+        }catch(Exception e){call.reject("Оригинальный словарь Fermata недоступен или несовместим");}
+      });
+    }catch(RejectedExecutionException e){call.reject("Музыкальный токенизатор занят");}
   }
 
   @PluginMethod public void inspect(PluginCall call) {
