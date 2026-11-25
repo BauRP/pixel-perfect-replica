@@ -104,7 +104,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private Thread captureThread;
   private SensorManager sensorManager;
   private Sensor stepDetector;
-  private long lastCounterValue=-1;
+  private volatile long lastCounterValue=-1;
   private volatile boolean listeningSteps = false;
   private volatile String actualInput = "";
   private volatile String actualKind = "";
@@ -156,7 +156,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       routeWorker.execute(() -> {
         synchronized (captureLock) {
           AudioRecord active = recorder;
-          if (active == null || !capturing.get()) return;
+          if (active == null || !capturing.get() ||
+              !granted(Manifest.permission.RECORD_AUDIO)) return;
           try {
             // The route is only a requested preference. getRoutedDevice()
             // in the capture loop remains the authoritative actual route.
@@ -669,7 +670,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         for (Classifications head : window.classifications()) {
           for (Category category : head.categories()) {
             if (!currentCapture(rec, epoch) || scheduledGeneration != micRouteGeneration.get()) return;
-            if (sent >= 3 || category.score() < 0.18f) return;
+            if (sent >= 3) return;
+            if (!Float.isFinite(category.score()) || category.score() < 0.18f ||
+                category.score()>1f) continue;
             String label = category.categoryName();
             if (label == null || label.isEmpty()) continue;
             JSObject data = new JSObject();

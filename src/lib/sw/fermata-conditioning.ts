@@ -180,6 +180,10 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
     if(id.startsWith("g10-"))return ["i2-04","i1-03"]; // ambient
     if(id==="g15-s02")return ["i3-03","i3-04","i5-01"]; // bossa nova
     if(id==="g06-s07")return ["i3-03","i6-01","i3-04","i5-01"]; // jazz bossa nova
+    if(id==="g06-s01")return ["i6-01","i1-01","i3-04","i5-01"]; // swing
+    if(id==="g06-s03")return ["i6-02","i1-01","i4-04","i5-01"]; // cool jazz
+    if(id==="g08-s01")return ["i1-05","i4-01","i4-03"]; // baroque
+    if(id==="g08-s05")return ["i4-01","i4-02","i4-03"]; // chamber
     if(id==="g07-s08")return ["i1-01"]; // piano blues
     if(id==="g09-s02")return ["i7-01","i6-02","i7-03"]; // orchestral epic
     if(id==="g12-s04")return ["i4-07","i3-01","i3-04"]; // bluegrass
@@ -187,8 +191,20 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
     if(id==="g15-s05")return ["i3-03"]; // flamenco guitar
     return DEFAULT_INSTRUMENTS[COARSE_GENRE[id.slice(0,3)]!]??[];
   };
+  const exclusions=new Set(request.excludedInstruments);
+  const excludedPrograms=new Set([...exclusions].map(id=>GM_BY_ID[id])
+    .filter((p):p is number=>typeof p==="number"));
+  if(exclusions.has("i2-01")||exclusions.has("i2-02")){
+    excludedPrograms.add(38);excludedPrograms.add(89);
+  }
+  const kitExcluded=[...exclusions].some(id=>id==="i2-07"||id==="i7-04"||/^i5-(0[1-9]|1[01])$/.test(id));
+  const canUse=(id:string)=>{
+    const program=GM_BY_ID[id];
+    return !exclusions.has(id)&&program!==undefined&&
+      (program==="drums"?!kitExcluded:!excludedPrograms.has(program));
+  };
   const playable=request.preferredInstruments.length>0?ranked:
-    ranked.filter(id=>defaultsFor(id).length>0);
+    ranked.filter(id=>defaultsFor(id).some(canUse));
   const arrangementKey=(id:string)=>COARSE_GENRE[id.slice(0,3)]+":"+defaultsFor(id).join(",");
   const distinct=playable.filter((id,i)=>playable.findIndex(other=>
     arrangementKey(other)===arrangementKey(id))===i);

@@ -484,6 +484,7 @@ public final class SoundWorldClipPlaybackService extends Service {
     if (player == null || "stopped".equals(state)) return;
     try {
       if ("playing".equals(state)) player.pause();
+      if(!interrupted)abandonFocus();
       publish("paused");
     } catch (RuntimeException ex) {
       failPlayback("Не удалось поставить WAV на паузу: " + ex.getMessage());

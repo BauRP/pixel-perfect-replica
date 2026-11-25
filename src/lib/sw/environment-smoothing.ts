@@ -88,6 +88,7 @@ export class StepPaceEstimator {
     const mid=Math.floor(intervals.length/2);
     const median=intervals.length%2===0?(intervals[mid-1]!+intervals[mid]!)/2:intervals[mid]!;
     const bpm=Math.round(60000/median);
+    if(bpm<40||bpm>300)return {activity:"unknown" as const,bpm:0,confidence:0};
     const consistent=intervals.filter(ms=>Math.abs(ms-median)<=median*.30).length;
     const confidence=Math.min(.85,0.45+.05*intervals.length)*consistent/intervals.length;
     if(confidence<.55)return {activity:"unknown" as const,bpm:0,confidence:0};

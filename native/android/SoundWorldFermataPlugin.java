@@ -37,6 +37,13 @@ import org.json.JSONObject;
 @CapacitorPlugin(name = "SoundWorldFermata")
 public final class SoundWorldFermataPlugin extends Plugin {
   private File preparedModelDirectory;
+  private volatile boolean destroyed=false;
+  private final ThreadPoolExecutor synthWorker = new ThreadPoolExecutor(
+    1,1,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(2), r -> {
+      Thread t=new Thread(r,"SoundWorld-Sonivox-PCM");
+      t.setDaemon(true);
+      return t;
+    },new ThreadPoolExecutor.AbortPolicy());
   private File renderedPcm;
   private long renderedFrames;
   private static native long renderSonivoxFile(String midiPath,String pcmPath,long targetFrames);
@@ -73,6 +80,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
   }
 
   private static boolean isArm64() {
+    if(!android.os.Process.is64Bit())return false;
     for (String abi : Build.SUPPORTED_ABIS) {
       if ("arm64-v8a".equals(abi)) return true;
     }
@@ -384,6 +392,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
     try {
       inspector.execute(()->{
         try {
+          if(destroyed)throw new IllegalStateException("Destroyed model");
           File dir=preparedModelDirectory;
           if(dir==null)throw new IllegalStateException("Model not prepared");
           final int[] ids=new int[input.length()];
@@ -424,9 +433,10 @@ public final class SoundWorldFermataPlugin extends Plugin {
     }
     final Context context=getContext().getApplicationContext();
     try {
-      inspector.execute(()->{
+      synthWorker.execute(()->{
         File midi=null,output=null;
         try {
+          if(destroyed)throw new IllegalStateException("Destroyed renderer");
           if(!inspectPackage(context).optBoolean("packageComplete")||
              !nativeLibraryPresent(context,"libsoundworld_sonivox.so"))
             throw new IllegalStateException("Reviewed synthesizer missing");
@@ -455,7 +465,11 @@ public final class SoundWorldFermataPlugin extends Plugin {
           renderedPcm=output;renderedFrames=actual;output=null;
           JSObject result=new JSObject();result.put("frames",actual);call.resolve(result);
         }catch(Exception | LinkageError e){call.reject("Локальный синтез MIDI недоступен");}
-        finally{if(midi!=null)midi.delete();if(output!=null)output.delete();}
+        finally{
+          if(midi!=null)midi.delete();
+          if(output!=null)output.delete();
+          if(destroyed)clearRenderedFile();
+        }
       });
     }catch(RejectedExecutionException e){call.reject("Музыкальный движок занят");}
   }
@@ -466,9 +480,9 @@ public final class SoundWorldFermataPlugin extends Plugin {
       call.reject("Некорректная порция PCM");return;
     }
     try {
-      inspector.execute(()->{
+      synthWorker.execute(()->{
         try {
-          if(renderedPcm==null||(long)from+count>renderedFrames)
+          if(destroyed||renderedPcm==null||(long)from+count>renderedFrames)
             throw new java.io.IOException("No rendered audio");
           byte[] data=new byte[count*4];
           try(java.io.RandomAccessFile stream=new java.io.RandomAccessFile(renderedPcm,"r")){
@@ -479,13 +493,14 @@ public final class SoundWorldFermataPlugin extends Plugin {
           java.util.Arrays.fill(data,(byte)0);
           call.resolve(result);
         }catch(Exception e){call.reject("Не удалось прочитать реальные PCM");}
+        finally{if(destroyed)clearRenderedFile();}
       });
     }catch(RejectedExecutionException e){call.reject("Музыкальный движок занят");}
   }
 
   @PluginMethod public void releaseMidiPcm(PluginCall call) {
     try {
-      inspector.execute(()->{clearRenderedFile();call.resolve();});
+      synthWorker.execute(()->{clearRenderedFile();call.resolve();});
     }catch(RejectedExecutionException e){call.reject("Музыкальный движок занят");}
   }
 
@@ -504,8 +519,10 @@ public final class SoundWorldFermataPlugin extends Plugin {
   @Override protected void handleOnDestroy() {
     // Let the serial worker finish its in-flight native operation and
     // remove the temporary PCM afterwards; never delete a file mid-read.
-    try{inspector.execute(this::clearRenderedFile);}
+    destroyed=true;
+    try{synthWorker.execute(this::clearRenderedFile);}
     catch(RejectedExecutionException ignored){}
+    synthWorker.shutdown();
     inspector.shutdown();
     super.handleOnDestroy();
   }

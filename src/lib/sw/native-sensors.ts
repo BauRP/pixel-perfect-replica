@@ -294,6 +294,8 @@ export function installNativeSensorAdapters(): void {
       },
       observeEnvironment: cb => observeRawSound(e=>{
         if (!sensorsAllowed(getSettingsSnapshot())) return;
+        const age=Date.now()-e.timestamp;
+        if(!Number.isSafeInteger(e.timestamp)||age< -1000||age>12000)return;
         // One physical Android mic route = one evidence stream. Different
         // headsets of the SAME type must still invalidate old observations.
         const route=routeFence.observe(e);
@@ -308,6 +310,8 @@ export function installNativeSensorAdapters(): void {
     activity: {
       observeWalkingRunningTransportRest: cb => observeRawSteps(e=>{
         if (!sensorsAllowed(getSettingsSnapshot())) return;
+        const age=Date.now()-e.timestamp;
+        if(!Number.isSafeInteger(e.timestamp)||age< -1000||age>4500)return;
         const rate=pace.ingest(e.timestamp);
         if(rate.activity!=="unknown")cb({activity:rate.activity,confidence:rate.confidence});
       }),

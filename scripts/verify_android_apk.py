@@ -85,6 +85,21 @@ def verify(path):
                 with z.open(entry) as file:
                     if elf_load_alignment(file)<16384: unaligned.append(entry)
         print("ARM64 16 KiB page alignment:", "all ELF LOAD segments aligned" if not unaligned else ", ".join(unaligned))
+        with open(path,"rb") as apk_file:
+            for entry in native_entries:
+                info=z.getinfo(entry)
+                if not entry.startswith("lib/arm64-v8a/") or info.compress_type!=zipfile.ZIP_STORED:
+                    continue
+                apk_file.seek(info.header_offset)
+                local=apk_file.read(30)
+                if len(local)!=30 or local[:4]!=b"PK\x03\x04":
+                    raise ValueError("Invalid native library ZIP header")
+                name_len,extra_len=struct.unpack_from("<HH",local,26)
+                offset=info.header_offset+30+name_len+extra_len
+                if offset%16384:
+                    print("16 KiB ZIP alignment warning:",entry)
+                    if manifest_name in z.namelist() and entry.endswith(("/libsoundworld_fermata_mnn.so","/libsoundworld_sonivox.so")):
+                        raise ValueError("Music JNI ZIP payload is not 16 KiB aligned")
         data=z.read("AndroidManifest.xml")
     assert u16(data,0)==3, "Not an Android binary manifest"
     strings=[]

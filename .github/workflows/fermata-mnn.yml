@@ -6,6 +6,7 @@ on:
     paths:
       - 'scripts/prepare_fermata_mnn.py'
       - 'scripts/run_fermata_mnn.py'
+      - 'scripts/report_fermata_vocabulary.py'
       - 'native/android/fermata-mnn/**'
       - 'native/android/sonivox/**'
       - '.github/workflows/fermata-mnn.yml'
@@ -26,7 +27,7 @@ jobs:
           python-version: '3.11'
       - name: Restore exact converted public model files
         id: weights
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             fermata-conversion/mnn
@@ -43,6 +44,18 @@ jobs:
           python -m pip install -r "$RUNNER_TEMP/MNN/transformers/llm/export/requirements.txt"
           python -m pip install 'mnn==3.6.1' huggingface_hub tokenizers transformers
           python scripts/prepare_fermata_mnn.py --mnn-source "$RUNNER_TEMP/MNN" --output fermata-conversion
+      - name: Preserve converted weights before inference
+        if: steps.weights.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            fermata-conversion/mnn
+            fermata-conversion/conversion.json
+            fermata-conversion/FERMATA_UPSTREAM_README.md
+            fermata-conversion/MNN_LICENSE
+          key: ${{ steps.weights.outputs.cache-primary-key }}
+      - name: Record the original vocabulary structure for the musical decoder
+        run: python scripts/report_fermata_vocabulary.py fermata-conversion/mnn/tokenizer/vocab.json >> "$GITHUB_STEP_SUMMARY"
       - name: Run real original-token inference on the build host
         run: |
           python scripts/run_fermata_mnn.py fermata-conversion/mnn --output "$RUNNER_TEMP/fermata-result.json"

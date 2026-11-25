@@ -27,12 +27,15 @@ def main():
     if not runtime.set_config({"backend_type":"cpu","thread_num":2,"max_new_tokens":512}):
         raise RuntimeError("MNN refused numeric inference configuration")
     runtime.load()
+    runtime.generate_init()
     start = time.monotonic()
-    result = list(runtime.generate(ids))
+    # MNN 3.6.1's public Python generate(ids) passes zero as max_new_tokens.
+    # The pinned native binding accepts the second argument explicitly.
+    result = list(runtime._c_obj.generate(ids,512))
     # MNN versions can return generated IDs only or the prompt plus output.
     if result[:len(ids)] == ids:
         result = result[len(ids):]
-    if not result or len(result)>4096 or any(type(i) is not int or i not in by_id for i in result):
+    if not result or len(result)>512 or any(type(i) is not int or i not in by_id for i in result):
         raise ValueError("No valid generated original IDs from real MNN inference")
     tokens = [by_id[i] for i in result]
     if not any(t not in HEADER and t not in ("<EOS>","<PAD>","<UNK>") for t in tokens):

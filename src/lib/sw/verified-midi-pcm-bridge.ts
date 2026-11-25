@@ -65,14 +65,17 @@ export async function renderVerifiedMidiToPcm(
 ):Promise<RenderOutcome> {
   const schedule=scheduleDecodedMidiNotes(score);
   if(!schedule.ok)return {ok:false,code:"ERROR",message:schedule.reason};
+  let beginAttempted=false;
   try {
     if(!(await awaitMidiExternal(()=>renderer.ready(),options?.isCancelled)))
       return {ok:false,code:"UNAVAILABLE",message:"Нет готового настоящего MIDI-синтезатора"};
     const total=midiEventFrame(schedule.durationUs,RATE);
     if(total===null||total<=0)
       return {ok:false,code:"ERROR",message:"Некорректная длительность MIDI"};
-    if(renderer.beginScore)
+    if(renderer.beginScore){
+      beginAttempted=true;
       await awaitMidiExternal(()=>renderer.beginScore!(score,total),options?.isCancelled,120_000);
+    }
     let cursor=0,position=0;
     while(position<total) {
       if(options?.isCancelled?.())
@@ -114,7 +117,7 @@ export async function renderVerifiedMidiToPcm(
     return {ok:false,code:cancelled?"UNAVAILABLE":"ERROR",
       message:e instanceof Error?e.message:"Ошибка MIDI-рендера"};
   }finally{
-    if(renderer.endScore){
+    if(renderer.endScore&&beginAttempted){
       try{await awaitMidiExternal(()=>renderer.endScore!());}catch{/* keep the original result */}
     }
   }
