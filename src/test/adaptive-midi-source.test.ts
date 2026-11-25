@@ -52,6 +52,53 @@ describe("local, instrument-only adaptive model handoff",()=>{
     controller.abort();
     await expect(pending).rejects.toThrow("остановлена");
   });
+  it("passes exact original Fermata header to the genuine model adapter",async()=>{
+    const s=setup();
+    const observed:string[][]=[];
+    const source=new AdaptiveMidiSource({generate:async(_request,_signal,conditioning)=>{
+      observed.push([...conditioning.tokens]);
+      return score();
+    }},s.inputs);
+    expect(await source.next()).not.toBeNull();
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toContain("<GENRE_electronic>");
+    expect(observed[0]).toContain("<PLAN_END>");
+    expect(observed[0]).not.toContain("<TRACK_0>");
+  });
+  it("rejects a hanging native generator within the time limit",async()=>{
+    vi.useFakeTimers();
+    try{
+      const s=setup();
+      const source=new AdaptiveMidiSource({generate:async()=>new Promise<null>(()=>{})},
+        s.inputs,1000);
+      const task=source.next();
+      const assertion=expect(task).rejects.toThrow("не ответила");
+      await vi.advanceTimersByTimeAsync(1010);
+      await assertion;
+    }finally{vi.useRealTimers();}
+  });
+  it("invalidates a hung generator on preferences revision, without waiting 2min",async()=>{
+    vi.useFakeTimers();
+    try{
+      const s=setup();
+      const source=new AdaptiveMidiSource({generate:async()=>new Promise<null>(()=>{})},
+        s.inputs,5000);
+      const task=source.next();
+      const assertion=expect(task).rejects.toThrow("Настройки изменились");
+      await vi.advanceTimersByTimeAsync(30);
+      s.change();
+      await vi.advanceTimersByTimeAsync(280);
+      await assertion;
+    }finally{vi.useRealTimers();}
+  });
+  it("rejects unsupported favorite timbre instead of silently substituting it",async()=>{
+    const s=setup();
+    s.settings.favoriteInstrumentIds=["i8-01"];
+    const generate=vi.fn(async()=>score());
+    await expect(new AdaptiveMidiSource({generate},s.inputs).next())
+      .rejects.toThrow("General MIDI");
+    expect(generate).not.toHaveBeenCalled();
+  });
   it("rejects invalid 11-second output instead of accepting fabricated music",async()=>{
     const s=setup();
     const source=new AdaptiveMidiSource({
