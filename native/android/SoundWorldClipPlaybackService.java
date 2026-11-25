@@ -22,6 +22,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.util.Log;
 import java.io.File;
 import java.io.RandomAccessFile;
@@ -29,6 +30,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Real WAV playback independently of the WebView lifecycle. This service never
@@ -75,10 +79,24 @@ public final class SoundWorldClipPlaybackService extends Service {
   private volatile String state = "stopped";
   private volatile String clipId = "";
   private volatile String lastError = "";
+  // Capacitor invokes status() outside the MediaPlayer-owning main thread.
+  // Only the owning thread touches MediaPlayer; bridge getters read snapshots.
+  private volatile int snapshotPositionMs = 0;
+  private volatile int snapshotDurationMs = 0;
+  private volatile long snapshotAtMs = 0L;
+  private volatile String snapshotOutput = "";
+  private volatile String snapshotOutputType = "";
+  // Validation of real WAV headers/filesystem metadata never occupies MAIN.
+  private final ThreadPoolExecutor wavOpenWorker = new ThreadPoolExecutor(
+    1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(2), r -> {
+      Thread worker = new Thread(r, "SoundWorld-WAV-Verify");
+      worker.setDaemon(true);
+      return worker;
+    }, new ThreadPoolExecutor.AbortPolicy());
   private boolean resumeAfterCall = false;
   private boolean focusResumePending = false;
   private boolean unplugged = false;
-  private int generation = 0;
+  private volatile int generation = 0;
   private boolean playerPrepared = false;
   private Runnable prepareDeadline;
   private AudioManager audioManager;
@@ -93,32 +111,41 @@ public final class SoundWorldClipPlaybackService extends Service {
   public String playbackClipId() { return clipId; }
   public String playbackError() { return lastError; }
   public int playbackPositionMs() {
-    MediaPlayer current = player;
-    if (current == null || !playerPrepared) return 0;
-    try { return Math.max(0, current.getCurrentPosition()); }
-    catch (RuntimeException ex) { return 0; }
+    int base=snapshotPositionMs;
+    int duration=snapshotDurationMs;
+    if("playing".equals(state) && snapshotAtMs>0L) {
+      long elapsed=Math.max(0L, SystemClock.elapsedRealtime()-snapshotAtMs);
+      long predicted=base+Math.min(elapsed, 180000L);
+      return (int)Math.min(duration,Math.max(0L,predicted));
+    }
+    return Math.min(duration,Math.max(0,base));
   }
-  public int playbackDurationMs() {
-    MediaPlayer current = player;
-    if (current == null || !playerPrepared) return 0;
-    try { return Math.max(0, current.getDuration()); }
-    catch (RuntimeException ex) { return 0; }
-  }
-  public String routedOutput() {
-    MediaPlayer current = player;
-    if (current == null || !playerPrepared) return "";
+  public int playbackDurationMs() { return snapshotDurationMs; }
+  public String routedOutput() { return snapshotOutput; }
+  public String routedOutputType() { return snapshotOutputType; }
+
+  /** Called ONLY on the MediaPlayer-owning MAIN thread. No Capacitor plugin
+   * request reads native player state, avoiding JNI/HAL calls on its queue. */
+  private void refreshPlayerSnapshot() {
+    MediaPlayer current=player;
+    if(current==null || !playerPrepared)return;
     try {
-      AudioDeviceInfo device = current.getRoutedDevice();
-      return device == null ? "" : String.valueOf(device.getProductName());
-    } catch (RuntimeException ex) { return ""; }
+      snapshotDurationMs=Math.max(0,current.getDuration());
+      snapshotPositionMs=Math.max(0,current.getCurrentPosition());
+      snapshotAtMs=SystemClock.elapsedRealtime();
+      AudioDeviceInfo device=current.getRoutedDevice();
+      snapshotOutput=device==null?"":String.valueOf(device.getProductName());
+      snapshotOutputType=device==null?"":String.valueOf(device.getType());
+    }catch(RuntimeException ex){
+      // Retain last confirmed snapshot rather than invent an output route.
+    }
   }
-  public String routedOutputType() {
-    MediaPlayer current = player;
-    if (current == null || !playerPrepared) return "";
-    try {
-      AudioDeviceInfo device = current.getRoutedDevice();
-      return device == null ? "" : String.valueOf(device.getType());
-    } catch (RuntimeException ex) { return ""; }
+  private void clearPlayerSnapshot() {
+    snapshotPositionMs=0;
+    snapshotDurationMs=0;
+    snapshotAtMs=0;
+    snapshotOutput="";
+    snapshotOutputType="";
   }
 
   @Override public void onCreate() {
@@ -188,6 +215,7 @@ public final class SoundWorldClipPlaybackService extends Service {
   }
 
   private void publish(String next) {
+    if(playerPrepared) refreshPlayerSnapshot();
     state = next;
     updateMediaState();
     PlaybackListener l = listener;
@@ -340,60 +368,94 @@ public final class SoundWorldClipPlaybackService extends Service {
     }
     releasePlayer();
     generation++;
+    final int wantedGeneration=generation;
     lastError = "";
     playerPrepared = false;
     focusResumePending = false;
     unplugged = false;
+    clipId=requestedId == null ? "" : requestedId;
+    publish("preparing");
     try {
-      File file = verifiedWav(requestedId);
-      clipId = requestedId;
-      publish("preparing");
-      MediaPlayer next = new MediaPlayer();
-      player = next;
-      AudioAttributes attrs = new AudioAttributes.Builder()
+      // A slow filesystem/SD-card must not freeze the main Android service.
+      wavOpenWorker.execute(() -> {
+        if(wantedGeneration!=generation)return;
+        try {
+          File verified=verifiedWav(requestedId);
+          main.post(() -> {
+            if(wantedGeneration!=generation || !"preparing".equals(state) ||
+                !clipId.equals(requestedId))return;
+            prepareVerifiedWav(verified);
+          });
+        }catch(Exception ex){
+          main.post(() -> {
+            if(wantedGeneration==generation)
+              failPlayback("Не удалось открыть настоящий WAV: "+ex.getMessage());
+          });
+        }
+      });
+    }catch(RejectedExecutionException busy){
+      failPlayback("Проверка WAV занята. Повторите после остановки предыдущей записи.");
+    }
+  }
+
+  /** Native player creation, callbacks and control belong to one MAIN looper. */
+  private void prepareVerifiedWav(File file) {
+    try {
+      MediaPlayer next=new MediaPlayer();
+      player=next;
+      AudioAttributes attrs=new AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build();
       next.setAudioAttributes(attrs);
       next.setWakeMode(this, PowerManager.PARTIAL_WAKE_LOCK);
       next.setDataSource(file.getAbsolutePath());
-      prepareDeadline = () -> {
-        if (next == player && !playerPrepared)
+      prepareDeadline=()->{
+        if(next==player && !playerPrepared)
           failPlayback("Android не подготовил WAV за 15 секунд");
       };
-      main.postDelayed(prepareDeadline, 15000);
-      next.setOnPreparedListener(mp -> {
-        if (mp != player) return;
-        if (prepareDeadline != null) main.removeCallbacks(prepareDeadline);
-        prepareDeadline = null;
-        playerPrepared = true;
-        if (session != null) {
-          try {
+      main.postDelayed(prepareDeadline,15000);
+      next.setOnPreparedListener(mp->{
+        if(mp!=player)return;
+        if(prepareDeadline!=null)main.removeCallbacks(prepareDeadline);
+        prepareDeadline=null;
+        playerPrepared=true;
+        refreshPlayerSnapshot();
+        if(session!=null){
+          try{
             session.setMetadata(new MediaMetadata.Builder()
-              .putString(MediaMetadata.METADATA_KEY_TITLE, "Сохранённый WAV — SoundWorld AR")
-              .putLong(MediaMetadata.METADATA_KEY_DURATION, mp.getDuration()).build());
-          } catch (RuntimeException ex) {
-            Log.w("SoundWorldSaved", "Media metadata unavailable", ex);
+              .putString(MediaMetadata.METADATA_KEY_TITLE,"Сохранённый WAV — SoundWorld AR")
+              .putLong(MediaMetadata.METADATA_KEY_DURATION,mp.getDuration()).build());
+          }catch(RuntimeException ex){
+            Log.w("SoundWorldSaved","Media metadata unavailable",ex);
           }
         }
-        if (!"preparing".equals(state)) return; // pause requested while preparing
-        if (!acquireFocus()) { failPlayback(lastError); return; }
-        try {
+        if(!"preparing".equals(state))return;
+        if(!acquireFocus()){failPlayback(lastError);return;}
+        try{
           mp.start();
           publish("playing");
-        } catch (RuntimeException ex) {
-          failPlayback("AudioTrack отказал в запуске WAV: " + ex.getMessage());
+        }catch(RuntimeException ex){
+          failPlayback("AudioTrack отказал в запуске WAV: "+ex.getMessage());
         }
       });
-      next.setOnCompletionListener(mp -> {
-        if (mp == player) stopInternal();
-      });
-      next.setOnErrorListener((mp, what, extra) -> {
-        if (mp == player) failPlayback("MediaPlayer: " + what + "/" + extra);
+      next.setOnCompletionListener(mp->{if(mp==player)stopInternal();});
+      next.setOnErrorListener((mp,what,extra)->{
+        if(mp==player)failPlayback("MediaPlayer: "+what+"/"+extra);
         return true;
       });
+      next.setOnSeekCompleteListener(mp->{
+        if(mp==player && playerPrepared){
+          refreshPlayerSnapshot();
+          updateMediaState();
+        }
+      });
+      // The real output can change after Bluetooth/USB/wired transitions.
+      next.addOnRoutingChangedListener(router->{
+        if(next==player && playerPrepared)refreshPlayerSnapshot();
+      },main);
       next.prepareAsync();
-    } catch (Exception ex) {
-      failPlayback("Не удалось открыть настоящий WAV: " + ex.getMessage());
+    }catch(Exception ex){
+      failPlayback("Не удалось подготовить WAV: "+ex.getMessage());
     }
   }
 
@@ -431,6 +493,7 @@ public final class SoundWorldClipPlaybackService extends Service {
     MediaPlayer previous = player;
     player = null;
     playerPrepared = false;
+    clearPlayerSnapshot();
     if (previous != null) {
       try { previous.setOnCompletionListener(null); } catch (Exception ignored) {}
       try { previous.setOnPreparedListener(null); } catch (Exception ignored) {}
@@ -505,6 +568,7 @@ public final class SoundWorldClipPlaybackService extends Service {
     generation++;
     releasePlayer();
     mediaReleaseWorker.shutdown();
+    wavOpenWorker.shutdownNow();
     clipId = "";
     publish("stopped");
     if (noisyReceiver != null) {
