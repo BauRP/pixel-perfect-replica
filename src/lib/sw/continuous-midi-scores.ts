@@ -25,6 +25,8 @@ export type SequenceOptions=Readonly<{
   maxScores?:number;
   /** Timeout for a genuine on-device model call, including prefetch. */
   maxScoreWaitMs?:number;
+  /** Bound a never-settling licensed renderer, including user Stop. */
+  maxRenderWaitMs?:number;
 }>;
 type Fetched={kind:"score";value:unknown|null}|{kind:"failure";message:string}|{kind:"cancelled"};
 
@@ -66,6 +68,51 @@ function fetchScore(source:RealScoreSource,options?:SequenceOptions,prefetchAbor
   });
 }
 
+/** A hung native renderer cannot keep user Stop or the sequence queue waiting
+ * indefinitely. This releases only the JavaScript wait; native code must still
+ * implement cancellation on its own. Late progress callbacks are ignored. */
+async function awaitRenderWithCancel(
+  work:()=>Promise<RenderOutcome>, options:SequenceOptions|undefined,
+  onCancelled:()=>void,
+):Promise<RenderOutcome> {
+  const deadline=options?.maxRenderWaitMs??180_000;
+  return new Promise<RenderOutcome>(resolve=>{
+    let finished=false;
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    let poll:ReturnType<typeof setInterval>|undefined;
+    const finish=(result:RenderOutcome)=>{
+      if(finished)return;
+      finished=true;
+      if(timer!==undefined)clearTimeout(timer);
+      if(poll!==undefined)clearInterval(poll);
+      options?.signal?.removeEventListener("abort",stop);
+      resolve(result);
+    };
+    const stop=()=>{
+      onCancelled();
+      finish({ok:false,code:"UNAVAILABLE",message:"Рендер остановлен пользователем"});
+    };
+    if(cancelled(options)){stop();return;}
+    options?.signal?.addEventListener("abort",stop,{once:true});
+    if(options?.isCancelled)poll=setInterval(()=>{if(cancelled(options))stop();},100);
+    timer=setTimeout(()=>{
+      onCancelled();
+      finish({ok:false,code:"ERROR",message:"Рендер музыки не ответил вовремя"});
+    },deadline);
+    void Promise.resolve().then(()=>{
+      if(finished)return null;
+      return work();
+    }).then(value=>{
+      if(!finished)finish(value??{ok:false,code:"ERROR",message:"Рендер не вернул результат"});
+    },error=>{
+      if(!finished) {
+        onCancelled();
+        finish({ok:false,code:"ERROR",message:error instanceof Error?error.message:"Ошибка рендера"});
+      }
+    });
+  });
+}
+
 /** renderOne must validate the score and render only genuine licensed PCM. */
 export async function streamRealMidiScores(
   source:RealScoreSource,
@@ -75,9 +122,11 @@ export async function streamRealMidiScores(
   const maxScores=options?.maxScores??10_000;
   const lead=options?.prefetchLeadFrames??12*48000;
   const maxWait=options?.maxScoreWaitMs??120_000;
+  const renderWait=options?.maxRenderWaitMs??180_000;
   if(!Number.isSafeInteger(maxScores)||maxScores<1||maxScores>10_000||
      !Number.isSafeInteger(lead)||lead<0||lead>120*48000||
-     !Number.isSafeInteger(maxWait)||maxWait<1000||maxWait>300_000)
+     !Number.isSafeInteger(maxWait)||maxWait<1000||maxWait>300_000||
+     !Number.isSafeInteger(renderWait)||renderWait<1000||renderWait>300_000)
     return {ok:false,code:"ERROR",message:"Неверные ограничения музыкального потока",completedScores:0,totalFrames:0};
   let totalFrames=0,completedScores=0;
   let next=await fetchScore(source,options);
@@ -98,7 +147,7 @@ export async function streamRealMidiScores(
     };
     let renderResult:RenderOutcome;
     try{
-      renderResult=await renderOne(score,p=>{
+      renderResult=await awaitRenderWithCancel(()=>renderOne(score,p=>{
         if(!progressOpen)throw new Error("Позднее событие завершённого MIDI-рендера");
         if(!Number.isSafeInteger(p.renderedFrames)||!Number.isSafeInteger(p.totalFrames)||
            p.renderedFrames<lastFrame||p.renderedFrames>p.totalFrames||
@@ -112,7 +161,7 @@ export async function streamRealMidiScores(
           prefetchAbort=new AbortController();
           prefetched=fetchScore(source,options,prefetchAbort.signal);
         }
-      });
+      }), options, cancelUnusedPrefetch);
     }catch(e){
       cancelUnusedPrefetch();
       return fail("ERROR",e instanceof Error?e.message:"Ошибка потока MIDI");

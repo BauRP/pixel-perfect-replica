@@ -91,6 +91,37 @@ describe("genuine model lifecycle deadlines",()=>{
       expect(await task).toMatchObject({ok:false,code:"UNAVAILABLE"});
     }finally{vi.useRealTimers();}
   });
+  it("stops a hanging native renderer promptly without fake completed music",async()=>{
+    vi.useFakeTimers();
+    try {
+      const controller=new AbortController();
+      const realRender=vi.fn(async()=>new Promise<never>(()=>{}));
+      const task=streamRealMidiScores({next:async()=>({real:true})},
+        realRender,{signal:controller.signal,maxRenderWaitMs:1000,maxScores:1});
+      await vi.advanceTimersByTimeAsync(50);
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await task).toMatchObject({ok:false,code:"UNAVAILABLE",completedScores:0});
+      expect(realRender).toHaveBeenCalledTimes(1);
+    }finally{vi.useRealTimers();}
+  });
+  it("bounds a never-resolving renderer without falsely confirming WAV output",async()=>{
+    vi.useFakeTimers();
+    try {
+      const task=streamRealMidiScores({next:async()=>({real:true})},
+        async()=>new Promise<never>(()=>{}),
+        {maxRenderWaitMs:1000,maxScores:1});
+      await vi.advanceTimersByTimeAsync(1010);
+      expect(await task).toMatchObject({ok:false,code:"ERROR",completedScores:0,totalFrames:0});
+    }finally{vi.useRealTimers();}
+  });
+  it("rejects invalid render deadlines before invoking audio",async()=>{
+    const next=vi.fn(async()=>({real:true}));
+    const out=await streamRealMidiScores({next},
+      async()=>({ok:true,frames:1}),{maxRenderWaitMs:0});
+    expect(out).toMatchObject({ok:false,code:"ERROR",completedScores:0});
+    expect(next).not.toHaveBeenCalled();
+  });
   it("rejects invalid deadlines before calling the model",async()=>{
     const next=vi.fn(async()=>null);
     expect(await streamRealMidiScores({next},async()=>({ok:true,frames:1}),{maxScoreWaitMs:0}))
