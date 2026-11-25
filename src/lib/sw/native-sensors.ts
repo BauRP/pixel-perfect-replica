@@ -116,7 +116,7 @@ export function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
     await withNativeDeadline(()=>native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())}),6000);
     if(cancelled()) return unavailable("Проверка микрофона отменена");
     if (!sensorsAllowed(getSettingsSnapshot())) {
-      await native.stopSteps().catch(()=>{});
+      await withNativeDeadline(()=>native.stopSteps(),5000).catch(()=>{});
       return unavailable(SENSOR_MODE_BLOCKED);
     }
     const r = availability.yamnetIncluded
@@ -124,11 +124,11 @@ export function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
       : await withNativeDeadline(()=>native.startMicrophoneProbe(),12_000);
     if(cancelled()) return unavailable("Проверка микрофона отменена");
     if (!sensorsAllowed(getSettingsSnapshot())) {
-      await Promise.allSettled([native.stopMicrophoneProbe(),native.stopSteps()]);
+      await stopNativeDiagnostics();
       return unavailable(SENSOR_MODE_BLOCKED);
     }
     if (!r.started) {
-      await native.stopSteps().catch(()=>{});
+      await withNativeDeadline(()=>native.stopSteps(),5000).catch(()=>{});
       return unavailable("Проверка микрофона не запущена");
     }
     return {ok:true,value:undefined};
@@ -167,7 +167,7 @@ export function startStepOnlyDiagnostics(): Promise<Result> {
       return {ok:false,code:"PERMISSION_DENIED",message:"Разрешите физическую активность для шагомера"};
     const result = await withNativeDeadline(()=>native.startSteps(),8000);
     if (cancelled() || !sensorsAllowed(getSettingsSnapshot())) {
-      await native.stopSteps().catch(()=>{});
+      await withNativeDeadline(()=>native.stopSteps(),5000).catch(()=>{});
       return unavailable("Запуск шагомера отменён");
     }
     return result.started

@@ -35,6 +35,7 @@ function Diagnostics() {
   const [active,setActive] = useState(false);
   const [pending,setPending] = useState(false);
   const pendingRef = useRef(false);
+  const operationEpoch=useRef(0);
   const [steps,setSteps] = useState("Нет подтверждённых шагов");
   const [stepCount,setStepCount] = useState<number|null>(null);
   const countingSteps = useRef(false);
@@ -174,9 +175,11 @@ function Diagnostics() {
   },[]);
   const start=async(mode:"all"|"steps"="all")=>{
     if(pendingRef.current || settingsRef.current.musicOnlyMode) return;
+    const operation=++operationEpoch.current;
     pendingRef.current=true;setPending(true);
     try {
       const result=mode==="steps"?await startStepOnlyDiagnostics():await startSensorDiagnostics(true);
+      if(operation!==operationEpoch.current)return;
       if(!result.ok) {notify.result(result,"");setError(result.message);}
       else {
         // Every explicitly started test begins with fresh evidence only.
@@ -196,7 +199,7 @@ function Diagnostics() {
       }
       setStatus(await sensorStatus());
       setHardware(await getNativePerformanceSnapshot());
-    } finally {pendingRef.current=false;setPending(false);}
+    } finally {if(operation===operationEpoch.current){pendingRef.current=false;setPending(false);}}
   };
   const copyReport=async()=>{
     const report=buildSafeDiagnosticsReport({
@@ -210,7 +213,7 @@ function Diagnostics() {
       :"Не удалось скопировать отчёт: буфер обмена недоступен.");
   };
   const stop=async()=>{
-    if(pendingRef.current) return;
+    const operation=++operationEpoch.current;
     pendingRef.current=true;setPending(true);
     countingSteps.current=false;
     stepCounter.current.stop();
@@ -223,7 +226,7 @@ function Diagnostics() {
       setEnvironment("Обстановка не определена");
       setSteps("Проверка остановлена");
       setStatus(await sensorStatus());setHardware(await getNativePerformanceSnapshot());
-    } finally {pendingRef.current=false;setPending(false);}
+    } finally {if(operation===operationEpoch.current){pendingRef.current=false;setPending(false);}}
   };
   return (
     <>
@@ -288,7 +291,7 @@ function Diagnostics() {
             Проверить только шаги
           </button>
           <button className="min-h-12 rounded-xl border border-border px-5 disabled:opacity-50"
-            disabled={!active||pending} onClick={()=>void stop()}>
+            disabled={!active&&!pending} onClick={()=>void stop()}>
             Остановить проверку
           </button>
         </div>

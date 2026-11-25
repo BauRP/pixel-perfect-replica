@@ -147,6 +147,7 @@ export class GeneratedPcmSession {
     let processed = 0;
     try {
       while(processed < pcm.length) {
+        if(this.stopRequested)return {ok:false,code:"UNAVAILABLE",message:"Поток остановлен"};
         const opened = await this.openIfNeeded();
         if(!opened.ok) return this.fail(opened.message);
         const length = Math.min(PCM_TRANSFER_BYTES, pcm.length-processed, PCM_SEGMENT_BYTES-this.bytes);
@@ -202,7 +203,8 @@ export class GeneratedPcmSession {
     if(this.stopInFlight) return this.stopInFlight;
     this.stopRequested = true;
     this.stopInFlight=(async()=>{
-      await this.chain;
+      // A stalled native write must never leave Stop waiting without limit.
+      await this.bounded(this.chain.then(():Result<void>=>({ok:true,value:undefined})));
       if(this.state === "error") return {ok:false,code:"ERROR",message:this.lastFailure??"Ошибка"};
       try {
         const result = await this.finishIfOpen();

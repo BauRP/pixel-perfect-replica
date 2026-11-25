@@ -35,12 +35,16 @@ function HistoryPage(){
   const busyRef=useRef(false);
   const playbackOrder=useRef(new PlaybackEventOrder());
   const loadOrder=useRef(new LatestHistoryRequest());
+  const reloadInFlight=useRef<Promise<void>|null>(null);
+  const stopInFlight=useRef(false);
   const [error,setError]=useState("");
   const [playback,setPlayback]=useState<Playback>({state:"stopped",clipId:""});
   const [measured,setMeasured]=useState<{clipId:string;progress:WavProgress}|null>(null);
   const [seekDraft,setSeekDraft]=useState<{clipId:string;positionMs:number}|null>(null);
   const library=getAdapters().library;
-  const reload=useCallback(async()=>{
+  const reload=useCallback(():Promise<void>=>{
+    if(reloadInFlight.current)return reloadInFlight.current;
+    const work=(async()=>{
     const ticket=loadOrder.current.begin();
     setLoadPhase("loading");
     // All four native list requests use ONE serial disk queue. The exported
@@ -69,6 +73,10 @@ function HistoryPage(){
     const skipped = last.skipped + fav.skipped + exp.skipped + journey.skipped;
     setError(skipped ? `Не удалось показать ${skipped} записей с повреждёнными идентификаторами. Файлы не удалены.` : "");
     setLoadPhase(skipped ? "error" : "ready");
+    })();
+    const joined=work.finally(()=>{if(reloadInFlight.current===joined)reloadInFlight.current=null;});
+    reloadInFlight.current=joined;
+    return joined;
   },[library]);
   useEffect(()=>{
     let mounted=true;
@@ -135,6 +143,16 @@ function HistoryPage(){
     }catch(e){const m=e instanceof Error?e.message:"Неизвестная ошибка";setError(m);notify.error(m);}
     finally{busyRef.current=false;setBusy(false);}
   };
+  // Stop is a high-priority control even while export or metadata refresh is busy.
+  const emergencyStop=async()=>{
+    if(stopInFlight.current)return;
+    stopInFlight.current=true;
+    try{
+      const result=await withTimeout(library.stopStoredClip(),5000);
+      if(!result.ok){setError(result.message);notify.result(result,"");}
+    }catch(e){setError(e instanceof Error?e.message:"Не удалось остановить WAV");}
+    finally{stopInFlight.current=false;}
+  };
   const clipList=(items:ClipMeta[])=><ul className="space-y-2">
     {items.map(c=>{
       const playing=playback.clipId===c.id&&playback.state==="playing";
@@ -150,13 +168,13 @@ function HistoryPage(){
           {c.recoveredProtected?" · Восстановленная запись":""}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
-          <button disabled={busy||playback.state==="preparing"} aria-label={playing?"Пауза":"Прослушать"} className="flex min-h-11 items-center gap-1 rounded-lg bg-primary px-3 text-primary-foreground disabled:opacity-50"
-            onClick={()=>void execute(playing?()=>library.pauseStoredClip():()=>library.playStoredClip(c.id),"")}>
+          <button disabled={(busy&&!playing)||(!playing&&playback.state==="preparing")} aria-label={playing?"Пауза":"Прослушать"} className="flex min-h-11 items-center gap-1 rounded-lg bg-primary px-3 text-primary-foreground disabled:opacity-50"
+            onClick={()=>playing ? void withTimeout(library.pauseStoredClip(),5000).then(r=>{if(!r.ok)setError(r.message);}) : void execute(()=>library.playStoredClip(c.id),"",false)}>
             {playing?<Pause className="size-4"/>:<Play className="size-4"/>}{playing?"Пауза":"Слушать"}
           </button>
-          {active && <button disabled={busy} aria-label="Остановить WAV"
+          {active && <button aria-label="Остановить WAV"
             className="flex min-h-11 items-center gap-1 rounded-lg border border-border px-3 disabled:opacity-50"
-            onClick={()=>void execute(()=>library.stopStoredClip(),"",false)}>
+            onClick={()=>void emergencyStop()}>
             <Square className="size-4"/>Стоп
           </button>}
           <button disabled={busy} aria-label={c.favorite?"Убрать из избранного":"В избранное"} aria-pressed={c.favorite}

@@ -69,7 +69,12 @@ export async function renderVerifiedMidiToPcm(
         chunkEvents.push(event);
         cursor++;
       }
-      const pcm=await renderer.render({fromFrame:position,frameCount,events:chunkEvents});
+      const render=Promise.resolve().then(()=>renderer.render({fromFrame:position,frameCount,events:chunkEvents}));
+      let timer:ReturnType<typeof setTimeout>|undefined;
+      const pcm=await Promise.race([render,new Promise<null>(resolve=>{
+        timer=setTimeout(()=>resolve(null),12000);
+      })]).finally(()=>{if(timer!==undefined)clearTimeout(timer)});
+      if(pcm===null)return {ok:false,code:"ERROR",message:"Синтезатор не ответил вовремя"};
       if(!(pcm instanceof Uint8Array)||pcm.byteLength!==frameCount*4)
         return {ok:false,code:"ERROR",message:"Синтезатор вернул неполный PCM"};
       if(options?.isCancelled?.())

@@ -80,7 +80,7 @@ export function requestNativeAudioSink():Promise<Result<"preparing">> {
         return {ok:true,value:"preparing"};
       }
       if(status.lastAudioError) {
-        if(generation===requestGeneration) await native.stop().catch(()=>{});
+        if(generation===requestGeneration) await boundedNativeCall(()=>native.stop()).catch(()=>{});
         return {ok:false,code:"ERROR",message:status.lastAudioError};
       }
       await new Promise<void>(resolve=>setTimeout(resolve,100));
