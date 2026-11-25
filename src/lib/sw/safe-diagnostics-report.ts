@@ -6,8 +6,8 @@
 export type DiagnosticSnapshot = {
   android:boolean; musicOnly:boolean; active:boolean; stepsOnly:boolean;
   stepCount:number|null;
-  sensors?:{yamnetIncluded?:boolean;stepsSupported?:boolean;microphoneGranted?:boolean;recording?:boolean;captureRateHz?:number}|null;
-  performance?:{battery?:number;ramMb?:number;thermalStatus?:number;lowMemory?:boolean;inferenceSkipped?:number;inferenceThrottled?:number}|null;
+  sensors?:{yamnetIncluded?:boolean;stepsSupported?:boolean;stepsActive?:boolean;activityGranted?:boolean;microphoneGranted?:boolean;recording?:boolean;captureRateHz?:number}|null;
+  performance?:{battery?:number;ramMb?:number;thermalStatus?:number;lowMemory?:boolean;inferenceSkipped?:number;inferenceThrottled?:number;analysisStride?:number;analysisActive?:boolean}|null;
   pcm?:{serviceActive?:boolean;readyForPcm?:boolean;underruns?:number}|null;
   wav?:{state?:string}|null;
 };
@@ -25,6 +25,8 @@ export function buildSafeDiagnosticsReport(s:DiagnosticSnapshot):string {
     "Шагов за проверку: "+integer(s.stepCount,0,10000000),
     "YAMNet в APK: "+yn(s.sensors?.yamnetIncluded),
     "Датчик шагов: "+yn(s.sensors?.stepsSupported),
+    "Разрешение активности: "+yn(s.sensors?.activityGranted),
+    "Шагомер Android запущен: "+yn(s.sensors?.stepsActive),
     "Разрешение микрофона: "+yn(s.sensors?.microphoneGranted),
     "Захват микрофона: "+yn(s.sensors?.recording),
     "Частота микрофона (Гц): "+integer(s.sensors?.captureRateHz,8000,192000),
@@ -34,6 +36,8 @@ export function buildSafeDiagnosticsReport(s:DiagnosticSnapshot):string {
     "Нехватка памяти: "+yn(s.performance?.lowMemory),
     "Пропусков анализа YAMNet: "+integer(s.performance?.inferenceSkipped,0,100000000),
     "Окон экономии YAMNet: "+integer(s.performance?.inferenceThrottled,0,100000000),
+    "Анализ YAMNet запущен: "+yn(s.performance?.analysisActive),
+    "Частота проверки YAMNet, каждое N-е окно: "+integer(s.performance?.analysisStride,1,32),
     "PCM-служба: "+yn(s.pcm?.serviceActive),
     "PCM готова: "+yn(s.pcm?.readyForPcm),
     "Пропуски AudioTrack: "+integer(s.pcm?.underruns,0,100000000),

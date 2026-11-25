@@ -26,6 +26,7 @@ export interface SensorsStatus {
   preferredInput?: "auto" | "headset" | "phone";
   actualInputCategory?: "headset" | "phone" | "unknown";
   captureRateHz?: number;
+  analysisStride?: number;
 }
 export interface RawSound {
   label: string;
