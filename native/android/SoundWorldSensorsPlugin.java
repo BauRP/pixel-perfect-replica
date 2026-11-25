@@ -669,11 +669,14 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
             data.put("label", label);
             data.put("confidence", category.score());
             data.put("timestamp", capturedAt);
+            if (!granted(Manifest.permission.RECORD_AUDIO)) return;
             String source = (scheduledInputType == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
               scheduledInputType == AudioDeviceInfo.TYPE_BLE_HEADSET)
               ? "bluetoothMic" : (scheduledInputType == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
               scheduledInputType == AudioDeviceInfo.TYPE_USB_HEADSET)
-              ? "headsetMic" : "phoneMic";
+              ? "headsetMic" : scheduledInputType == AudioDeviceInfo.TYPE_BUILTIN_MIC
+              ? "phoneMic" : "unknown";
+            if ("unknown".equals(source)) continue;
             data.put("source", source);
             data.put("routeGeneration", scheduledGeneration);
             // Native callback reflects the exact physical input at inference
@@ -886,7 +889,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
 
   @Override
   public void onSensorChanged(SensorEvent event) {
-    if (!listeningSteps || event.sensor.getType() != Sensor.TYPE_STEP_DETECTOR) return;
+    if (!listeningSteps || event.sensor.getType() != Sensor.TYPE_STEP_DETECTOR ||
+        !granted(Manifest.permission.ACTIVITY_RECOGNITION)) return;
     JSObject r = new JSObject();
     long when=SoundWorldStepTime.eventEpochMillis(
       event.timestamp, SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis());

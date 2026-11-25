@@ -7,6 +7,8 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { registerAdapters, unavailableAdapters, type Result } from "./engine";
 import { withNativeDeadline } from "./native-call-deadline";
 import type { FermataHeader } from "./fermata-conditioning";
+import { encodeDecodedMidiFile } from "./decoded-midi-events";
+import type { VerifiedMidiRenderer } from "./verified-midi-pcm-bridge";
 
 export type FermataPackageStatus = {
   model:"haster/Fermata-0.2B-v1";
@@ -22,7 +24,10 @@ export type FermataPackageStatus = {
   arm64Supported:boolean;
   generationReady:false;
 };
-type NativeFermata = {inspect():Promise<unknown>;encodeHeader(input:{tokens:string[]}):Promise<unknown>;decodeTokens(input:{tokenIds:number[]}):Promise<unknown>;prepareModel():Promise<unknown>;generateIds(input:{tokenIds:number[];maxTokens:number}):Promise<unknown>};
+type NativeFermata = {inspect():Promise<unknown>;encodeHeader(input:{tokens:string[]}):Promise<unknown>;decodeTokens(input:{tokenIds:number[]}):Promise<unknown>;prepareModel():Promise<unknown>;generateIds(input:{tokenIds:number[];maxTokens:number}):Promise<unknown>;
+  renderMidi(input:{midi:string;frames:number}):Promise<unknown>;
+  readMidiPcm(input:{fromFrame:number;frameCount:number}):Promise<unknown>;
+  releaseMidiPcm():Promise<void>};
 const native=registerPlugin<NativeFermata>("SoundWorldFermata");
 const fields=[
   "manifestPresent","modelPackaged","tokenizerPackaged","mnnPackaged",
@@ -95,7 +100,7 @@ export async function prepareNativeFermataModel():Promise<string> {
  * player remains unavailable until the musical decoder and synth exist. */
 export async function generateNativeFermataTokens(header:Readonly<FermataHeader>,
     maxTokens=2048):Promise<readonly string[]> {
-  if(!Number.isSafeInteger(maxTokens)||maxTokens<1||maxTokens>4096)
+  if(!Number.isSafeInteger(maxTokens)||maxTokens<1||maxTokens+header.tokens.length>4096)
     throw new Error("Некорректное ограничение генерации");
   await prepareNativeFermataModel();
   const ids=await encodeNativeFermataHeader(header);
@@ -107,6 +112,41 @@ export async function generateNativeFermataTokens(header:Readonly<FermataHeader>
      output.some(id=>typeof id!=="number"||!Number.isSafeInteger(id)||id<0||id>=9507))
     throw new Error("MNN не вернула настоящие музыкальные токены");
   return decodeNativeFermataTokens(output as number[]);
+}
+
+/** Actual native file-rendering adapter. It is not installed as the
+ * production engine until real model decoding and licensed assets exist. */
+export function createNativeSonivoxRenderer():VerifiedMidiRenderer {
+  let total=0;
+  return {
+    ready:async()=>{
+      const state=await inspectFermataPackage();
+      return state?.packageComplete===true&&state.arm64Supported;
+    },
+    beginScore:async(score,frames)=>{
+      total=0;
+      const midi=encodeDecodedMidiFile(score);
+      let binary="";
+      for(let i=0;i<midi.length;i+=8192)
+        binary+=String.fromCharCode(...midi.subarray(i,i+8192));
+      const response=await native.renderMidi({midi:btoa(binary),frames});
+      if((response as {frames?:unknown}|null)?.frames!==frames)
+        throw new Error("Синтезатор не вернул полную композицию");
+      total=frames;
+    },
+    render:async({fromFrame,frameCount})=>{
+      if(total<1||fromFrame<0||frameCount<1||fromFrame+frameCount>total)
+        throw new Error("Некорректный диапазон готового PCM");
+      const response=await native.readMidiPcm({fromFrame,frameCount});
+      const encoded=(response as {pcm?:unknown}|null)?.pcm;
+      if(typeof encoded!=="string"||encoded.length>Math.ceil(frameCount*4/3)*4)
+        throw new Error("Некорректные данные синтезатора");
+      const raw=atob(encoded);
+      if(raw.length!==frameCount*4)throw new Error("Неполный PCM");
+      return Uint8Array.from(raw,c=>c.charCodeAt(0));
+    },
+    endScore:async()=>{total=0;await native.releaseMidiPcm();},
+  };
 }
 
 export function explainFermataAvailability(status:FermataPackageStatus|null):string {

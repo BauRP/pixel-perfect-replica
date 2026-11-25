@@ -13,6 +13,8 @@ import { streamRealMidiScores, type RealScoreSource, type SequenceOptions, type 
 export interface VerifiedMidiRenderer {
   /** Must be backed by an opened, real licensed native soundbank/synth. */
   ready():Promise<boolean>;
+  beginScore?(score:unknown,totalFrames:number):Promise<void>;
+  endScore?():Promise<void>;
   /** Render precisely frameCount genuine stereo PCM frames from actual notes. */
   render(input:{
     readonly fromFrame:number;
@@ -36,13 +38,13 @@ const RATE=48000;
 const MIDI_EXTERNAL_DEADLINE_MS=12000;
 /** Bounds external native calls; late results are never enqueued after cancel. */
 async function awaitMidiExternal<T>(
-  action:()=>Promise<T>, isCancelled?:()=>boolean,
+  action:()=>Promise<T>, isCancelled?:()=>boolean, timeoutMs=MIDI_EXTERNAL_DEADLINE_MS,
 ):Promise<T> {
   if(isCancelled?.())throw new Error("Рендер музыки остановлен");
   let timer:ReturnType<typeof setTimeout>|undefined;
   let poll:ReturnType<typeof setInterval>|undefined;
   const guard=new Promise<never>((_,reject)=>{
-    timer=setTimeout(()=>reject(new Error("Синтезатор не ответил вовремя")),MIDI_EXTERNAL_DEADLINE_MS);
+    timer=setTimeout(()=>reject(new Error("Синтезатор не ответил вовремя")),timeoutMs);
     if(isCancelled)poll=setInterval(()=>{
       if(isCancelled())reject(new Error("Рендер музыки остановлен"));
     },100);
@@ -69,6 +71,8 @@ export async function renderVerifiedMidiToPcm(
     const total=midiEventFrame(schedule.durationUs,RATE);
     if(total===null||total<=0)
       return {ok:false,code:"ERROR",message:"Некорректная длительность MIDI"};
+    if(renderer.beginScore)
+      await awaitMidiExternal(()=>renderer.beginScore!(score,total),options?.isCancelled,120_000);
     let cursor=0,position=0;
     while(position<total) {
       if(options?.isCancelled?.())
@@ -109,6 +113,10 @@ export async function renderVerifiedMidiToPcm(
     const cancelled=options?.isCancelled?.()===true;
     return {ok:false,code:cancelled?"UNAVAILABLE":"ERROR",
       message:e instanceof Error?e.message:"Ошибка MIDI-рендера"};
+  }finally{
+    if(renderer.endScore){
+      try{await awaitMidiExternal(()=>renderer.endScore!());}catch{/* keep the original result */}
+    }
   }
 }
 

@@ -74,7 +74,7 @@ export class StepPaceEstimator {
     // the UI timestamps any non-unknown callback as "now".
     const ignored = {activity:"unknown" as const,bpm:0,confidence:0};
     if (prev != null && timestamp <= prev) return ignored;
-    if (prev != null && timestamp - prev > 8000) this.times = [];
+    if (prev != null && timestamp - prev > 2200) this.times = [];
     else if (prev != null && timestamp - prev < 200) return ignored;
     this.times.push(timestamp);
     this.times = this.times.slice(-8);

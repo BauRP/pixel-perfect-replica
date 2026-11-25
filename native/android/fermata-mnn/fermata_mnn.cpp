@@ -21,7 +21,7 @@ Java_kz_soundworld_ar_SoundWorldFermataPlugin_generateMnnIds(
         if(!configPath||!input||maximum<1||maximum>4096)
             throw std::runtime_error("Invalid model request");
         const jsize count=env->GetArrayLength(input);
-        if(count<1||count>32)throw std::runtime_error("Invalid prompt length");
+        if(count<1||count>32||count+maximum>4096)throw std::runtime_error("Invalid prompt length");
         std::vector<jint> javaIds(count);
         env->GetIntArrayRegion(input,0,count,javaIds.data());
         if(env->ExceptionCheck())return nullptr;
@@ -36,6 +36,7 @@ Java_kz_soundworld_ar_SoundWorldFermataPlugin_generateMnnIds(
         if(!model)throw std::runtime_error("Cannot open MNN config");
         if(!model->set_config(R"({"backend_type":"cpu","thread_num":2,"reuse_kv":false})")||
            !model->load())throw std::runtime_error("Cannot load actual weights");
+        model->generate_init();
         std::vector<int> result=model->generate(ids,maximum);
         if(result.empty()||result.size()>static_cast<size_t>(maximum))
             throw std::runtime_error("No valid MNN output");

@@ -37,6 +37,13 @@ import org.json.JSONObject;
 @CapacitorPlugin(name = "SoundWorldFermata")
 public final class SoundWorldFermataPlugin extends Plugin {
   private File preparedModelDirectory;
+  private File renderedPcm;
+  private long renderedFrames;
+  private static native long renderSonivoxFile(String midiPath,String pcmPath,long targetFrames);
+  private void clearRenderedFile() {
+    renderedFrames=0;
+    if(renderedPcm!=null){renderedPcm.delete();renderedPcm=null;}
+  }
   private static native int[] generateMnnIds(String configPath, int[] inputIds, int maxTokens);
   private final ThreadPoolExecutor inspector = new ThreadPoolExecutor(
     1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(2), r -> {
@@ -272,6 +279,12 @@ public final class SoundWorldFermataPlugin extends Plugin {
     try {
       inspector.execute(()->{
         try {
+          if(preparedModelDirectory!=null&&preparedModelDirectory.isDirectory()){
+            JSObject result=new JSObject();
+            result.put("modelDirectory",preparedModelDirectory.getAbsolutePath());
+            result.put("generationReady",false);
+            call.resolve(result);return;
+          }
           preparedModelDirectory=null;
           JSONObject manifest=new JSONObject(new String(
             readBounded(context,"manifest.json",256*1024),StandardCharsets.UTF_8));
@@ -397,6 +410,76 @@ public final class SoundWorldFermataPlugin extends Plugin {
     }catch(RejectedExecutionException e){call.reject("Музыкальный движок занят");}
   }
 
+  /** Render the authentic MIDI bytes supplied by the score adapter, only
+   * through a bundled, reviewed native synthesizer. No microphone samples. */
+  @PluginMethod public void renderMidi(PluginCall call) {
+    final String encoded=call.getString("midi");
+    final Integer frames=call.getInt("frames");
+    if(encoded==null||encoded.length()>1_500_000||frames==null||
+       frames<60*48000||frames>120*48000){
+      call.reject("Некорректная партитура MIDI");return;
+    }
+    final Context context=getContext().getApplicationContext();
+    try {
+      inspector.execute(()->{
+        File midi=null,output=null;
+        try {
+          if(!inspectPackage(context).optBoolean("packageComplete")||
+             !nativeLibraryPresent(context,"libsoundworld_sonivox.so"))
+            throw new IllegalStateException("Reviewed synthesizer missing");
+          clearRenderedFile();
+          File dir=new File(context.getNoBackupFilesDir(),"fermata-audio");
+          if(!dir.isDirectory()&&!dir.mkdirs())throw new java.io.IOException("Cannot create audio directory");
+          if(dir.getUsableSpace()<frames*4L+8L*1024*1024)
+            throw new java.io.IOException("Insufficient audio storage");
+          byte[] bytes=android.util.Base64.decode(encoded,android.util.Base64.NO_WRAP);
+          if(bytes.length<22||bytes.length>1_000_000||bytes[0]!=77||bytes[1]!=84||
+             bytes[2]!=104||bytes[3]!=100)
+            throw new IllegalArgumentException("Invalid MIDI file");
+          midi=File.createTempFile("score-",".mid",dir);
+          output=File.createTempFile("render-",".pcm",dir);
+          try(FileOutputStream stream=new FileOutputStream(midi)){stream.write(bytes);}
+          System.loadLibrary("soundworld_sonivox");
+          long actual=renderSonivoxFile(midi.getAbsolutePath(),output.getAbsolutePath(),frames);
+          if(actual!=frames||output.length()!=frames*4L)
+            throw new java.io.IOException("Incomplete real PCM");
+          renderedPcm=output;renderedFrames=actual;output=null;
+          JSObject result=new JSObject();result.put("frames",actual);call.resolve(result);
+        }catch(Exception | LinkageError e){call.reject("Локальный синтез MIDI недоступен");}
+        finally{if(midi!=null)midi.delete();if(output!=null)output.delete();}
+      });
+    }catch(RejectedExecutionException e){call.reject("Музыкальный движок занят");}
+  }
+
+  @PluginMethod public void readMidiPcm(PluginCall call) {
+    final Integer from=call.getInt("fromFrame"),count=call.getInt("frameCount");
+    if(from==null||count==null||from<0||count<1||count>12000){
+      call.reject("Некорректная порция PCM");return;
+    }
+    try {
+      inspector.execute(()->{
+        try {
+          if(renderedPcm==null||(long)from+count>renderedFrames)
+            throw new java.io.IOException("No rendered audio");
+          byte[] data=new byte[count*4];
+          try(java.io.RandomAccessFile stream=new java.io.RandomAccessFile(renderedPcm,"r")){
+            stream.seek(from*4L);stream.readFully(data);
+          }
+          JSObject result=new JSObject();
+          result.put("pcm",android.util.Base64.encodeToString(data,android.util.Base64.NO_WRAP));
+          java.util.Arrays.fill(data,(byte)0);
+          call.resolve(result);
+        }catch(Exception e){call.reject("Не удалось прочитать реальные PCM");}
+      });
+    }catch(RejectedExecutionException e){call.reject("Музыкальный движок занят");}
+  }
+
+  @PluginMethod public void releaseMidiPcm(PluginCall call) {
+    try {
+      inspector.execute(()->{clearRenderedFile();call.resolve();});
+    }catch(RejectedExecutionException e){call.reject("Музыкальный движок занят");}
+  }
+
   @PluginMethod public void inspect(PluginCall call) {
     final Context context=getContext().getApplicationContext();
     try {
@@ -410,7 +493,11 @@ public final class SoundWorldFermataPlugin extends Plugin {
   }
 
   @Override protected void handleOnDestroy() {
-    inspector.shutdownNow();
+    // Let the serial worker finish its in-flight native operation and
+    // remove the temporary PCM afterwards; never delete a file mid-read.
+    try{inspector.execute(this::clearRenderedFile);}
+    catch(RejectedExecutionException ignored){}
+    inspector.shutdown();
     super.handleOnDestroy();
   }
 }

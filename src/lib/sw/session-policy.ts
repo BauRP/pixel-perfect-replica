@@ -35,6 +35,7 @@ export function transitionAudioPolicy(
       }
       break;
     case "user-pause":
+      if(state.playback==="stopped")break;
       state.playback = "paused";
       state.resumeAfterCall = state.resumeAfterFocus = false;
       action = "pause";
@@ -51,6 +52,7 @@ export function transitionAudioPolicy(
       if (state.playback === "playing") { state.playback = "paused"; action = "pause"; }
       break;
     case "call-end":
+      if(!state.interruptedByCall)break;
       state.interruptedByCall = false;
       if (state.resumeAfterCall && allowAfterCall && !state.headsetWasDisconnected) {
         state.playback = "playing"; action = "play";

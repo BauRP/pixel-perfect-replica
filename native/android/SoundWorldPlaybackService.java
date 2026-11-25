@@ -308,7 +308,7 @@ public final class SoundWorldPlaybackService extends Service {
     MediaSession currentSession = session;
     if (currentSession == null) return;
     PlaybackState state = new PlaybackState.Builder()
-      .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_STOP)
+      .setActions(PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_STOP)
       .setState(playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
         PlaybackState.PLAYBACK_POSITION_UNKNOWN, playing ? 1f : 0f).build();
     try { currentSession.setPlaybackState(state); } catch (IllegalStateException ignored) {}

@@ -127,6 +127,7 @@ const GM_BY_ID:Readonly<Record<string,number|"drums">>={
   "i6-10":22,  // harmonica
   "i7-01":48,  // string ensemble
   "i7-03":47,  // timpani
+  "i7-05":9,   // glockenspiel
   "i7-06":13,  // xylophone
   "i8-03":104, // sitar
   "i8-05":107, // koto
@@ -173,6 +174,11 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
   const defaultsFor=(id:string):readonly string[]=>{
     if(id.startsWith("g12-"))return ["i3-01","i3-03","i4-07"];
     if(id==="g13-s04")return ["i8-05"]; // Japanese koto
+    if(id==="g13-s08")return ["i8-03"]; // Indian sitar
+    if(id==="g08-s06")return ["i1-01"]; // solo piano
+    if(id.startsWith("g05-"))return ["i3-02","i3-04","i5-01"]; // rock
+    if(id.startsWith("g10-"))return ["i2-04","i1-03"]; // ambient
+    if(id==="g15-s02")return ["i3-03","i3-04","i5-01"]; // bossa nova
     if(id==="g15-s04")return ["i8-08"]; // tango accordion
     if(id==="g15-s05")return ["i3-03"]; // flamenco guitar
     return DEFAULT_INSTRUMENTS[COARSE_GENRE[id.slice(0,3)]!]??[];
