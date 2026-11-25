@@ -155,7 +155,7 @@ export class GeneratedPcmSession {
         // Output is queued before the persisted WAV bytes. Never claim audible here.
         const pushed = await this.bounded(this.sink.append(part));
         if(!pushed.ok) return this.fail(pushed.message);
-        if(this.state==="error" || this.id===null)
+        if(this.id===null)
           return {ok:false,code:"UNAVAILABLE",message:"Поток остановлен после ошибки"};
         const written = await this.bounded(this.store.append(this.id,part));
         if(!written.ok) return this.fail(written.message);
