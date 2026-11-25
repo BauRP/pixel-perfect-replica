@@ -127,6 +127,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     int type = device.getType();
     return type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
       type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+      type == AudioDeviceInfo.TYPE_USB_DEVICE ||
       type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
       type == AudioDeviceInfo.TYPE_BLE_HEADSET;
   }
@@ -294,6 +295,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     o.put("actualInputCategory", actualInputType == AudioDeviceInfo.TYPE_BUILTIN_MIC ? "phone" :
       (actualInputType == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
        actualInputType == AudioDeviceInfo.TYPE_USB_HEADSET ||
+       actualInputType == AudioDeviceInfo.TYPE_USB_DEVICE ||
        actualInputType == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
        actualInputType == AudioDeviceInfo.TYPE_BLE_HEADSET) ? "headset" : "unknown");
     o.put("captureRateHz", captureRateHz);
@@ -683,7 +685,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
             String source = (scheduledInputType == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
               scheduledInputType == AudioDeviceInfo.TYPE_BLE_HEADSET)
               ? "bluetoothMic" : (scheduledInputType == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-              scheduledInputType == AudioDeviceInfo.TYPE_USB_HEADSET)
+              scheduledInputType == AudioDeviceInfo.TYPE_USB_HEADSET ||
+              scheduledInputType == AudioDeviceInfo.TYPE_USB_DEVICE)
               ? "headsetMic" : scheduledInputType == AudioDeviceInfo.TYPE_BUILTIN_MIC
               ? "phoneMic" : "unknown";
             if ("unknown".equals(source)) continue;
@@ -870,7 +873,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     r.put("kind", actualKind);
     r.put("output", "Не проверен");
     r.put("inputType", actualInputType);
-    r.put("routeConfirmed", capturing.get() && actualInputType>=0);
+    r.put("routeConfirmed", capturing.get() && actualInputType>=0 && granted(Manifest.permission.RECORD_AUDIO));
     call.resolve(r);
   }
 

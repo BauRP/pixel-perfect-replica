@@ -172,7 +172,7 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
   const pool=notWeak.length?notWeak:permitted;
   const ranked=[...pool.filter(id=>emph.has(id)),...pool.filter(id=>!emph.has(id))];
   const defaultsFor=(id:string):readonly string[]=>{
-    if(id.startsWith("g12-")&&id!=="g12-s04")return ["i3-01","i3-03","i4-07"];
+    if(id.startsWith("g12-")&&id!=="g12-s04"&&id!=="g12-s03")return ["i3-01","i3-03","i4-07"];
     if(id==="g13-s04")return ["i8-05"]; // Japanese koto
     if(id==="g13-s08")return ["i8-03"]; // Indian sitar
     if(id==="g08-s06")return ["i1-01"]; // solo piano
@@ -181,6 +181,12 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
     if(id==="g15-s02")return ["i3-03","i3-04","i5-01"]; // bossa nova
     if(id==="g06-s07")return ["i3-03","i6-01","i3-04","i5-01"]; // jazz bossa nova
     if(id==="g06-s01")return ["i6-01","i1-01","i3-04","i5-01"]; // swing
+    if(id==="g06-s02")return ["i6-02","i6-01","i4-04","i5-01"]; // bebop
+    if(id==="g07-s01")return ["i3-01","i6-10"]; // delta blues
+    if(id==="g07-s02")return ["i3-02","i6-10","i3-04","i5-01"]; // Chicago blues
+    if(id==="g08-s07")return ["i7-01","i6-04","i7-03"]; // symphonic
+    if(id==="g11-s07")return ["i3-03","i4-05"]; // soft acoustic
+    if(id==="g12-s03")return ["i8-09","i3-01"]; // Celtic folk
     if(id==="g06-s03")return ["i6-02","i1-01","i4-04","i5-01"]; // cool jazz
     if(id==="g08-s01")return ["i1-05","i4-01","i4-03"]; // baroque
     if(id==="g08-s05")return ["i4-01","i4-02","i4-03"]; // chamber

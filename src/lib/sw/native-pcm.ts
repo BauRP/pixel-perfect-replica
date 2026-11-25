@@ -14,7 +14,7 @@ interface PCMPlugin {
   appendPcm(args:{base64:string;sessionId:number}): Promise<{queued:boolean;backpressure?:boolean}>;
   pause(): Promise<{audible:boolean}>;
   stop(): Promise<{requested:boolean}>;
-  status(): Promise<{audible:boolean;queuedChunks:number;serviceActive:boolean;readyForPcm:boolean;sessionId:number;underruns:number;lastAudioError:string}>;
+  status(): Promise<{audible:boolean;queuedChunks:number;serviceActive:boolean;readyForPcm:boolean;sessionId:number;underruns:number;lastAudioError:string;acceptedFrames?:number;writtenFrames?:number;drained?:boolean}>;
 }
 const native = registerPlugin<PCMPlugin>("SoundWorldPlayback");
 // A process-wide PCM bridge is allowed to write only to the foreground
@@ -177,4 +177,24 @@ export function stopNativeAudioSink():Promise<void>{
     const response=await boundedNativeCall(()=>native.stop());
     if(!confirmedAudioStop(response))throw new Error("Android не подтвердил остановку аудиослужбы");
   });
+}
+
+/** Wait for genuine frames already queued to finish playing, without
+ * inserting silence or treating a queue receipt as audible completion.
+ * A user Stop or focus loss invalidates the session immediately. */
+export async function drainNativeAudioSink(expectedFrames:number,cancelled:()=>boolean):Promise<Result<void>>{
+  const id=activeSessionId;
+  if(id===null||!Number.isSafeInteger(expectedFrames)||expectedFrames<1)
+    return unavailable("Нет подтверждённой сессии для завершения звука");
+  const deadline=Date.now()+15000;
+  while(Date.now()<deadline){
+    if(cancelled()||!matchingPcmSession(activeSessionId,id))return unavailable("Воспроизведение прервано");
+    const status=await currentAudioSinkStatus();
+    if(!status||status.sessionId!==id||!status.serviceActive||status.lastAudioError)
+      return {ok:false,code:"ERROR",message:status?.lastAudioError||"Аудиосессия потеряна"};
+    if(status.drained===true&&status.acceptedFrames===expectedFrames&&status.writtenFrames===expectedFrames)
+      return {ok:true,value:undefined};
+    await new Promise<void>(resolve=>setTimeout(resolve,100));
+  }
+  return {ok:false,code:"TIMEOUT",message:"Android не подтвердил завершение последних звуковых кадров"};
 }

@@ -290,6 +290,8 @@ public final class SoundWorldFermataPlugin extends Plugin {
     try {
       inspector.execute(()->{
         try {
+          if(destroyed)throw new IllegalStateException("Destroyed model");
+          if(!isArm64())throw new IllegalStateException("ARM64 required");
           if(preparedModelDirectory!=null&&preparedModelDirectory.isDirectory()){
             JSObject result=new JSObject();
             result.put("modelDirectory",preparedModelDirectory.getAbsolutePath());
@@ -335,7 +337,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
                   FileOutputStream out=new FileOutputStream(temp)) {
                 int n;
                 while((n=in.read(buffer))!=-1) {
-                  if(Thread.currentThread().isInterrupted())throw new java.io.IOException("Cancelled");
+                  if(destroyed||Thread.currentThread().isInterrupted())throw new java.io.IOException("Cancelled");
                   copied+=n;
                   if(copied>size)throw new java.io.IOException("Unexpected model size");
                   out.write(buffer,0,n);

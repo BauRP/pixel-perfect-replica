@@ -267,7 +267,7 @@ export function installNativeSensorAdapters(): void {
             if(cancelled())return unavailable("Запуск анализа отменён");
             const result=await withNativeDeadline(()=>native.startAnalysis(),12_000);
             if(cancelled())return unavailable("Запуск анализа отменён");
-            if(result.started){stability.reset();routeFence.reset();pace.reset();}
+            if(result.started){stability.reset();routeFence.reset();}
             return result.started
               ? {ok:true as const,value:undefined}
               : unavailable("Модель YAMNet недоступна");

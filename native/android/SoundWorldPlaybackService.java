@@ -25,6 +25,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Real 48kHz stereo PCM output sink for a future LOCAL generative model.
@@ -42,6 +43,8 @@ public final class SoundWorldPlaybackService extends Service {
   // A late PCM packet from an interrupted session cannot play after restart.
   private static final AtomicInteger NEXT_SESSION_ID = new AtomicInteger();
   private volatile int pcmSessionId = 0;
+  private final AtomicLong acceptedFrames = new AtomicLong();
+  private final AtomicLong writtenFrames = new AtomicLong();
   private final ArrayBlockingQueue<byte[]> chunks = new ArrayBlockingQueue<>(16);
   private final AtomicBoolean running = new AtomicBoolean(false);
   private final AtomicBoolean writerActive = new AtomicBoolean(false);
@@ -156,6 +159,8 @@ public final class SoundWorldPlaybackService extends Service {
       startForeground(NOTIFICATION_ID, notification("Ожидание настоящего аудио"));
       lastAudioError = "";
       lastUnderruns = -1;
+      acceptedFrames.set(0);
+      writtenFrames.set(0);
       pcmSessionId = NEXT_SESSION_ID.incrementAndGet();
       paused.set(false);
       foregroundReady.set(true);
@@ -194,6 +199,7 @@ public final class SoundWorldPlaybackService extends Service {
         foregroundReady.get(), paused.get(), running.get(), true)
         ? EnqueueResult.BACKPRESSURE : EnqueueResult.UNAVAILABLE;
     }
+    acceptedFrames.addAndGet(pcm.length/4);
     idleHandler.removeCallbacks(noFirstPcm);
     return EnqueueResult.ACCEPTED; // queued, NOT necessarily audible
   }
@@ -247,13 +253,11 @@ public final class SoundWorldPlaybackService extends Service {
             break;
           }
           // Do not claim real music when no generated samples exist.
-          if (actualPlayback) {
+          if (actualPlayback && pendingHardwareFrames()==0) {
             actualPlayback = false; publishState(false);
             lastUnderruns = audioTrack.getUnderrunCount();
-            audioTrack.pause();
-            // A stalled producer can leave samples buffered in AudioTrack.
-            // Flush the previous fragment before real new PCM is played.
-            audioTrack.flush();
+            // Never flush an active track on temporary producer starvation.
+            // Keep its playback-head counter continuous until explicit Stop.
           }
           continue;
         }
@@ -271,6 +275,8 @@ public final class SoundWorldPlaybackService extends Service {
             lastAudioError = "AudioTrack не принял PCM: код " + written;
             running.set(false); break;
           }
+          if(written%4!=0){lastAudioError="Неполный стереокадр AudioTrack";running.set(false);break;}
+          writtenFrames.addAndGet(written/4);
           at += written;
         }
         lastUnderruns = audioTrack.getUnderrunCount();
@@ -343,6 +349,25 @@ public final class SoundWorldPlaybackService extends Service {
 
   public boolean isAudible() { return actualPlayback && running.get() && !paused.get(); }
   public int bufferedChunks() { return chunks.size(); }
+  public long acceptedFrameCount(){return acceptedFrames.get();}
+  public long writtenFrameCount(){return writtenFrames.get();}
+  // AudioTrack's unsigned 32-bit head wraps; subtract modulo 2^32.
+  // Valid outstanding data is bounded by the actual AudioTrack buffer.
+  private long pendingHardwareFrames(){
+    AudioTrack track=audioTrack;
+    if(track==null)return -1;
+    try{
+      long written=writtenFrames.get();
+      long head=Integer.toUnsignedLong(track.getPlaybackHeadPosition());
+      return (written-head)&0xffffffffL;
+    }catch(IllegalStateException e){return -1;}
+  }
+  public synchronized boolean drained(int requested){
+    return requested>0 && requested==pcmSessionId && foregroundReady.get() &&
+      !paused.get() && running.get() && lastAudioError.isEmpty() &&
+      acceptedFrames.get()>0 && acceptedFrames.get()==writtenFrames.get() &&
+      chunks.isEmpty() && pendingHardwareFrames()==0;
+  }
   public int measuredUnderruns() { return lastUnderruns; }
   public String audioError() { return lastAudioError; }
 

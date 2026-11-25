@@ -91,6 +91,9 @@ public class SoundWorldPlaybackPlugin extends Plugin {
     r.put("readyForPcm",s!=null&&s.readyForPcm());
     r.put("sessionId",s==null?0:s.sessionId());
     r.put("underruns",s==null?-1:s.measuredUnderruns());
+    r.put("acceptedFrames",s==null?0:s.acceptedFrameCount());
+    r.put("writtenFrames",s==null?0:s.writtenFrameCount());
+    r.put("drained",s!=null&&s.drained(s.sessionId()));
     r.put("lastAudioError",s==null?"":s.audioError());
     call.resolve(r);
   }

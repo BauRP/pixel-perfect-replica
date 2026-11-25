@@ -121,6 +121,10 @@ jobs:
         run: |
           set -euo pipefail
           if [[ ! -f offline-music/manifest.json ]]; then
+            if [[ ! -f offline-music-review/manifest.json ]]; then
+              echo "::error::The independently reviewed offline music package is not yet available"
+              exit 1
+            fi
             python3 scripts/assemble_reviewed_music_bundle.py \
               --review offline-music-review/manifest.json \
               --conversion fermata-conversion/mnn \
