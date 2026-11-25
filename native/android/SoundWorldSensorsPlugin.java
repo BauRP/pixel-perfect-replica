@@ -30,6 +30,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 import android.app.ActivityManager;
 import android.os.BatteryManager;
@@ -81,6 +83,17 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private volatile AudioClassifier analyzer;
   private volatile boolean analysisActive = false;
   private ExecutorService inferenceWorker;
+  private final AtomicBoolean inferenceCleanupPending = new AtomicBoolean(false);
+  // One bounded worker owns startup, stop and cleanup commands; vendor HAL
+  // stalls must not spawn unbounded waiting threads.
+  private final java.util.concurrent.ThreadPoolExecutor captureCommands = new java.util.concurrent.ThreadPoolExecutor(
+    1, 1, 0L, TimeUnit.MILLISECONDS, new java.util.concurrent.ArrayBlockingQueue<>(4), r -> {
+      Thread t = new Thread(r, "SoundWorld-Capture-Commands"); t.setDaemon(true); return t;
+    }, new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
+  private final AtomicBoolean captureStartQueued = new AtomicBoolean(false);
+  private final Object captureStopQueueLock = new Object();
+  private final ArrayList<PluginCall> pendingStopCalls = new ArrayList<>();
+  private boolean captureStopScheduled = false;
   private volatile AtomicBoolean inferenceBusy = new AtomicBoolean(false);
   private volatile int skippedInferenceWindows = 0;
   private final long appStartedAt = SystemClock.elapsedRealtime();
@@ -324,13 +337,29 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   public void startAnalysis(PluginCall call) {
     if (!hasYamnetAsset()) { call.reject("Модель YAMNet отсутствует в APK"); return; }
     long epoch=captureEpoch.incrementAndGet();
-    new Thread(() -> openCapture(call, true, epoch), "SoundWorld-Yamnet-Init").start();
+    queueCaptureStart(call, true, epoch);
   }
 
   @PluginMethod
   public void startMicrophoneProbe(PluginCall call) {
     long epoch=captureEpoch.incrementAndGet();
-    new Thread(() -> openCapture(call, false, epoch), "SoundWorld-Mic-Init").start();
+    queueCaptureStart(call, false, epoch);
+  }
+
+  private void queueCaptureStart(PluginCall call, boolean classify, long epoch) {
+    if (!captureStartQueued.compareAndSet(false, true)) {
+      call.reject("Предыдущий запуск микрофона ещё выполняется");
+      return;
+    }
+    try {
+      captureCommands.execute(() -> {
+        try { openCapture(call, classify, epoch); }
+        finally { captureStartQueued.set(false); }
+      });
+    } catch (RejectedExecutionException e) {
+      captureStartQueued.set(false);
+      call.reject("Очередь микрофона занята, повторите запуск позже");
+    }
   }
 
   /** All I/O and model initialization happens off the Android UI thread. */
@@ -341,6 +370,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     }
     synchronized (captureLock) {
       if(epoch!=captureEpoch.get()) {call.reject("Запуск микрофона отменён");return;}
+      if(inferenceCleanupPending.get()) {call.reject("YAMNet ещё освобождает ресурсы предыдущей проверки");return;}
       if (capturing.get()) {
         // A rapid Stop -> Start must not reuse the OLD recorder and then
         // report success just before the queued stop closes it.
@@ -673,26 +703,35 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
         try { if (rec.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) rec.stop(); } catch (Exception ignored) {}
         try { rec.release(); } catch (Exception ignored) {}
       }
-      // MediaPipe must never close while a background inference still uses it.
+      // Close the model exactly once after its final inference has terminated.
+      // A six-second warning is not a license to abandon native resources.
+      // While cleanup is pending, new capture starts are rejected instead
+      // of allocating additional models on a malfunctioning audio driver.
       if (cls != null) {
         if (worker == null || worker.isTerminated()) {
           try { cls.close(); } catch (Exception ignored) {}
         } else {
+          inferenceCleanupPending.set(true);
           final ExecutorService closingWorker = worker;
           Thread closing = new Thread(() -> {
-            boolean interrupted = false;
-            boolean finished = false;
-            long deadline = SystemClock.elapsedRealtime() + 6000;
-            while (SystemClock.elapsedRealtime() < deadline) {
-              try { if (closingWorker.awaitTermination(1, TimeUnit.SECONDS)) { finished = true; break; } }
-              catch (InterruptedException ex) { interrupted = true; }
-            }
-            // Never close a MediaPipe classifier while native inference still
-            // uses it. Bound the cleanup wait instead of leaking a waiting thread.
-            if (finished) {
+            boolean warned=false;
+            boolean interrupted=false;
+            long deadline=SystemClock.elapsedRealtime()+6000;
+            try {
+              while (true) {
+                try {
+                  if (closingWorker.awaitTermination(1, TimeUnit.SECONDS)) break;
+                } catch (InterruptedException e) { interrupted=true; }
+                if (!warned && SystemClock.elapsedRealtime()>=deadline) {
+                  warned=true;
+                  sendError("YAMNet освобождает ресурсы дольше 6 секунд");
+                }
+              }
               try { cls.close(); } catch (Exception ignored) {}
-            } else sendError("YAMNet не завершила фоновую обработку за 6 секунд");
-            if (interrupted) Thread.currentThread().interrupt();
+            } finally {
+              inferenceCleanupPending.set(false);
+              if (interrupted) Thread.currentThread().interrupt();
+            }
           }, "SoundWorld-Yamnet-Close");
           closing.setDaemon(true);
           closing.start();
@@ -704,17 +743,46 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
 
   // Stopping an AudioRecord may wait for an in-flight microphone read or inference.
   // Never run the blocking release on the Android/Capacitor UI thread.
-  private void stopAsync(PluginCall call) {
-    long requestedEpoch = captureEpoch.incrementAndGet(); // cancel a pending startup
-    lastStopEpoch = requestedEpoch;
-    new Thread(() -> {
-      synchronized (captureLock) {
-        // An old stop cannot close a newer recording, but it must close the
-        // recording that existed when Stop was requested.
-        if (activeCaptureEpoch < requestedEpoch) stopProbeInternal();
+  private void enqueueCaptureStop(PluginCall call) {
+    synchronized (captureStopQueueLock) {
+      if (call != null) pendingStopCalls.add(call);
+      if (captureStopScheduled) return;
+      captureStopScheduled=true;
+    }
+    try {
+      captureCommands.execute(() -> {
+        Exception problem=null;
+        try {
+          synchronized (captureLock) {
+            if (activeCaptureEpoch < lastStopEpoch) stopProbeInternal();
+          }
+        } catch (Exception ex) { problem=ex; }
+        final ArrayList<PluginCall> callbacks;
+        synchronized (captureStopQueueLock) {
+          callbacks=new ArrayList<>(pendingStopCalls);
+          pendingStopCalls.clear();
+          captureStopScheduled=false;
+        }
+        for (PluginCall request : callbacks) {
+          if (problem != null) request.reject("Ошибка остановки микрофона");
+          else { JSObject result=new JSObject();result.put("stopped", true);request.resolve(result); }
+        }
+      });
+    } catch (RejectedExecutionException e) {
+      final ArrayList<PluginCall> callbacks;
+      synchronized (captureStopQueueLock) {
+        callbacks=new ArrayList<>(pendingStopCalls);
+        pendingStopCalls.clear();
+        captureStopScheduled=false;
       }
-      JSObject result = new JSObject(); result.put("stopped", true); call.resolve(result);
-    }, "SoundWorld-Mic-Stop").start();
+      for (PluginCall request : callbacks) request.reject("Очередь микрофона перегружена");
+    }
+  }
+
+  private void stopAsync(PluginCall call) {
+    long requestedEpoch=captureEpoch.incrementAndGet();
+    lastStopEpoch=requestedEpoch;
+    enqueueCaptureStop(call);
   }
 
   @PluginMethod
@@ -823,11 +891,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private void stopForLifecycle(String threadName) {
     long epoch = captureEpoch.incrementAndGet();
     lastStopEpoch = epoch;
-    new Thread(() -> {
-      synchronized (captureLock) {
-        if (activeCaptureEpoch < epoch) stopProbeInternal();
-      }
-    }, threadName).start();
+    enqueueCaptureStop(null);
   }
 
   @Override protected void handleOnPause() {
@@ -845,6 +909,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     routeWorker.shutdownNow();
     snapshotWorker.shutdownNow();
     stopForLifecycle("SoundWorld-Destroy-Stop");
+    captureCommands.shutdown();
     stopStepsInternal();
     super.handleOnDestroy();
   }
