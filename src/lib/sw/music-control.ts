@@ -106,7 +106,7 @@ export class MusicControlPlanner {
     // An old cadence is not evidence for the user's new walking speed.
     // After a long sensor gap, adopt the fresh measured pace without blending
     // it with the rate from before a pause or stopped walk.
-    const recent = this.lastPace && input.timestamp - this.lastPace.timestamp <= 8000;
+    const recent = this.lastPace && input.timestamp - this.lastPace.timestamp <= 4500;
     const bpm = recent ? this.lastPace!.bpm * .7 + input.bpm * .3 : input.bpm;
     this.lastPace = { ...input, bpm };
     return true;
@@ -123,7 +123,8 @@ export class MusicControlPlanner {
     const halfTime = basePulse !== null && settings.speed <= -2 && basePulse > 125;
     const stepPulseBpm = basePulse === null ? null :
       Math.round(clamp(halfTime ? basePulse / 2 : basePulse, 55, 180));
-    const activity = settings.activityMode === "running" ? "running" : settings.activityMode === "walking" ? "walking" :
+    const activity = settings.musicOnlyMode ? "unknown" :
+      settings.activityMode === "running" ? "running" : settings.activityMode === "walking" ? "walking" :
       settings.activityMode === "rest" || settings.activityMode === "transport" ? "unknown" :
       !fresh ? "unknown" : fresh.bpm >= 145 ? "running" : "walking";
     const stepStrength = settings.stepsInfluence === "weak" ? .12 :

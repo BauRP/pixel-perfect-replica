@@ -192,6 +192,8 @@ export async function drainNativeAudioSink(expectedFrames:number,cancelled:()=>b
     const status=await currentAudioSinkStatus();
     if(!status||status.sessionId!==id||!status.serviceActive||status.lastAudioError)
       return {ok:false,code:"ERROR",message:status?.lastAudioError||"Аудиосессия потеряна"};
+    if(cancelled()||!matchingPcmSession(activeSessionId,id))return unavailable("Воспроизведение прервано");
+    if(!status.readyForPcm)return unavailable("Android остановил аудиосеанс");
     if(status.drained===true&&status.acceptedFrames===expectedFrames&&status.writtenFrames===expectedFrames)
       return {ok:true,value:undefined};
     await new Promise<void>(resolve=>setTimeout(resolve,100));

@@ -291,8 +291,8 @@ export function installNativeSensorAdapters(): void {
         void Promise.resolve().then(()=>native.stopAnalysis()).catch(()=>undefined);
         return diagnosticOperations.enqueue(async ():Promise<Result> => {
           try {
-            await withNativeDeadline(()=>native.stopAnalysis(),5000);
-            return {ok:true as const,value:undefined};
+            const result=await withNativeDeadline(()=>native.stopAnalysis(),5000);
+            return result.stopped?{ok:true as const,value:undefined}:unavailable("Android не подтвердил остановку микрофона");
           }catch(e){return safeError(e);}
           finally{ambientEpoch++;}
         });

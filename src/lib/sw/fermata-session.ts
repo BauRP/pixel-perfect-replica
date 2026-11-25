@@ -3,7 +3,7 @@ import type { ClipMeta } from "./engine";
 import { createLiveFermataInputs } from "./fermata-live-inputs";
 import type { FermataHeader } from "./fermata-conditioning";
 import { AdaptiveMidiSource, type LiveMusicRequestInputs } from "./adaptive-midi-source";
-import { generateNativeFermataTokens, createNativeSonivoxRenderer, inspectFermataPackage } from "./fermata-native";
+import { generateNativeFermataTokens, createNativeSonivoxRenderer, inspectFermataPackage, prepareNativeFermataModel } from "./fermata-native";
 import { renderContinuousVerifiedMidiToPcm } from "./verified-midi-pcm-bridge";
 import type { SequenceOptions, SequenceOutcome } from "./continuous-midi-scores";
 import { createNativeGeneratedPcmSession } from "./generated-pcm-session";
@@ -39,6 +39,22 @@ export async function runNativeFermataSession(
     const packageState=await inspectFermataPackage();
     if(!packageState?.packageComplete||!packageState.arm64Supported)
       return {ok:false,code:"UNAVAILABLE",message:"Полный локальный музыкальный пакет отсутствует",completedScores:0,totalFrames:0};
+    // Extraction of large verified assets is separate from the first
+    // score's inference deadline. Never start sensors while unpacking.
+    let prepareTimer:ReturnType<typeof setTimeout>|undefined;
+    let preparePoll:ReturnType<typeof setInterval>|undefined;
+    try{
+      await Promise.race([prepareNativeFermataModel(),new Promise<never>((_,reject)=>{
+        prepareTimer=setTimeout(()=>reject(new Error("Подготовка модели не завершилась вовремя")),120_000);
+        preparePoll=setInterval(()=>{if(cancelled())reject(new Error("Музыка остановлена"));},100);
+      })]);
+    }catch(error){
+      return {ok:false,code:cancelled()?"UNAVAILABLE":"ERROR",
+        message:error instanceof Error?error.message:"Ошибка подготовки Fermata",completedScores:0,totalFrames:0};
+    }finally{
+      if(prepareTimer!==undefined)clearTimeout(prepareTimer);
+      if(preparePoll!==undefined)clearInterval(preparePoll);
+    }
     if(onPrepared&&!cancelled())await onPrepared();
     if(cancelled())return {ok:false,code:"UNAVAILABLE",message:"Музыка остановлена",completedScores:0,totalFrames:0};
     const source=new AdaptiveMidiSource({
@@ -60,6 +76,12 @@ export async function runNativeFermataSession(
           const ready=await requestNativeAudioSink();
           if(!ready.ok)return ready;
           opened=true;
+          const first=await currentAudioSinkStatus();
+          if(!first?.readyForPcm||!Number.isSafeInteger(first.sessionId)||first.sessionId<=0){
+            interrupted=true;
+            return {ok:false,code:"UNAVAILABLE",message:"Android потерял музыкальный сеанс"};
+          }
+          nativeSessionId=first.sessionId;
           // Once sound is active, native focus loss/headphone disconnect
           // must cancel the producer even during a long model calculation.
           monitor=setInterval(()=>{

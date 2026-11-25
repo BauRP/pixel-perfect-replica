@@ -86,9 +86,17 @@ export async function decodeNativeFermataTokens(ids:readonly number[]):Promise<r
 }
 
 /** Explicit developer/runtime preparation, never invoked during UI startup. */
-export async function prepareNativeFermataModel():Promise<string> {
-  if(Capacitor.getPlatform()!=="android")throw new Error("MNN доступен только в Android");
-  const value=await withNativeDeadline(()=>native.prepareModel(),120_000);
+let preparing:Promise<string>|null=null;
+export function prepareNativeFermataModel():Promise<string> {
+  if(Capacitor.getPlatform()!=="android")return Promise.reject(new Error("MNN доступен только в Android"));
+  if(preparing)return preparing;
+  const work=prepareNativeModelOnce();
+  preparing=work;
+  void work.finally(()=>{if(preparing===work)preparing=null;}).catch(()=>undefined);
+  return work;
+}
+async function prepareNativeModelOnce():Promise<string>{
+  const value=await native.prepareModel();
   const directory=(value as {modelDirectory?:unknown}|null)?.modelDirectory;
   if(typeof directory!=="string"||!directory.startsWith("/")||
      !directory.endsWith("/fermata-mnn-v1"))

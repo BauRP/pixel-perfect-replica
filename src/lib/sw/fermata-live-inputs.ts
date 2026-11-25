@@ -24,12 +24,21 @@ export function createLiveFermataInputs(favorites:()=>ClipMeta[]):{
   const visible=()=>typeof document==="undefined"||document.visibilityState!=="hidden";
   let lastRoute=getSettingsSnapshot().microphonePreference;
   let lastAuto=getSettingsSnapshot().autoAudioRouting;
+  const stopOwned=async()=>{
+    // Retain ownership after an unconfirmed stop so the next reconcile
+    // can retry and will not mistakenly reopen that capture.
+    const [mic,steps]=await Promise.all([
+      ownsMic?adapters.environment.stopCapture().catch(()=>null):Promise.resolve(null),
+      ownsSteps?adapters.activity.stopCapture?.().catch(()=>null):Promise.resolve(null),
+    ]);
+    if(mic?.ok)ownsMic=false;
+    if(steps?.ok)ownsSteps=false;
+    planner.reset();lastBird=0;
+  };
   const reconcile=()=>lifecycle.enqueue(async()=>{
     const allowed=()=>requested&&!closed&&visible()&&!getSettingsSnapshot().musicOnlyMode;
     if(!allowed()){
-      if(ownsMic){await adapters.environment.stopCapture().catch(()=>undefined);ownsMic=false;}
-      if(ownsSteps){await adapters.activity.stopCapture?.().catch(()=>undefined);ownsSteps=false;}
-      planner.reset();lastBird=0;
+      await stopOwned();
       return;
     }
     if(!ownsMic){
@@ -41,8 +50,7 @@ export function createLiveFermataInputs(favorites:()=>ClipMeta[]):{
       ownsSteps=result?.ok===true;
     }
     if(!allowed()){
-      if(ownsMic){await adapters.environment.stopCapture().catch(()=>undefined);ownsMic=false;}
-      if(ownsSteps){await adapters.activity.stopCapture?.().catch(()=>undefined);ownsSteps=false;}
+      await stopOwned();
     }
   });
   const startCapture=()=>{requested=true;return reconcile();};
@@ -80,7 +88,7 @@ export function createLiveFermataInputs(favorites:()=>ClipMeta[]):{
       if(!closed){planner.invalidateAmbient();lastBird=0;}
     }));
     cleanup.push(adapters.environment.observeEnvironment(e=>{
-      if(closed||!requested||!visible())return;
+      if(closed||!requested||!visible()||!ownsMic)return;
       const settings=getSettingsSnapshot();
       const age=Date.now()-e.timestamp;
       if(settings.musicOnlyMode||!Number.isSafeInteger(e.timestamp)||age<0||age>12000||
@@ -94,7 +102,7 @@ export function createLiveFermataInputs(favorites:()=>ClipMeta[]):{
       }else lastBird=0;
     }));
     cleanup.push(adapters.activity.observeWalkingRunningTransportRest(e=>{
-      if(closed||!requested||!visible()||getSettingsSnapshot().musicOnlyMode||
+      if(closed||!requested||!visible()||!ownsSteps||getSettingsSnapshot().musicOnlyMode||
          (e.activity!=="walking"&&e.activity!=="running")||
          typeof e.bpm!=="number"||typeof e.timestamp!=="number")return;
       const age=Date.now()-e.timestamp;

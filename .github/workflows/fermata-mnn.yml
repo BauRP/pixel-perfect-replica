@@ -14,6 +14,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  statuses: write
 concurrency:
   group: soundworld-fermata-conversion
   cancel-in-progress: false
@@ -137,3 +138,28 @@ jobs:
         with:
           path: ${{ runner.temp }}/sonivox-arm64/libsoundworld_sonivox.so
           key: sonivox-candidate-d07f6b3-${{ hashFiles('native/android/sonivox/**') }}
+
+  report:
+    if: ${{ always() }}
+    needs: [original-tokenizer, convert, android-runtime, android-synth]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Report actual job conclusions to this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess
+          results = json.loads(os.environ["RESULTS"])
+          for name, job in results.items():
+              result = job["result"]
+              state = "success" if result == "success" else "failure" if result == "failure" else "error"
+              subprocess.run(["gh", "api", "--method", "POST",
+                  f"repos/{os.environ['GITHUB_REPOSITORY']}/statuses/{os.environ['GITHUB_SHA']}",
+                  "-f", f"state={state}", "-f", f"context=SoundWorld/Fermata/{name}",
+                  "-f", f"description={result}; run {os.environ['GITHUB_RUN_ID']}",
+                  "-f", f"target_url={os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"],check=True)
+          PY

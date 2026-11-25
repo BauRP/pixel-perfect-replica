@@ -45,6 +45,10 @@ public final class SoundWorldFermataPlugin extends Plugin {
       t.setDaemon(true);
       return t;
     },new ThreadPoolExecutor.AbortPolicy());
+  private final ThreadPoolExecutor packageWorker = new ThreadPoolExecutor(
+    1,1,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(1), r -> {
+      Thread t=new Thread(r,"SoundWorld-Package-Status");t.setDaemon(true);return t;
+    },new ThreadPoolExecutor.AbortPolicy());
   private File renderedPcm;
   private long renderedFrames;
   private static native long renderSonivoxFile(String midiPath,String pcmPath,long targetFrames);
@@ -539,8 +543,11 @@ public final class SoundWorldFermataPlugin extends Plugin {
   @PluginMethod public void inspect(PluginCall call) {
     final Context context=getContext().getApplicationContext();
     try {
-      inspector.execute(() -> {
-        try {call.resolve(inspectPackage(context));}
+      packageWorker.execute(() -> {
+        try {
+          if(destroyed)throw new IllegalStateException("Destroyed package");
+          call.resolve(inspectPackage(context));
+        }
         catch(Exception ignored){call.reject("Не удалось проверить пакет Fermata");}
       });
     }catch(RejectedExecutionException ignored) {
@@ -556,6 +563,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
     catch(RejectedExecutionException ignored){}
     synthWorker.shutdown();
     inspector.shutdown();
+    packageWorker.shutdownNow();
     super.handleOnDestroy();
   }
 }
