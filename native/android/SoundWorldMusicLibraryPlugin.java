@@ -21,6 +21,9 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.IOException;
+import android.database.Cursor;
+import java.util.HashMap;
+import java.util.Map;
 import java.io.RandomAccessFile;
 import java.util.UUID;
 import java.util.ArrayList;
@@ -50,6 +53,24 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   private String recordingId;
   private JSONObject recordingMetadata;
   private long written;
+  // Reuse a verified SHA-256 check only while both the source and the
+  // MediaStore item have unchanged metadata. A size match alone is not proof.
+  private static final class VerifiedExport {
+    final String uri; final long bytes; final long sourceModified; final long mediaModified;
+    VerifiedExport(String u,long b,long sourceTime,long externalTime) {
+      uri=u;bytes=b;sourceModified=sourceTime;mediaModified=externalTime;
+    }
+  }
+  private final Map<String,VerifiedExport> verifiedExportCache = new HashMap<>();
+
+  private long exportedModifiedAt(String uriText) {
+    try (Cursor c=getContext().getContentResolver().query(
+        Uri.parse(uriText),new String[]{MediaStore.MediaColumns.DATE_MODIFIED},
+        null,null,null)) {
+      if(c!=null && c.moveToFirst() && !c.isNull(0))return c.getLong(0);
+    } catch(Exception ignored){}
+    return -1;
+  }
 
   private File directory() {
     File dir = new File(getContext().getFilesDir(), "generated_music");
@@ -108,12 +129,26 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
    * the UI waited five seconds and then retried. A size match ALONE is unsafe.
    * All digest work runs on the existing serial file executor. */
   private boolean exportedCopyMatches(File source, String uriText) {
-    if (!exportedCopyExists(uriText, source.length())) return false;
+    if (!exportedCopyExists(uriText, source.length())) {
+      verifiedExportCache.remove(source.getName());
+      return false;
+    }
+    long changedAt=exportedModifiedAt(uriText);
+    VerifiedExport cached=verifiedExportCache.get(source.getName());
+    if(changedAt>=0 && cached!=null && cached.uri.equals(uriText) &&
+        cached.bytes==source.length() && cached.sourceModified==source.lastModified() &&
+        cached.mediaModified==changedAt) return true;
     try (InputStream original=new FileInputStream(source);
          InputStream saved=getContext().getContentResolver().openInputStream(Uri.parse(uriText))) {
       SoundWorldWavExportPolicy.verifyExactCopy(original,saved,source.length());
+      if(changedAt>=0)
+        verifiedExportCache.put(source.getName(),
+          new VerifiedExport(uriText,source.length(),source.lastModified(),changedAt));
       return true;
-    } catch (Exception ignored) { return false; }
+    } catch (Exception ignored) {
+      verifiedExportCache.remove(source.getName());
+      return false;
+    }
   }
 
   @PluginMethod public void beginClip(PluginCall call) {
@@ -374,6 +409,10 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
         ContentValues done=new ContentValues();done.put(MediaStore.Audio.Media.IS_PENDING,0);
         if(getContext().getContentResolver().update(outputUri,done,null,null)<1)
           throw new IOException("Не удалось подтвердить сохранение файла");
+        // This copy was just fully hash-verified before publication.
+        long modified=exportedModifiedAt(outputUri.toString());
+        if(modified>=0) verifiedExportCache.put(file.getName(),
+          new VerifiedExport(outputUri.toString(),file.length(),file.lastModified(),modified));
         record.put("exportedUri",outputUri.toString());
         saveIndex(index);
         JSObject r=new JSObject();r.put("uri",outputUri.toString());call.resolve(r);
