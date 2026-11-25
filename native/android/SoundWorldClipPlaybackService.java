@@ -470,7 +470,7 @@ public final class SoundWorldClipPlaybackService extends Service {
       return;
     }
     try {
-      if (!acquireFocus()) { failPlayback(lastError); return; }
+      if (!acquireFocus()) { publish("paused"); return; }
       player.start();
       focusResumePending = false;
       publish("playing");

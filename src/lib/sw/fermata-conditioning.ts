@@ -172,21 +172,26 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
   const pool=notWeak.length?notWeak:permitted;
   const ranked=[...pool.filter(id=>emph.has(id)),...pool.filter(id=>!emph.has(id))];
   const defaultsFor=(id:string):readonly string[]=>{
-    if(id.startsWith("g12-"))return ["i3-01","i3-03","i4-07"];
+    if(id.startsWith("g12-")&&id!=="g12-s04")return ["i3-01","i3-03","i4-07"];
     if(id==="g13-s04")return ["i8-05"]; // Japanese koto
     if(id==="g13-s08")return ["i8-03"]; // Indian sitar
     if(id==="g08-s06")return ["i1-01"]; // solo piano
     if(id.startsWith("g05-"))return ["i3-02","i3-04","i5-01"]; // rock
     if(id.startsWith("g10-"))return ["i2-04","i1-03"]; // ambient
     if(id==="g15-s02")return ["i3-03","i3-04","i5-01"]; // bossa nova
+    if(id==="g06-s07")return ["i3-03","i6-01","i3-04","i5-01"]; // jazz bossa nova
+    if(id==="g07-s08")return ["i1-01"]; // piano blues
+    if(id==="g09-s02")return ["i7-01","i6-02","i7-03"]; // orchestral epic
+    if(id==="g12-s04")return ["i4-07","i3-01","i3-04"]; // bluegrass
     if(id==="g15-s04")return ["i8-08"]; // tango accordion
     if(id==="g15-s05")return ["i3-03"]; // flamenco guitar
     return DEFAULT_INSTRUMENTS[COARSE_GENRE[id.slice(0,3)]!]??[];
   };
   const playable=request.preferredInstruments.length>0?ranked:
     ranked.filter(id=>defaultsFor(id).length>0);
+  const arrangementKey=(id:string)=>COARSE_GENRE[id.slice(0,3)]+":"+defaultsFor(id).join(",");
   const distinct=playable.filter((id,i)=>playable.findIndex(other=>
-    COARSE_GENRE[other.slice(0,3)]===COARSE_GENRE[id.slice(0,3)])===i);
+    arrangementKey(other)===arrangementKey(id))===i);
   const preferred=request.diversity==="familiar"?playable[0]:
     distinct[sequenceIndex%Math.max(1,distinct.length)];
   if(!preferred)return {ok:false,reason:"Нет разрешённого жанра Fermata"};

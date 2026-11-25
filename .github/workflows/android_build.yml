@@ -8,6 +8,11 @@ on:
     paths-ignore:
       - 'PROGRESS.md'
   workflow_dispatch:
+    inputs:
+      require_music_bundle:
+        description: "Require a complete reviewed offline music bundle (not just a diagnostic APK)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -90,7 +95,13 @@ jobs:
           sed -i 's/minSdkVersion = [0-9]*/minSdkVersion = 31/' android/variables.gradle
 
       - name: Stage optional verified Fermata/MNN/music assets into Android package
-        run: node scripts/validate-offline-music-assets.mjs --stage android/app/src/main
+        env:
+          REQUIRE_MUSIC_BUNDLE: ${{ github.event_name == 'workflow_dispatch' && inputs.require_music_bundle }}
+        run: |
+          set -euo pipefail
+          args=(--stage android/app/src/main)
+          if [[ "$REQUIRE_MUSIC_BUNDLE" == true ]]; then args+=(--require-complete); fi
+          node scripts/validate-offline-music-assets.mjs "${args[@]}"
 
       - name: Install real SoundWorld native sensor plugin
         run: |
@@ -126,6 +137,14 @@ jobs:
           cat >> android/app/build.gradle <<'GRADLE'
           dependencies {
               implementation 'com.google.mediapipe:tasks-audio:0.10.35'
+          }
+          // Reviewed music JNI hashes must survive the final packaging step.
+          android {
+              packagingOptions {
+                  jniLibs {
+                      keepDebugSymbols += ['**/libsoundworld_fermata_mnn.so', '**/libsoundworld_sonivox.so']
+                  }
+              }
           }
           GRADLE
           python3 - <<'PY'

@@ -16,9 +16,9 @@ static void fail(JNIEnv* env, const char* text) {
 
 extern "C" JNIEXPORT jintArray JNICALL
 Java_kz_soundworld_ar_SoundWorldFermataPlugin_generateMnnIds(
-    JNIEnv* env,jclass,jstring configPath,jintArray input,jint maximum) {
+    JNIEnv* env,jclass,jstring configPath,jintArray input,jint maximum,jint threads) {
     try {
-        if(!configPath||!input||maximum<1||maximum>4096)
+        if(!configPath||!input||maximum<1||maximum>4096||threads<1||threads>2)
             throw std::runtime_error("Invalid model request");
         const jsize count=env->GetArrayLength(input);
         if(count<1||count>32||count+maximum>4096)throw std::runtime_error("Invalid prompt length");
@@ -34,7 +34,8 @@ Java_kz_soundworld_ar_SoundWorldFermataPlugin_generateMnnIds(
         std::unique_ptr<Llm,decltype(&Llm::destroy)> model(
             Llm::createLLM(config),&Llm::destroy);
         if(!model)throw std::runtime_error("Cannot open MNN config");
-        if(!model->set_config(R"({"backend_type":"cpu","thread_num":2,"reuse_kv":false})")||
+        const std::string options="{\"backend_type\":\"cpu\",\"thread_num\":"+std::to_string(threads)+",\"reuse_kv\":false}";
+        if(!model->set_config(options)||
            !model->load())throw std::runtime_error("Cannot load actual weights");
         model->generate_init();
         std::vector<int> result=model->generate(ids,maximum);

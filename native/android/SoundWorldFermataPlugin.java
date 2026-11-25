@@ -44,7 +44,7 @@ public final class SoundWorldFermataPlugin extends Plugin {
     renderedFrames=0;
     if(renderedPcm!=null){renderedPcm.delete();renderedPcm=null;}
   }
-  private static native int[] generateMnnIds(String configPath, int[] inputIds, int maxTokens);
+  private static native int[] generateMnnIds(String configPath, int[] inputIds, int maxTokens, int threads);
   private final ThreadPoolExecutor inspector = new ThreadPoolExecutor(
     1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(2), r -> {
       Thread t = new Thread(r, "SoundWorld-Fermata-Package");
@@ -394,7 +394,10 @@ public final class SoundWorldFermataPlugin extends Plugin {
             ids[i]=(Integer)value;
           }
           System.loadLibrary("soundworld_fermata_mnn");
-          int[] output=generateMnnIds(new File(dir,"config.json").getAbsolutePath(),ids,maximum);
+          android.os.PowerManager power=(android.os.PowerManager)getContext().getSystemService(Context.POWER_SERVICE);
+          int threads=Math.max(1,Math.min(2,Runtime.getRuntime().availableProcessors()-1));
+          if(power!=null&&(power.isPowerSaveMode()||power.getCurrentThermalStatus()>=3))threads=1;
+          int[] output=generateMnnIds(new File(dir,"config.json").getAbsolutePath(),ids,maximum,threads);
           if(output==null||output.length<1||output.length>maximum)
             throw new IllegalStateException("No actual model output");
           JSONArray resultIds=new JSONArray();
@@ -430,6 +433,12 @@ public final class SoundWorldFermataPlugin extends Plugin {
           clearRenderedFile();
           File dir=new File(context.getNoBackupFilesDir(),"fermata-audio");
           if(!dir.isDirectory()&&!dir.mkdirs())throw new java.io.IOException("Cannot create audio directory");
+          // A process kill can leave a temporary score or PCM behind. Only
+          // remove files owned by this dedicated renderer directory.
+          File[] old=dir.listFiles();
+          if(old!=null)for(File file:old)
+            if(file.isFile()&&(file.getName().matches("score-.*\\.mid")||
+               file.getName().matches("render-.*\\.pcm")))file.delete();
           if(dir.getUsableSpace()<frames*4L+8L*1024*1024)
             throw new java.io.IOException("Insufficient audio storage");
           byte[] bytes=android.util.Base64.decode(encoded,android.util.Base64.NO_WRAP);

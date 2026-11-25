@@ -98,10 +98,14 @@ export async function prepareNativeFermataModel():Promise<string> {
 
 /** Run actual model inference with original atomic token IDs. The full
  * player remains unavailable until the musical decoder and synth exist. */
+let nativeGenerationBusy=false;
 export async function generateNativeFermataTokens(header:Readonly<FermataHeader>,
     maxTokens=2048):Promise<readonly string[]> {
   if(!Number.isSafeInteger(maxTokens)||maxTokens<1||maxTokens+header.tokens.length>4096)
     throw new Error("Некорректное ограничение генерации");
+  if(nativeGenerationBusy)throw new Error("Музыкальная модель ещё занята");
+  nativeGenerationBusy=true;
+  try{
   await prepareNativeFermataModel();
   const ids=await encodeNativeFermataHeader(header);
   // The native call remains occupied until MNN returns; do not create a
@@ -111,7 +115,8 @@ export async function generateNativeFermataTokens(header:Readonly<FermataHeader>
   if(!Array.isArray(output)||output.length<1||output.length>maxTokens||
      output.some(id=>typeof id!=="number"||!Number.isSafeInteger(id)||id<0||id>=9507))
     throw new Error("MNN не вернула настоящие музыкальные токены");
-  return decodeNativeFermataTokens(output as number[]);
+  return await decodeNativeFermataTokens(output as number[]);
+  }finally{nativeGenerationBusy=false;}
 }
 
 /** Actual native file-rendering adapter. It is not installed as the

@@ -104,6 +104,7 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private Thread captureThread;
   private SensorManager sensorManager;
   private Sensor stepDetector;
+  private long lastCounterValue=-1;
   private volatile boolean listeningSteps = false;
   private volatile String actualInput = "";
   private volatile String actualKind = "";
@@ -159,7 +160,12 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
           try {
             // The route is only a requested preference. getRoutedDevice()
             // in the capture loop remains the authoritative actual route.
-            active.setPreferredDevice(preferredInputDevice());
+            AudioDeviceInfo preferred=preferredInputDevice();
+            AudioDeviceInfo actual=active.getRoutedDevice();
+            if(preferred==null||actual==null||preferred.getId()!=actual.getId()){
+              if(!active.setPreferredDevice(preferred))
+                sendError("Android отклонил предпочтительный маршрут микрофона");
+            }
           } catch (RuntimeException ex) {
             sendError("Android не смог переключить микрофон: " + ex.getMessage());
           }
@@ -278,7 +284,8 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     o.put("microphoneGranted", granted(Manifest.permission.RECORD_AUDIO));
     o.put("activityGranted", granted(Manifest.permission.ACTIVITY_RECOGNITION));
     SensorManager sm = (SensorManager) getContext().getSystemService(Context.SENSOR_SERVICE);
-    o.put("stepsSupported", sm != null && sm.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR) != null);
+    o.put("stepsSupported", sm != null && (sm.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR) != null ||
+        sm.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) != null));
     o.put("recording", capturing.get());
     o.put("stepsActive", listeningSteps);
     o.put("actualInput", actualInput);
@@ -869,9 +876,13 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
     if (!granted(Manifest.permission.ACTIVITY_RECOGNITION)) { call.reject("Разрешите физическую активность"); return; }
     if (sensorManager == null) sensorManager = (SensorManager)getContext().getSystemService(Context.SENSOR_SERVICE);
     if (sensorManager == null) {call.reject("Датчики недоступны");return;}
-    stepDetector = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR);
-    if (stepDetector == null) {call.reject("Датчик шагов отсутствует");return;}
-    if (!listeningSteps) listeningSteps = sensorManager.registerListener(this, stepDetector, SensorManager.SENSOR_DELAY_NORMAL);
+    if(!listeningSteps){
+      stepDetector = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR);
+      if(stepDetector==null)stepDetector=sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
+      if(stepDetector==null){call.reject("Датчик шагов отсутствует");return;}
+      lastCounterValue=-1;
+      listeningSteps=sensorManager.registerListener(this,stepDetector,SensorManager.SENSOR_DELAY_NORMAL);
+    }
     if (!listeningSteps) {call.reject("Не удалось включить шагомер");return;}
     JSObject r = new JSObject();r.put("started", true);call.resolve(r);
   }
@@ -885,18 +896,27 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private void stopStepsInternal() {
     if (sensorManager != null) sensorManager.unregisterListener(this);
     listeningSteps = false;
+    lastCounterValue=-1;
   }
 
   @Override
   public void onSensorChanged(SensorEvent event) {
-    if (!listeningSteps || event.sensor.getType() != Sensor.TYPE_STEP_DETECTOR ||
+    if (!listeningSteps || stepDetector==null || event.sensor!=stepDetector ||
         !granted(Manifest.permission.ACTIVITY_RECOGNITION)) return;
+    int type=event.sensor.getType();
+    if(type==Sensor.TYPE_STEP_COUNTER){
+      if(event.values.length<1||!Float.isFinite(event.values[0])||event.values[0]<0)return;
+      long value=(long)event.values[0];
+      long previous=lastCounterValue;
+      lastCounterValue=value;
+      if(previous<0||value-previous!=1)return;
+    }else if(type!=Sensor.TYPE_STEP_DETECTOR)return;
     JSObject r = new JSObject();
     long when=SoundWorldStepTime.eventEpochMillis(
       event.timestamp, SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis());
     if (when<0) return; // Reject stale or invalid hardware event clock.
     r.put("timestamp", when);
-    r.put("sensor", "TYPE_STEP_DETECTOR");
+    r.put("sensor",type==Sensor.TYPE_STEP_COUNTER?"TYPE_STEP_COUNTER":"TYPE_STEP_DETECTOR");
     notifyListeners("step", r);
   }
 

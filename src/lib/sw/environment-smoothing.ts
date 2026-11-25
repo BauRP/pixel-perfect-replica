@@ -10,10 +10,11 @@ export function classifyAtmosphere(label: string): Atmosphere {
   // Match whole sound-class words, never substrings: AudioSet "Train"
   // contains "rain", and "Window" contains "wind".
   const name = typeof label === "string" ? label.toLowerCase() : "";
-  if (/\b(?:rain|raining|rainfall|raindrops?|thunder|thunderstorm|drizzle|patter)\b/.test(name)) return "rain";
-  if (/\b(?:car|cars|vehicle|vehicles|bus|buses|truck|trucks|motorcycle|motorcycles|traffic|engine|roadway|train|trains|railroad|railway|subway|tram)\b/.test(name)) return "traffic";
+  if (/\b(?:rain|raining|rainfall|raindrops?|thunder|thunderstorm|drizzle)\b/.test(name)) return "rain";
+  if (/\b(?:car|cars|vehicle|vehicles|bus|buses|truck|trucks|motorcycle|motorcycles|traffic|roadway|train|trains|railroad|railway|subway|tram)\b/.test(name)) return "traffic";
   if (/\b(?:bird|birds|birdsong|wind|windy|insect|insects|forest|animal|animals|stream|waterfall|ocean)\b/.test(name)) return "nature";
-  if (/ventilation|air conditioning|inside, small room/.test(name)) return "indoor";
+  if (/ventilation|air conditioning|inside, small room|inside, large room|inside, public space|mechanical fan|electric fan|refrigerator|domestic sounds, home sounds/.test(name)) return "indoor";
+  if (/\b(?:vehicle engine|engine starting|idling|motor vehicle)\b/.test(name)) return "traffic";
   // "Silence" is a real AudioSet/YAMNet output class, not a guessed lack of activity.
   if (name.trim() === "silence") return "quiet";
   return "unknown";

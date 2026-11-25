@@ -34,12 +34,14 @@ function walk(folder) {
 }
 
 function fail(reason) { throw new Error("Offline music package: " + reason); }
-const targetIndex = process.argv.indexOf("--stage");
-if (targetIndex !== -1 && (targetIndex !== process.argv.length - 2 || !process.argv[targetIndex + 1]))
-  fail("use --stage ANDROID_APP_MAIN_DIRECTORY");
-if (targetIndex === -1 && process.argv.length !== 2) fail("unknown command arguments");
+const requireComplete = process.argv.includes("--require-complete");
+const args = process.argv.slice(2).filter(a=>a!=="--require-complete");
+if (args.length!==0 && (args.length!==2 || args[0]!=="--stage" || !args[1]))
+  fail("use [--stage ANDROID_APP_MAIN_DIRECTORY] [--require-complete]");
+const targetIndex = args.length===2 ? 0 : -1;
 
 if (!existsSync(root)) {
+  if (requireComplete) fail("Complete reviewed offline music bundle is required; cannot publish a shell as a music-ready APK");
   if (targetIndex !== -1) console.log("SHELL_ONLY: No optional Fermata bundle to stage");
   else console.log("SHELL_ONLY: Music weights, tokenizer and synthesizer are not installed");
   process.exit(0);
@@ -110,6 +112,18 @@ for (const item of manifest.files) {
     fail("wrong SHA256 for " + item.path);
 }
 for (const role of requiredRoles) if (!roleSet.has(role)) fail("missing required role: " + role);
+if (requireComplete) {
+  const expected = [
+    ["model/config.json","model"],["model/llm_config.json","model"],
+    ["model/llm.mnn","model"],["model/llm.mnn.weight","model"],
+    ["tokenizer/vocab.json","tokenizer"],
+    ["libsoundworld_fermata_mnn.so","mnn-arm64"],
+    ["libsoundworld_sonivox.so","synth-arm64"],
+  ];
+  for (const [path,role] of expected)
+    if(!manifest.files.some(item=>item.path===path && item.role===role))
+      fail("missing runtime-required artifact "+path);
+}
 for (const item of manifest.files) if (item.role !== "notice" && !noticePaths.has(item.noticePath))
   fail("license evidence is not inventoried for " + item.path);
 const inventory = walk(root);
@@ -118,7 +132,7 @@ if (inventory.length !== listed.size + 1 ||
   fail("bundle includes unknown/unreviewed files");
 
 if (targetIndex !== -1) {
-  const androidMain = resolve(process.argv[targetIndex + 1]);
+  const androidMain = resolve(args[1]);
   const assets = join(androidMain, "assets", "offline-music");
   const libs = join(androidMain, "jniLibs", "arm64-v8a");
   mkdirSync(assets, { recursive: true });

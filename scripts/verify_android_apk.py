@@ -20,6 +20,26 @@ def length16(b,p):
     k=u16(b,p);p+=2
     if k&32768:k=((k&32767)<<16)|u16(b,p);p+=2
     return k,p
+def elf_load_alignment(file):
+    # ELF64 little-endian program headers. Android 16 KiB pages require
+    # each PT_LOAD segment to be aligned at least to 16384 bytes.
+    header=file.read(64)
+    if len(header)!=64 or header[:6]!=b"\x7fELF\x02\x01":
+        raise ValueError("Expected ELF64 little-endian")
+    offset=struct.unpack_from("<Q",header,32)[0]
+    entsize,count=struct.unpack_from("<HH",header,54)
+    if entsize<56 or count<1 or count>1024:
+        raise ValueError("Invalid ELF program header table")
+    file.seek(offset)
+    alignments=[]
+    for _ in range(count):
+        entry=file.read(entsize)
+        if len(entry)!=entsize: raise ValueError("Truncated ELF program header")
+        if struct.unpack_from("<I",entry,0)[0]==1:
+            alignments.append(struct.unpack_from("<Q",entry,48)[0])
+    if not alignments: raise ValueError("ELF contains no PT_LOAD segment")
+    return min(alignments)
+
 def verify(path):
     with zipfile.ZipFile(path) as z:
         name="assets/yamnet.tflite"
@@ -53,7 +73,18 @@ def verify(path):
                     for chunk in iter(lambda:file.read(1024*1024),b""):
                         digest.update(chunk)
                 assert digest.hexdigest()==item["sha256"], "Packaged music asset checksum mismatch"
+                if item["role"] in ("mnn-arm64","synth-arm64"):
+                    with z.open(name) as library:
+                        assert elf_load_alignment(library)>=16384, "Native music library is not 16 KiB page aligned"
             print("VERIFIED: actual staged music files preserved in APK; inference not verified")
+        # Report the compatibility of all ARM64 libraries without claiming
+        # an Android 16/17 device test or breaking the diagnostic APK.
+        unaligned=[]
+        for entry in native_entries:
+            if entry.startswith("lib/arm64-v8a/"):
+                with z.open(entry) as file:
+                    if elf_load_alignment(file)<16384: unaligned.append(entry)
+        print("ARM64 16 KiB page alignment:", "all ELF LOAD segments aligned" if not unaligned else ", ".join(unaligned))
         data=z.read("AndroidManifest.xml")
     assert u16(data,0)==3, "Not an Android binary manifest"
     strings=[]

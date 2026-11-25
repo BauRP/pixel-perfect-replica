@@ -65,12 +65,18 @@ export function encodeDecodedMidiFile(score:unknown):Uint8Array {
   const scheduled=scheduleDecodedMidiNotes(score);
   if(!scheduled.ok)throw new Error(scheduled.reason);
   const programs=new Map<number,number>();
+  const channels=new Map<string,number>();
+  const keyOf=(e:MidiScheduledEvent)=>e.channel+":"+e.track+":"+e.program;
   for(const e of scheduled.events) {
-    if(e.channel===9)continue;
-    const previous=programs.get(e.channel);
-    if(previous!==undefined&&previous!==e.program)
-      throw new Error("Multiple instruments on one MIDI channel");
-    programs.set(e.channel,e.program);
+    if(e.channel===9||channels.has(keyOf(e)))continue;
+    let channel=e.channel;
+    if(programs.has(channel)){
+      const free=Array.from({length:16},(_,i)=>i).find(i=>i!==9&&!programs.has(i));
+      if(free===undefined)throw new Error("Too many independent MIDI voices");
+      channel=free;
+    }
+    channels.set(keyOf(e),channel);
+    programs.set(channel,e.program);
   }
   const body:number[]=[0,0xff,0x51,3,0x07,0xa1,0x20];
   for(const [channel,program] of programs)body.push(0,0xc0|channel,program);
@@ -87,7 +93,8 @@ export function encodeDecodedMidiFile(score:unknown):Uint8Array {
   const active=new Map<string,number>();
   for(const e of scheduled.events) {
     const tick=Math.round(e.atUs/1000);
-    const key=e.channel+":"+e.pitch;
+    const channel=e.channel===9?9:channels.get(keyOf(e))!;
+    const key=channel+":"+e.pitch;
     if(e.kind==="noteOn"){
       if(active.has(key))throw new Error("Overlapping identical MIDI notes");
       active.set(key,tick);
@@ -97,7 +104,7 @@ export function encodeDecodedMidiFile(score:unknown):Uint8Array {
       active.delete(key);
     }
     delta(tick-previous);
-    body.push((e.kind==="noteOn"?0x90:0x80)|e.channel,e.pitch,e.velocity);
+    body.push((e.kind==="noteOn"?0x90:0x80)|channel,e.pitch,e.velocity);
     previous=tick;
   }
   delta(Math.round(scheduled.durationUs/1000)-previous);

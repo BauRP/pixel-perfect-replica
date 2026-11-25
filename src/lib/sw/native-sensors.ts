@@ -48,7 +48,7 @@ interface SensorsPlugin {
   stopAnalysis(): Promise<NativeResult>;
   startSteps(): Promise<NativeResult>;
   stopSteps(): Promise<NativeResult>;
-  actualMicrophone(): Promise<{ name: string; kind: string; active: boolean; output: string }>;
+  actualMicrophone(): Promise<{ name: string; kind: string; active: boolean; output: string; routeConfirmed?:boolean }>;
   performanceSnapshot(): Promise<{ramMb?:number;battery?:number;elapsedSec:number;thermalStatus?:number;lowMemory?:boolean;inferenceSkipped:number;inferenceThrottled:number;analysisStride:number;analysisActive:boolean;captureRateHz:number;batteryMode:string;recording:boolean}>;
   addListener(event: "yamnet" | "step" | "analysisError" | "micLevel" | "audioRouteChanged", callback: (value: any) => void): Promise<PluginListenerHandle>;
 }
@@ -326,11 +326,11 @@ export function installNativeSensorAdapters(): void {
     },
     router: {
       currentActualMicrophone:async()=>{
-        try {const r=await native.actualMicrophone();return r.active?{ok:true,value:{name:r.name,kind:r.kind}}:unavailable("Микрофон сейчас не используется");}
+        try {const r=await native.actualMicrophone();return r.active&&r.routeConfirmed===true?{ok:true,value:{name:r.name,kind:r.kind}}:unavailable("Фактический маршрут микрофона пока не подтверждён");}
         catch(e){return safeError(e);}
       },
       verifyActualRoute:async()=>{
-        try {const r=await native.actualMicrophone();return r.active?{ok:true,value:{input:r.name,output:r.output}}:unavailable("Маршрут не подтверждён: запись не запущена");}
+        try {const r=await native.actualMicrophone();return r.active&&r.routeConfirmed===true?{ok:true,value:{input:r.name,output:r.output}}:unavailable("Фактический вход Android пока не подтверждён");}
         catch(e){return safeError(e);}
       },
       chooseBestSupportedRoute:async()=>{

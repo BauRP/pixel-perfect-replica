@@ -7,6 +7,7 @@ on:
       - 'scripts/prepare_fermata_mnn.py'
       - 'scripts/run_fermata_mnn.py'
       - 'native/android/fermata-mnn/**'
+      - 'native/android/sonivox/**'
       - '.github/workflows/fermata-mnn.yml'
   workflow_dispatch:
 permissions:
@@ -75,3 +76,36 @@ jobs:
         with:
           path: ${{ runner.temp }}/fermata-arm64/libsoundworld_fermata_mnn.so
           key: fermata-arm64-mnn-3.6.1-${{ hashFiles('native/android/fermata-mnn/**') }}
+
+  android-synth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile the actual Sonivox candidate for Android ARM64
+        run: |
+          set -euo pipefail
+          git clone https://github.com/M-HT/sonivox.git "$RUNNER_TEMP/sonivox"
+          git -C "$RUNNER_TEMP/sonivox" checkout --detach d07f6b355fbdfe79d60f0cb9192cbd8a317737e7
+          test "$(git -C "$RUNNER_TEMP/sonivox" rev-parse HEAD)" = d07f6b355fbdfe79d60f0cb9192cbd8a317737e7
+          test -s "$RUNNER_TEMP/sonivox/LICENSE"
+          test -s "$RUNNER_TEMP/sonivox/NOTICE"
+          grep -q "Apache License" "$RUNNER_TEMP/sonivox/LICENSE"
+          sdkmanager "ndk;27.2.12479018"
+          ndk="$ANDROID_HOME/ndk/27.2.12479018"
+          cmake -S native/android/sonivox -B "$RUNNER_TEMP/sonivox-arm64" \
+            -DSONIVOX_SOURCE="$RUNNER_TEMP/sonivox" \
+            -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-31 \
+            -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/sonivox-arm64" --target soundworld_sonivox --parallel 2
+          lib="$RUNNER_TEMP/sonivox-arm64/libsoundworld_sonivox.so"
+          test -s "$lib"
+          "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h "$lib" | grep -F AArch64
+          "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D "$lib" | grep Java_kz_soundworld_ar_SoundWorldFermataPlugin_renderSonivoxFile
+          echo 'Sonivox candidate compiled. Full license review and real audio verification still required; not shipped.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Cache the candidate native library for development
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/sonivox-arm64/libsoundworld_sonivox.so
+          key: sonivox-candidate-d07f6b3-${{ hashFiles('native/android/sonivox/**') }}
