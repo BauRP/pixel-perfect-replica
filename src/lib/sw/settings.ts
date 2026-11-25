@@ -259,7 +259,7 @@ export function resetSettings() {
   emit();
 }
 
-const subscribe = (l: () => void) => {
+export const subscribeSettings = (l: () => void) => {
   listeners.add(l);
   return () => listeners.delete(l);
 };
@@ -267,8 +267,8 @@ const subscribe = (l: () => void) => {
 export function getSettingsSnapshot(): Settings { return state; }
 
 export function useSettings(): Settings {
-  return useSyncExternalStore(subscribe, () => state, () => DEFAULT_SETTINGS);
+  return useSyncExternalStore(subscribeSettings, () => state, () => DEFAULT_SETTINGS);
 }
 export function useSettingsHydrated(): boolean {
-  return useSyncExternalStore(subscribe, () => hydrated, () => false);
+  return useSyncExternalStore(subscribeSettings, () => hydrated, () => false);
 }

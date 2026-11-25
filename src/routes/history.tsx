@@ -32,6 +32,7 @@ function HistoryPage(){
   const [data,setData]=useState<LibraryData>({last:[],fav:[],exp:[],journey:[]});
   const [loadPhase,setLoadPhase]=useState<HistoryLoadPhase>("loading");
   const [busy,setBusy]=useState(false);
+  const [visibleCounts,setVisibleCounts]=useState<Record<string,number>>({});
   const busyRef=useRef(false);
   const playbackOrder=useRef(new PlaybackEventOrder());
   const loadOrder=useRef(new LatestHistoryRequest());
@@ -153,8 +154,9 @@ function HistoryPage(){
     }catch(e){setError(e instanceof Error?e.message:"Не удалось остановить WAV");}
     finally{stopInFlight.current=false;}
   };
-  const clipList=(items:ClipMeta[])=><ul className="space-y-2">
-    {items.map(c=>{
+  const clipList=(items:ClipMeta[],section="all")=><div>
+    <ul className="space-y-2">
+    {items.slice(0,visibleCounts[section]??30).map(c=>{
       const playing=playback.clipId===c.id&&playback.state==="playing";
       const active=historyClipCanStop(c.id,playback);
       const preparing=active && playback.state==="preparing";
@@ -213,7 +215,13 @@ function HistoryPage(){
         </div>}
       </li>;
     })}
-  </ul>;
+    </ul>
+    {items.length>(visibleCounts[section]??30)&&<button type="button"
+      className="mt-3 min-h-11 rounded-lg border border-border px-4 text-sm"
+      onClick={()=>setVisibleCounts(prev=>({...prev,[section]:(prev[section]??30)+30}))}>
+      Показать ещё ({items.length-(visibleCounts[section]??30)})
+    </button>}
+  </div>;
   const journeyDays = groupRealJourney(data.journey);
   const datedJourneyIds = new Set(journeyDays.flatMap(day => day.clips.map(clip => clip.id)));
   const ungroupedJourney = data.journey.filter(clip => !datedJourneyIds.has(clip.id));
@@ -234,13 +242,13 @@ function HistoryPage(){
           <TabsTrigger className="sw-history-tab min-w-0 px-1 text-[11px] whitespace-normal leading-tight" value="trip">Путешествие</TabsTrigger>
         </TabsList>
         <TabsContent value="last" className="pt-4">
-          {data.last.length?clipList(data.last):historyIsEmpty(loadPhase,data.last.length)?<Empty icon={Clock} title="Пока пусто" text="Здесь появятся последние три действительно созданных музыкальных фрагмента."/>:null}
+          {data.last.length?clipList(data.last,"last"):historyIsEmpty(loadPhase,data.last.length)?<Empty icon={Clock} title="Пока пусто" text="Здесь появятся последние три действительно созданных музыкальных фрагмента."/>:null}
         </TabsContent>
         <TabsContent value="fav" className="pt-4">
-          {data.fav.length?clipList(data.fav):historyIsEmpty(loadPhase,data.fav.length)?<Empty icon={Heart} title="Нет избранного" text="Добавляйте существующие записи сердечком."/>:null}
+          {data.fav.length?clipList(data.fav,"favorites"):historyIsEmpty(loadPhase,data.fav.length)?<Empty icon={Heart} title="Нет избранного" text="Добавляйте существующие записи сердечком."/>:null}
         </TabsContent>
         <TabsContent value="exp" className="pt-4">
-          {data.exp.length?clipList(data.exp):historyIsEmpty(loadPhase,data.exp.length)?<Empty icon={FolderDown} title="Нет сохранённых файлов" text="После настоящего экспорта файлы будут здесь."/>:null}
+          {data.exp.length?clipList(data.exp,"exports"):historyIsEmpty(loadPhase,data.exp.length)?<Empty icon={FolderDown} title="Нет сохранённых файлов" text="После настоящего экспорта файлы будут здесь."/>:null}
         </TabsContent>
         <TabsContent value="trip" className="pt-4">
           {data.journey.length ?
@@ -249,13 +257,13 @@ function HistoryPage(){
               {journeyDays.map(day=>(
                 <section key={day.dayKey} className="space-y-2" aria-label={day.heading}>
                   <h2 className="font-semibold text-sm">{day.heading} · {day.count} фрагм. · {day.minutes} мин</h2>
-                  {clipList(day.clips)}
+                  {clipList(day.clips,day.dayKey)}
                 </section>
               ))}
               {ungroupedJourney.length > 0 && (
                 <section className="space-y-2" aria-label="Записи с неполными сведениями">
                   <h2 className="font-semibold text-sm">Записи с неполными сведениями · {ungroupedJourney.length}</h2>
-                  {clipList(ungroupedJourney)}
+                  {clipList(ungroupedJourney,"undated")}
                 </section>
               )}
             </div>

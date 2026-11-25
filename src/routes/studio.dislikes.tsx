@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { memo, useSyncExternalStore } from "react";
 import { PageHeader, Section } from "@/components/sw/ui";
 import { GENRES, INSTRUMENTS, capitalize } from "@/lib/sw/catalog";
-import { setDislike, updateSettings, useSettings, type DislikeLevel } from "@/lib/sw/settings";
+import { setDislike, updateSettings, useSettings, getSettingsSnapshot, subscribeSettings, type DislikeLevel } from "@/lib/sw/settings";
 import { notify } from "@/lib/sw/notify";
 import { cn } from "@/lib/utils";
 
@@ -10,12 +11,13 @@ export const Route = createFileRoute("/studio/dislikes")({
   component: Dislikes,
 });
 
-function Row({ id, name }: { id: string; name: string }) {
-  const s = useSettings();
-  const cur = s.dislikes[id];
+const Row=memo(function Row({ id, name }: { id: string; name: string }) {
+  // Only this item's selected state triggers its own component re-render.
+  const cur=useSyncExternalStore(subscribeSettings,
+    () => getSettingsSnapshot().dislikes[id] ?? null, () => null);
   const pick = (lvl: DislikeLevel) => {
     const next = cur === lvl ? null : lvl;
-    if (next === "excluded" && s.favoriteInstrumentIds.includes(id)) notify.queued(`«${capitalize(name)}» убран из любимых: исключение важнее`);
+    if (next === "excluded" && getSettingsSnapshot().favoriteInstrumentIds.includes(id)) notify.queued(`«${capitalize(name)}» убран из любимых: исключение важнее`);
     updateSettings((x) => setDislike(x, id, next));
   };
   return (
@@ -30,7 +32,7 @@ function Row({ id, name }: { id: string; name: string }) {
       ))}
     </div>
   );
-}
+});
 
 function Dislikes() {
   const s = useSettings();
