@@ -58,6 +58,8 @@ export interface AudioDeviceRouter {
 
 export type Activity = "walking" | "running" | "transport" | "rest" | "unknown";
 export interface ActivityProvider {
+  startCapture?():Promise<Result>;
+  stopCapture?():Promise<Result>;
   observeWalkingRunningTransportRest(cb: (a: { activity: Activity; confidence: number; bpm?:number; timestamp?:number }) => void): Unsubscribe;
 }
 

@@ -24,7 +24,10 @@ def main():
             raise ValueError("Converted weights missing: "+name)
     import MNN.llm as llm
     runtime = llm.create(str(model/"config.json"))
-    if not runtime.set_config({"backend_type":"cpu","thread_num":2,"max_new_tokens":512}):
+    if not runtime.set_config({"backend_type":"cpu","thread_num":2,"max_new_tokens":512,
+        "sampler_type":"mixed","mixed_samplers":["penalty","topK","temperature"],
+        "top_k":24,"temperature":0.7,"repetition_penalty":1.12,"frequency_penalty":0.0,
+        "timeout_ms":110000}):
         raise RuntimeError("MNN refused numeric inference configuration")
     runtime.load()
     runtime.generate_init()

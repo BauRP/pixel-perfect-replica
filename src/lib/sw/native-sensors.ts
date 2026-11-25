@@ -76,11 +76,14 @@ export async function sensorStatus(): Promise<SensorsStatus | null> {
   try { return await withNativeDeadline(()=>native.status(),4000); } catch { return null; }
 }
 let diagnosticEpoch = 0;
+let activityEpoch=0;
+let ambientEpoch=0;
 // A stop request invalidates pending start immediately, then runs AFTER any
 // in-flight native start. Without serialization a delayed startAnalysis() can
 // reopen Android AudioRecord AFTER the user's privacy opt-out.
 const diagnosticOperations = new SerialNativeOperations();
 const stopNativeDiagnostics = async () => {
+  ambientEpoch++;activityEpoch++;
   // One rejected/never-resolved Capacitor callback must not poison the
   // lifecycle queue. Timed-out STOP is unknown, not proof of microphone off.
   await Promise.allSettled([
@@ -110,7 +113,10 @@ export function startSensorDiagnostics(includeSteps: boolean): Promise<Result> {
       try {
         const activity = await withNativeDeadline(()=>native.requestActivity(),60_000);
         if(cancelled()) return unavailable("Проверка микрофона отменена");
-        if (activity.granted) await withNativeDeadline(()=>native.startSteps(),8000);
+        if (activity.granted) {
+          const steps=await withNativeDeadline(()=>native.startSteps(),8000);
+          if(steps.started)activityEpoch++;
+        }
       } catch { /* microphone still works without the motion sensor */ }
     }
     if(cancelled()) return unavailable("Проверка микрофона отменена");
@@ -168,6 +174,7 @@ export function startStepOnlyDiagnostics(): Promise<Result> {
     if (!permission.granted)
       return {ok:false,code:"PERMISSION_DENIED",message:"Разрешите физическую активность для шагомера"};
     const result = await withNativeDeadline(()=>native.startSteps(),8000);
+    if(result.started)activityEpoch++;
     if (cancelled() || !sensorsAllowed(getSettingsSnapshot())) {
       await withNativeDeadline(()=>native.stopSteps(),5000).catch(()=>{});
       return unavailable("Запуск шагомера отменён");
@@ -220,8 +227,6 @@ export function observeSensorErrors(cb:(message:string)=>void):Unsubscribe {
 /** Use real native data only. No microphone/sensor capture before an explicit Play/test action. */
 export function installNativeSensorAdapters(): void {
   if (!androidSensorsAvailable()) return;
-  let ambientEpoch=0;
-  let activityEpoch=0;
   const adapters: Partial<Adapters> = {
     permissions: {
       microphone: async () => {
@@ -317,6 +322,40 @@ export function installNativeSensorAdapters(): void {
       },
     },
     activity: {
+      startCapture:()=>{
+        if(!sensorsAllowed(getSettingsSnapshot()))return Promise.resolve(unavailable(SENSOR_MODE_BLOCKED));
+        const epoch=++diagnosticEpoch;
+        return diagnosticOperations.enqueue(async():Promise<Result>=>{
+          const cancelled=()=>epoch!==diagnosticEpoch||!sensorsAllowed(getSettingsSnapshot());
+          if(cancelled())return unavailable("Шагомер остановлен");
+          try{
+            const status=await withNativeDeadline(()=>native.status(),5000);
+            if(cancelled())return unavailable("Шагомер остановлен");
+            if(!status.stepsSupported)return unavailable("Датчик шагов отсутствует");
+            if(!status.activityGranted)return {ok:false,code:"PERMISSION_DENIED",message:"Физическая активность не разрешена"};
+            const result=await withNativeDeadline(()=>native.startSteps(),8000);
+            if(cancelled()){
+              await withNativeDeadline(()=>native.stopSteps(),5000).catch(()=>undefined);
+              return unavailable("Шагомер остановлен");
+            }
+            if(!result.started)return unavailable("Датчик шагов не запущен");
+            activityEpoch++;
+            return {ok:true,value:undefined};
+          }catch(e){
+            await withNativeDeadline(()=>native.stopSteps(),5000).catch(()=>undefined);
+            return safeError(e);
+          }
+        });
+      },
+      stopCapture:()=>{
+        ++diagnosticEpoch;activityEpoch++;
+        return diagnosticOperations.enqueue(async():Promise<Result>=>{
+          try{
+            const result=await withNativeDeadline(()=>native.stopSteps(),5000);
+            return result.stopped?{ok:true,value:undefined}:unavailable("Android не подтвердил остановку шагомера");
+          }catch(e){return safeError(e);}
+        });
+      },
       observeWalkingRunningTransportRest: cb => {
         const pace=new StepPaceEstimator();
         let seenEpoch=activityEpoch;

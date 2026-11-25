@@ -261,6 +261,7 @@ public final class SoundWorldPlaybackService extends Service {
           }
           continue;
         }
+        try {
         lastRealPcmAt = SystemClock.elapsedRealtime();
         // Same lock as pauseAudio: late writer must not call play AFTER stop.
         synchronized (this) {
@@ -285,6 +286,7 @@ public final class SoundWorldPlaybackService extends Service {
         if (at == pcm.length && running.get() && !paused.get() && !actualPlayback) {
           actualPlayback = true; publishState(true);
         }
+        }finally{java.util.Arrays.fill(pcm,(byte)0);}
       }
     } catch (Exception ex) {
       lastAudioError = ex.getClass().getSimpleName() + ": " + String.valueOf(ex.getMessage());

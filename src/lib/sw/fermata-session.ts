@@ -17,9 +17,11 @@ export interface OriginalFermataDecoder {
 }
 
 let active=false;
+let liveWrapperActive=false;
 export async function runNativeFermataSession(
   settings:Settings,genres:string[],inputs:LiveMusicRequestInputs,
   decoder:OriginalFermataDecoder,options:SequenceOptions={},
+  onPrepared?:()=>Promise<void>,
 ):Promise<SequenceOutcome> {
   if(active||options.signal?.aborted||options.isCancelled?.())
     return {ok:false,code:"UNAVAILABLE",message:"Музыкальный сеанс уже занят или остановлен",completedScores:0,totalFrames:0};
@@ -36,6 +38,8 @@ export async function runNativeFermataSession(
     const packageState=await inspectFermataPackage();
     if(!packageState?.packageComplete||!packageState.arm64Supported)
       return {ok:false,code:"UNAVAILABLE",message:"Полный локальный музыкальный пакет отсутствует",completedScores:0,totalFrames:0};
+    if(onPrepared&&!cancelled())await onPrepared();
+    if(cancelled())return {ok:false,code:"UNAVAILABLE",message:"Музыка остановлена",completedScores:0,totalFrames:0};
     const source=new AdaptiveMidiSource({
       generate:async(request,signal,header)=>{
         if(signal.aborted)throw new Error("Генерация остановлена");
@@ -49,7 +53,7 @@ export async function runNativeFermataSession(
     // is still being generated. Start only when genuine PCM is ready.
     const result=await renderContinuousVerifiedMidiToPcm(source,renderer,{
       submit:async(bytes)=>{
-        if(options.signal?.aborted||options.isCancelled?.())
+        if(cancelled())
           return {ok:false,code:"UNAVAILABLE",message:"Музыка остановлена"};
         if(!opened){
           const ready=await requestNativeAudioSink();
@@ -91,11 +95,21 @@ export async function runNativeFermataSession(
   }
 }
 
-/** Explicit entry for a future verified production decoder. Sensors are
- * observed only if independently started/authorized; no implicit capture. */
+/** Explicit Play entry for a future verified production decoder. Capture
+ * starts only after the complete local package is confirmed and only with
+ * permissions already granted; no surprise permission dialog. */
 export async function runFermataWithLiveInputs(settings:Settings,genres:string[],
   favorites:()=>ClipMeta[],decoder:OriginalFermataDecoder,options:SequenceOptions={}):Promise<SequenceOutcome>{
-  const live=createLiveFermataInputs(favorites);
-  try{return await runNativeFermataSession(settings,genres,live.inputs,decoder,options);}
-  finally{live.close();}
+  if(liveWrapperActive||active)
+    return {ok:false,code:"UNAVAILABLE",message:"Музыкальный сеанс уже занят",completedScores:0,totalFrames:0};
+  liveWrapperActive=true;
+  let live:ReturnType<typeof createLiveFermataInputs>|undefined;
+  try{
+    live=createLiveFermataInputs(favorites);
+    return await runNativeFermataSession(settings,genres,live.inputs,decoder,options,live.startCapture);
+  }finally{
+    try{
+      if(live){await live.stopCapture();live.close();}
+    }finally{liveWrapperActive=false;}
+  }
 }

@@ -36,10 +36,12 @@ Java_kz_soundworld_ar_SoundWorldFermataPlugin_generateMnnIds(
         if(!model)throw std::runtime_error("Cannot open MNN config");
         // Keep the checkpoint and original IDs intact. Diversity controls
         // sampling of actual model logits rather than fabricated melodies.
-        const char* temperature=diversity==0?"0.65":diversity==1?"0.85":"1.0";
+        const char* temperature=diversity==0?"0.60":diversity==1?"0.70":"0.90";
+        const char* topK=diversity==0?"16":diversity==1?"24":"40";
         const std::string options="{\"backend_type\":\"cpu\",\"thread_num\":"+std::to_string(threads)+
-            ",\"reuse_kv\":false,\"sampler_type\":\"topP\",\"top_p\":0.9,\"temperature\":"+temperature+
-            ",\"timeout_ms\":110000}";
+            ",\"reuse_kv\":false,\"sampler_type\":\"mixed\",\"mixed_samplers\":[\"penalty\",\"topK\",\"temperature\"],"+
+            "\"top_k\":"+topK+",\"temperature\":"+temperature+
+            ",\"repetition_penalty\":1.12,\"frequency_penalty\":0.0,\"timeout_ms\":110000}";
         if(!model->set_config(options)||
            !model->load())throw std::runtime_error("Cannot load actual weights");
         model->generate_init();

@@ -172,7 +172,7 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
   const pool=notWeak.length?notWeak:permitted;
   const ranked=[...pool.filter(id=>emph.has(id)),...pool.filter(id=>!emph.has(id))];
   const defaultsFor=(id:string):readonly string[]=>{
-    if(id.startsWith("g12-")&&id!=="g12-s04"&&id!=="g12-s03")return ["i3-01","i3-03","i4-07"];
+    if(id.startsWith("g12-")&&id!=="g12-s04"&&id!=="g12-s03"&&id!=="g12-s06")return ["i3-01","i3-03","i4-07"];
     if(id==="g13-s04")return ["i8-05"]; // Japanese koto
     if(id==="g13-s08")return ["i8-03"]; // Indian sitar
     if(id==="g08-s06")return ["i1-01"]; // solo piano
@@ -184,6 +184,9 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
     if(id==="g06-s02")return ["i6-02","i6-01","i4-04","i5-01"]; // bebop
     if(id==="g06-s04")return ["i6-01","i1-03","i3-04","i5-01"]; // smooth jazz
     if(id==="g09-s03")return ["i4-03","i7-03","i7-01"]; // suspense
+    if(id==="g09-s04")return ["i1-01","i4-03","i7-01"]; // dramatic film score
+    if(id==="g12-s06")return ["i3-03"]; // acoustic fingerstyle
+    if(id==="g02-s07")return ["i2-04","i3-04","i1-03"]; // downtempo
     if(id==="g08-s02")return ["i1-01","i4-01","i4-02","i4-03"]; // classical chamber
     if(id==="g11-s03")return ["i1-03","i3-04","i5-01"]; // lo-fi beats
     if(id==="g08-s08")return ["i1-01","i4-01"]; // minimalism
@@ -270,9 +273,11 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
   // permanently hidden behind the first six. Preserve hard exclusions.
   const offset=permittedInstruments.length>6?(sequenceIndex*6)%permittedInstruments.length:0;
   const rotated=[...permittedInstruments.slice(offset),...permittedInstruments.slice(0,offset)];
+  const weakPrograms=new Set([...weakInstruments].map(id=>GM_BY_ID[id]).filter(p=>p!==undefined));
+  const preferredParts=permittedInstruments.filter(id=>!weakInstruments.has(id)&&!weakPrograms.has(GM_BY_ID[id]));
+  const softParts=permittedInstruments.filter(id=>!preferredParts.includes(id));
   const prioritized=explicit?rotated.slice(0,6):
-    [...permittedInstruments.filter(id=>!weakInstruments.has(id)),
-     ...permittedInstruments.filter(id=>weakInstruments.has(id))];
+    preferredParts.length===0||sequenceIndex%4===3?[...preferredParts,...softParts]:preferredParts;
   const programs=[...new Set(prioritized
     .map(id=>GM_BY_ID[id]).filter((p):p is number=>typeof p==="number"))];
   const drums=prioritized.some(id=>GM_BY_ID[id]==="drums");
