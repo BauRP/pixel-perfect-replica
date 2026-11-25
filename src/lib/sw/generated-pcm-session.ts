@@ -155,7 +155,9 @@ export class GeneratedPcmSession {
         // Output is queued before the persisted WAV bytes. Never claim audible here.
         const pushed = await this.bounded(this.sink.append(part));
         if(!pushed.ok) return this.fail(pushed.message);
-        const written = await this.bounded(this.store.append(this.id!,part));
+        if(this.state==="error" || this.id===null)
+          return {ok:false,code:"UNAVAILABLE",message:"Поток остановлен после ошибки"};
+        const written = await this.bounded(this.store.append(this.id,part));
         if(!written.ok) return this.fail(written.message);
         // Android returns total persisted PCM bytes for THIS recording.
         // A missing/duplicated/partial acknowledgement must never be counted
@@ -204,7 +206,20 @@ export class GeneratedPcmSession {
     this.stopRequested = true;
     this.stopInFlight=(async()=>{
       // A stalled native write must never leave Stop waiting without limit.
-      await this.bounded(this.chain.then(():Result<void>=>({ok:true,value:undefined})));
+      const drained=await this.bounded(this.chain.then(():Result<void>=>({ok:true,value:undefined})));
+      if(!drained.ok) {
+        // A failed queue drain must never publish an incomplete WAV.
+        this.state="error";
+        this.lastFailure=drained.message;
+        const incomplete=this.id;
+        this.id=null;
+        this.bytes=0;
+        await Promise.all([
+          ...(this.sink.stop?[this.bestEffortCleanup(()=>this.sink.stop!())]:[]),
+          ...(incomplete!==null?[this.bestEffortCleanup(()=>this.store.abort(incomplete))]:[]),
+        ]);
+        return drained;
+      }
       if(this.state === "error") return {ok:false,code:"ERROR",message:this.lastFailure??"Ошибка"};
       try {
         const result = await this.finishIfOpen();
