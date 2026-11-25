@@ -392,7 +392,7 @@ public final class SoundWorldPlaybackService extends Service {
     if (unplug != null) { try { unregisterReceiver(unplug); } catch(Exception ignored) {} }
     MediaSession oldSession = session; session = null;
     if (oldSession != null) {oldSession.setActive(false);oldSession.release();}
-    active = null;
+    if(active==this)active=null;
     super.onDestroy();
   }
 

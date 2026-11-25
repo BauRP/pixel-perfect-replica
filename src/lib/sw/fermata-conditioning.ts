@@ -182,6 +182,10 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
     if(id==="g06-s07")return ["i3-03","i6-01","i3-04","i5-01"]; // jazz bossa nova
     if(id==="g06-s01")return ["i6-01","i1-01","i3-04","i5-01"]; // swing
     if(id==="g06-s02")return ["i6-02","i6-01","i4-04","i5-01"]; // bebop
+    if(id==="g06-s04")return ["i6-01","i1-03","i3-04","i5-01"]; // smooth jazz
+    if(id==="g09-s03")return ["i4-03","i7-03","i7-01"]; // suspense
+    if(id==="g08-s02")return ["i1-01","i4-01","i4-02","i4-03"]; // classical chamber
+    if(id==="g11-s03")return ["i1-03","i3-04","i5-01"]; // lo-fi beats
     if(id==="g08-s08")return ["i1-01","i4-01"]; // minimalism
     if(id==="g08-s03")return ["i1-01","i4-01","i4-03"]; // romantic
     if(id==="g07-s01")return ["i3-01","i6-10"]; // delta blues
@@ -213,8 +217,9 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
     return !exclusions.has(id)&&program!==undefined&&
       (program==="drums"?!kitExcluded:!excludedPrograms.has(program));
   };
-  const playable=request.preferredInstruments.length>0?ranked:
-    ranked.filter(id=>defaultsFor(id).some(canUse));
+  const available=(id:string)=>request.preferredInstruments.length>0||defaultsFor(id).some(canUse);
+  const preferredPlayable=ranked.filter(available);
+  const playable=preferredPlayable.length?preferredPlayable:permitted.filter(available);
   const arrangementKey=(id:string)=>COARSE_GENRE[id.slice(0,3)]+":"+defaultsFor(id).join(",");
   const distinct=playable.filter((id,i)=>playable.findIndex(other=>
     arrangementKey(other)===arrangementKey(id))===i);

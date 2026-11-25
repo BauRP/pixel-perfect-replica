@@ -1,11 +1,13 @@
 import type { Settings } from "./settings";
+import type { ClipMeta } from "./engine";
+import { createLiveFermataInputs } from "./fermata-live-inputs";
 import type { FermataHeader } from "./fermata-conditioning";
 import { AdaptiveMidiSource, type LiveMusicRequestInputs } from "./adaptive-midi-source";
 import { generateNativeFermataTokens, createNativeSonivoxRenderer, inspectFermataPackage } from "./fermata-native";
 import { renderContinuousVerifiedMidiToPcm } from "./verified-midi-pcm-bridge";
 import type { SequenceOptions, SequenceOutcome } from "./continuous-midi-scores";
 import { createNativeGeneratedPcmSession } from "./generated-pcm-session";
-import { requestNativeAudioSink, stopNativeAudioSink, drainNativeAudioSink } from "./native-pcm";
+import { requestNativeAudioSink, stopNativeAudioSink, drainNativeAudioSink, currentAudioSinkStatus } from "./native-pcm";
 
 /** Integration point for the actual original codec, NOT an implemented codec.
  * Only called from an explicitly authorized Play after package and decoder
@@ -24,6 +26,12 @@ export async function runNativeFermataSession(
   active=true;
   const session=createNativeGeneratedPcmSession(settings,genres);
   let opened=false;
+  let monitor:ReturnType<typeof setInterval>|undefined;
+  let checking=false,missed=0;
+  let interrupted=false;
+  const externalCancelled=options.isCancelled;
+  const cancelled=()=>interrupted||options.signal?.aborted===true||externalCancelled?.()===true;
+  const sessionOptions:SequenceOptions={...options,isCancelled:cancelled};
   try{
     const packageState=await inspectFermataPackage();
     if(!packageState?.packageComplete||!packageState.arm64Supported)
@@ -47,7 +55,18 @@ export async function runNativeFermataSession(
           const ready=await requestNativeAudioSink();
           if(!ready.ok)return ready;
           opened=true;
-          if(options.signal?.aborted||options.isCancelled?.()){
+          // Once sound is active, native focus loss/headphone disconnect
+          // must cancel the producer even during a long model calculation.
+          monitor=setInterval(()=>{
+            if(checking||interrupted)return;
+            checking=true;
+            void currentAudioSinkStatus().then(status=>{
+              if(!status){if(++missed>=2)interrupted=true;return;}
+              missed=0;
+              if(!status.serviceActive||!status.readyForPcm||status.lastAudioError)interrupted=true;
+            }).finally(()=>{checking=false;});
+          },1000);
+          if(cancelled()){
             await stopNativeAudioSink();
             return {ok:false,code:"UNAVAILABLE",message:"Музыка остановлена"};
           }
@@ -55,10 +74,10 @@ export async function runNativeFermataSession(
         return session.submit(bytes);
       },
       stop:()=>session.stop(),
-    },options);
+    },sessionOptions);
     if(result.ok&&opened){
       const drained=await drainNativeAudioSink(result.totalFrames,
-        ()=>options.signal?.aborted===true||options.isCancelled?.()===true);
+        cancelled);
       if(!drained.ok)return {ok:false,code:drained.code==="UNAVAILABLE"?"UNAVAILABLE":"ERROR",
         message:drained.message,completedScores:result.completedScores,totalFrames:result.totalFrames};
       const stopped=await session.stop();
@@ -67,6 +86,16 @@ export async function runNativeFermataSession(
     }
     return result;
   }finally{
+    if(monitor!==undefined)clearInterval(monitor);
     try{if(opened)await session.stop();}finally{active=false;}
   }
+}
+
+/** Explicit entry for a future verified production decoder. Sensors are
+ * observed only if independently started/authorized; no implicit capture. */
+export async function runFermataWithLiveInputs(settings:Settings,genres:string[],
+  favorites:()=>ClipMeta[],decoder:OriginalFermataDecoder,options:SequenceOptions={}):Promise<SequenceOutcome>{
+  const live=createLiveFermataInputs(favorites);
+  try{return await runNativeFermataSession(settings,genres,live.inputs,decoder,options);}
+  finally{live.close();}
 }

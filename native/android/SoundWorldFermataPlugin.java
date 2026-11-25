@@ -415,6 +415,12 @@ public final class SoundWorldFermataPlugin extends Plugin {
           }
           System.loadLibrary("soundworld_fermata_mnn");
           android.os.PowerManager power=(android.os.PowerManager)getContext().getSystemService(Context.POWER_SERVICE);
+          android.app.ActivityManager memory=(android.app.ActivityManager)getContext().getSystemService(Context.ACTIVITY_SERVICE);
+          if(memory!=null){
+            android.app.ActivityManager.MemoryInfo info=new android.app.ActivityManager.MemoryInfo();
+            memory.getMemoryInfo(info);
+            if(info.lowMemory)throw new IllegalStateException("Not enough memory for MNN");
+          }
           int threads=Math.max(1,Math.min(2,Runtime.getRuntime().availableProcessors()-1));
           if(power!=null&&power.getCurrentThermalStatus()>=4)
             throw new IllegalStateException("Device thermal status critical");

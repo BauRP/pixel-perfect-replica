@@ -20,7 +20,8 @@ export interface LiveMusicRequestInputs {
   currentSettings():Settings;
   currentPlan():ControlPlan;
   currentFavorites():ClipMeta[];
-  /** Changed on any settings or confirmed sensor-plan update. */
+  /** Invalidates an in-flight score on explicit settings changes. Routine
+   * environment/step observations should apply to the next composition. */
   revision():number;
 }
 export class AdaptiveMidiSource implements RealScoreSource {

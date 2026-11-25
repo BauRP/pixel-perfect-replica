@@ -39,6 +39,15 @@ export class MusicControlPlanner {
   private birdVerifiedAt = 0;
 
   setAtmosphereLock(value: boolean) { this.locked = value; }
+  /** Physical input changed: old microphone evidence is no longer valid.
+   * An explicit atmosphere lock remains a user choice, not a fresh reading. */
+  invalidateAmbient():void {
+    this.lastAmbientEvidenceAt=-Infinity;
+    this.lastMajorChangeAt=-Infinity;
+    this.birdVerifiedAt=0;
+    this.regenerationDue=false;
+    if(!this.locked)this.atmosphere="unknown";
+  }
   /** Consent revocation invalidates every sensor-derived planning signal.
    * Keep the user's explicit atmosphere lock selection, but never replay
    * an earlier environment or step rate when analysis is re-enabled. */

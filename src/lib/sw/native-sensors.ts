@@ -355,7 +355,14 @@ export function installNativeSensorAdapters(): void {
         catch(e){return safeError(e);}
       },
       chooseBestSupportedRoute:async()=>{
-        try { await native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())});return {ok:true,value:undefined}; }
+        try {
+          if(!sensorsAllowed(getSettingsSnapshot()))return unavailable(SENSOR_MODE_BLOCKED);
+          await withNativeDeadline(()=>native.setInputPreference({preference:effectiveMicrophonePreference(getSettingsSnapshot())}),6000);
+          const actual=await withNativeDeadline(()=>native.actualMicrophone(),4000);
+          if(!sensorsAllowed(getSettingsSnapshot())||!actual.active||actual.routeConfirmed!==true)
+            return unavailable("Предпочтение сохранено, фактический маршрут ещё не подтверждён");
+          return {ok:true,value:undefined};
+        }
         catch(e){return safeError(e);}
       },
       observeInputOutputChanges:cb=>observeActualRouteChanges(cb),

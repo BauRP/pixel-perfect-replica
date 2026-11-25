@@ -68,7 +68,7 @@ def run(args):
     if not info.card_data or info.card_data.get("license") != "apache-2.0":
         raise ValueError("Fermata Apache-2.0 license metadata missing")
     checkpoint = Path(snapshot_download(MODEL, revision=info.sha,
-        allow_patterns=["README.md", "config.json", "model.safetensors", "tokenizer/*"]))
+        allow_patterns=["README.md", "config.json", "tokenizer/*"]))
     config = read_json(checkpoint/"config.json")
     if config.get("model_type")!="llama" or config.get("vocab_size")!=VOCAB_SIZE:
         raise ValueError("Unexpected model architecture")
@@ -81,6 +81,8 @@ def run(args):
         raise ValueError("Original unknown token not identified")
     if config.get("bos_token_id") != vocab["<BOS>"]:
         raise ValueError("Checkpoint and tokenizer BOS mismatch")
+    checkpoint = Path(snapshot_download(MODEL, revision=info.sha,
+        allow_patterns=["model.safetensors"]))
     weights = checkpoint/"model.safetensors"
     if not weights.is_file() or weights.stat().st_size < 300_000_000:
         raise ValueError("Full original Fermata weights are missing")
@@ -113,7 +115,7 @@ def run(args):
     if args.mnnconvert:
         command += ["--mnnconvert",str(args.mnnconvert.resolve())]
     subprocess.run(command,cwd=exporter.parent,check=True)
-    for name in ("llm.mnn","llm.mnn.weight","config.json","llm_config.json"):
+    for name in ("llm.mnn","llm.mnn.weight","config.json","llm_config.json","tokenizer.txt"):
         file=mnn/name
         if not file.is_file() or not file.stat().st_size:
             raise ValueError("Missing MNN conversion output: "+name)

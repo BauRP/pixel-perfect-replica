@@ -890,6 +890,11 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
       lastCounterValue=-1;
       counterDiscontinuity=false;
       listeningSteps=sensorManager.registerListener(this,stepDetector,SensorManager.SENSOR_DELAY_NORMAL);
+      if(!listeningSteps&&stepDetector.getType()==Sensor.TYPE_STEP_DETECTOR){
+        stepDetector=sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
+        if(stepDetector!=null)
+          listeningSteps=sensorManager.registerListener(this,stepDetector,SensorManager.SENSOR_DELAY_NORMAL);
+      }
     }
     if (!listeningSteps) {call.reject("Не удалось включить шагомер");return;}
     JSObject r = new JSObject();r.put("started", true);call.resolve(r);
@@ -904,7 +909,9 @@ public class SoundWorldSensorsPlugin extends Plugin implements SensorEventListen
   private void stopStepsInternal() {
     if (sensorManager != null) sensorManager.unregisterListener(this);
     listeningSteps = false;
+    stepDetector=null;
     lastCounterValue=-1;
+    counterDiscontinuity=false;
   }
 
   @Override
