@@ -65,6 +65,13 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
   }
   private final Map<String,VerifiedExport> verifiedExportCache = new HashMap<>();
 
+  private String exportDatabaseVersion() {
+    try {
+      String version=MediaStore.getVersion(getContext());
+      return version == null ? "" : version;
+    } catch(Exception ignored) { return ""; }
+  }
+
   private long exportedModifiedAt(String uriText) {
     try (Cursor c=getContext().getContentResolver().query(
         Uri.parse(uriText),new String[]{MediaStore.MediaColumns.GENERATION_MODIFIED},
@@ -136,17 +143,19 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
       return false;
     }
     long changedAt=exportedModifiedAt(uriText);
-    String storeVersion=MediaStore.getVersion(getContext());
+    String storeVersion=exportDatabaseVersion();
     VerifiedExport cached=verifiedExportCache.get(source.getName());
-    if(changedAt>=0 && cached!=null && cached.uri.equals(uriText) &&
+    if(changedAt>=0 && !storeVersion.isEmpty() && cached!=null && cached.uri.equals(uriText) &&
         cached.bytes==source.length() && cached.sourceModified==source.lastModified() &&
         cached.mediaModified==changedAt && cached.mediaStoreVersion.equals(storeVersion)) return true;
     try (InputStream original=new FileInputStream(source);
          InputStream saved=getContext().getContentResolver().openInputStream(Uri.parse(uriText))) {
       SoundWorldWavExportPolicy.verifyExactCopy(original,saved,source.length());
-      if(changedAt>=0)
+      if(changedAt>=0 && !storeVersion.isEmpty()) {
+        if(verifiedExportCache.size()>512)verifiedExportCache.clear();
         verifiedExportCache.put(source.getName(),
           new VerifiedExport(uriText,source.length(),source.lastModified(),changedAt,storeVersion));
+      }
       return true;
     } catch (Exception ignored) {
       verifiedExportCache.remove(source.getName());
@@ -414,9 +423,9 @@ public class SoundWorldMusicLibraryPlugin extends Plugin {
           throw new IOException("Не удалось подтвердить сохранение файла");
         // This copy was just fully hash-verified before publication.
         long modified=exportedModifiedAt(outputUri.toString());
-        if(modified>=0) verifiedExportCache.put(file.getName(),
+        if(modified>=0 && !exportDatabaseVersion().isEmpty()) verifiedExportCache.put(file.getName(),
           new VerifiedExport(outputUri.toString(),file.length(),file.lastModified(),modified,
-            MediaStore.getVersion(getContext())));
+            exportDatabaseVersion()));
         record.put("exportedUri",outputUri.toString());
         saveIndex(index);
         JSObject r=new JSObject();r.put("uri",outputUri.toString());call.resolve(r);
