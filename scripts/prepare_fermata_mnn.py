@@ -19,7 +19,11 @@ import sys
 MODEL = "haster/Fermata-0.2B-v1"
 REVISION = "18b647098f579ee41db67c0ad4c7f7f39ce0eac1"
 ORIGINAL_VOCAB_SHA256 = "40ac92aa8a3683693e2bf725d46cf8a4825221185ed29a7fcec550deacf81224"
+ORIGINAL_BPE_SHA256 = "edd9083af2f7c4aa34efdd0df41ef46c8f424db34d35522d7107c489a6ea1a09"
 VOCAB_SIZE = 9507
+BPE_MERGE_COUNT = 7348
+BASE_TOKEN_COUNT = 1981
+BOUNDARY_TOKEN_COUNT = 174
 
 def read_json(path):
     with path.open(encoding="utf-8") as file:
@@ -49,6 +53,74 @@ def sha256(path):
         for chunk in iter(lambda: file.read(1024*1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+def build_codec_manifest(vocab, bpe):
+    """Preserve the exact upstream REMI+ inventory without inventing its decoder."""
+    if (not isinstance(vocab,dict) or len(vocab)!=VOCAB_SIZE or
+        set(vocab.values())!=set(range(VOCAB_SIZE))):
+        raise ValueError("Original vocabulary is not a complete ID mapping")
+    if not isinstance(bpe, dict) or bpe.get("vocab_size") != VOCAB_SIZE:
+        raise ValueError("Original Fermata BPE vocabulary size mismatch")
+    merges=bpe.get("merges")
+    symbols=bpe.get("symbols")
+    base=bpe.get("base_tokens")
+    boundary=bpe.get("boundary_tokens")
+    rust=bpe.get("rust_tokens")
+    if (not isinstance(merges,list) or len(merges)!=BPE_MERGE_COUNT or
+        not isinstance(symbols,list) or len(symbols)!=BPE_MERGE_COUNT or
+        not isinstance(base,list) or len(base)!=BASE_TOKEN_COUNT or
+        not isinstance(boundary,list) or len(boundary)!=BOUNDARY_TOKEN_COUNT or
+        not isinstance(rust,dict) or len(rust)!=BPE_MERGE_COUNT):
+        raise ValueError("Original Fermata BPE metadata shape mismatch")
+    for name,items in (("merges",merges),("symbols",symbols),
+                       ("base_tokens",base),("boundary_tokens",boundary)):
+        if any(not isinstance(item,str) or not item for item in items):
+            raise ValueError("Invalid original BPE "+name)
+        if name!="merges" and len(set(items))!=len(items):
+            raise ValueError("Duplicate original BPE "+name)
+    if any(not isinstance(pair,list) or len(pair)!=2 or
+           any(not isinstance(part,str) or not part for part in pair)
+           for pair in merges):
+        raise ValueError("Invalid original BPE merge pair")
+    if set(rust)!=set(symbols) or any(not isinstance(value,str) or not value for value in rust.values()):
+        raise ValueError("Original BPE Rust symbol map mismatch")
+    if not set(base)<=vocab.keys() or not set(boundary)<=vocab.keys() or not set(symbols)<=vocab.keys():
+        raise ValueError("BPE references tokens missing from original vocabulary")
+    tokens_by_id=[None]*VOCAB_SIZE
+    families={}
+    for token,token_id in vocab.items():
+        tokens_by_id[token_id]=token
+        match=re.match(r"^<([A-Z][A-Z0-9]*)(?:_|:|>)",token)
+        if match:
+            families.setdefault(match.group(1),[]).append({"token":token,"id":token_id})
+    if any(token is None for token in tokens_by_id):
+        raise ValueError("Original token IDs are not contiguous")
+    return {
+        "schemaVersion":1,
+        "model":MODEL,
+        "revision":REVISION,
+        "codec":"bar-major REMI+",
+        "vocabularySize":VOCAB_SIZE,
+        "ticksPerQuarter":24,
+        "contextLengthTokens":4096,
+        "trainingWindowTokens":2048,
+        "tokenizationForCheckpoint":"atomic",
+        "bpeMergesAppliedDuringTraining":False,
+        "originalVocabularySha256":ORIGINAL_VOCAB_SHA256,
+        "originalBpeSha256":ORIGINAL_BPE_SHA256,
+        "bpeMetadata":{
+            "mergeCount":len(merges),"symbolCount":len(symbols),
+            "baseTokenCount":len(base),"boundaryTokenCount":len(boundary),
+        },
+        "knownCheckpointIssues":{
+            "drumPitchOffset":-1,
+            "drumPitchCorrectionApplied":False,
+            "note":"Upstream model card reports a +1 GM drum-key shift; subtracting one recovers most hits. Apply only in a reviewed decoder.",
+        },
+        "decoderStatus":"not-implemented",
+        "families":families,
+        "tokensById":tokens_by_id,
+    }
 
 def write_mnn_atomic_tokenizer(path, vocab, config):
     """MNN v3.6.1 tokenizer type 1, used only for numerical token inference.
@@ -109,6 +181,11 @@ def run(args):
     if sha256(original) != ORIGINAL_VOCAB_SHA256:
         raise ValueError("Original Fermata vocabulary checksum differs from pinned revision")
     vocab = original_vocabulary(original)
+    original_bpe=checkpoint/"tokenizer/bpe.json"
+    if not original_bpe.is_file() or sha256(original_bpe)!=ORIGINAL_BPE_SHA256:
+        raise ValueError("Original Fermata BPE checksum differs from pinned revision")
+    bpe=read_json(original_bpe)
+    codec_manifest=build_codec_manifest(vocab,bpe)
     # Actual upstream inventory contains PAD but no UNK. The HF exporter
     # requires an existing fallback ID; only its compatibility text wrapper
     # uses PAD. The production numerical encoder rejects unknown strings.
@@ -161,20 +238,25 @@ def run(args):
     alternate=mnn/"tokenizer.mtok"
     if alternate.is_file():
         alternate.unlink()
-    for name in ("llm.mnn","llm.mnn.weight","config.json","llm_config.json","tokenizer.txt"):
+    for name in ("llm.mnn","llm.mnn.weight","config.json","llm_config.json","tokenizer.txt",
+                 "tokenizer/vocab.json","tokenizer/bpe.json","tokenizer/codec.json"):
         file=mnn/name
         if not file.is_file() or not file.stat().st_size:
             raise ValueError("Missing MNN conversion output: "+name)
     # Save the exact normalized original mapping for Android encode/decode.
     (mnn/"tokenizer").mkdir(exist_ok=True)
     (mnn/"tokenizer/vocab.json").write_text(json.dumps(vocab,ensure_ascii=False),encoding="utf-8")
+    shutil.copy2(original_bpe,mnn/"tokenizer/bpe.json")
+    (mnn/"tokenizer/codec.json").write_text(
+        json.dumps(codec_manifest,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
     shutil.copy2(checkpoint/"README.md",output/"FERMATA_UPSTREAM_README.md")
     shutil.copy2(license_path,output/"MNN_LICENSE")
     inventory = {p.relative_to(mnn).as_posix():{"sha256":sha256(p),"sizeBytes":p.stat().st_size}
                  for p in sorted(mnn.rglob("*")) if p.is_file()}
     (output/"conversion.json").write_text(json.dumps({"model":MODEL,"revision":info.sha,
         "mnnRevision":mnn_revision,"quantBits":8,"sourceVocabSha256":sha256(original),
-        "sourceWeightsSha256":sha256(weights),"files":inventory,
+        "sourceWeightsSha256":sha256(weights),"sourceBpeSha256":ORIGINAL_BPE_SHA256,
+        "codecManifestSha256":sha256(mnn/"tokenizer/codec.json"),"files":inventory,
         "androidInferenceVerified":False},indent=2),encoding="utf-8")
     print("MNN conversion files produced; Android inference not yet verified:",mnn)
 

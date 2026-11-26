@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 import sys
 from huggingface_hub import HfApi, snapshot_download
-from prepare_fermata_mnn import MODEL, REVISION, ORIGINAL_VOCAB_SHA256, original_vocabulary, sha256
+from prepare_fermata_mnn import MODEL, REVISION, ORIGINAL_VOCAB_SHA256, ORIGINAL_BPE_SHA256, original_vocabulary, build_codec_manifest, sha256
 from report_fermata_vocabulary import main as inventory
 
 def main():
@@ -28,8 +28,14 @@ def main():
         if file.is_file():
             print("Original tokenizer file:",file.name,file.stat().st_size,sha256(file))
     bpe=root/"tokenizer/bpe.json"
+    if not bpe.is_file() or sha256(bpe)!=ORIGINAL_BPE_SHA256:
+        raise ValueError("Original BPE checksum differs from pinned revision")
     if bpe.is_file():
         value=json.loads(bpe.read_text(encoding="utf-8"))
+        codec=build_codec_manifest(original_vocabulary(path),value)
+        print("Verified original codec:",codec["codec"],"TPQN",codec["ticksPerQuarter"],
+              "atomic tokens",codec["vocabularySize"],"BPE merges",codec["bpeMetadata"]["mergeCount"])
+        print("Upstream drum correction is documented but not applied:",codec["knownCheckpointIssues"]["drumPitchOffset"])
         if isinstance(value,dict):
             print("BPE top-level fields:",list(value)[:24])
             for k,v in list(value.items())[:24]:
@@ -40,6 +46,7 @@ def main():
             print("BPE list:",len(value),json.dumps(value[:3],ensure_ascii=False)[:2000])
     print("Original revision:",info.sha)
     print("Original vocabulary SHA256:",sha256(path))
+    print("Original BPE SHA256:",sha256(bpe))
     sys.argv=[sys.argv[0],str(path)]
     inventory()
 
