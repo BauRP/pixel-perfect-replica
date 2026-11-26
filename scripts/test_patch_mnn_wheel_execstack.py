@@ -26,8 +26,11 @@ class MnnWheelExecStackTests(unittest.TestCase):
             (root / "MNN").mkdir()
             (root / "MNN" / "libmnn.so").write_bytes(b"mnn")
             (root / "unrelated.so").write_bytes(b"not-mnn")
+            states={"_mnncengine.cpython-311-x86_64-linux-gnu.so": ["RWE","RW"],
+                    "libmnn.so": ["RW"]}
             def flags(path, readelf="readelf"):
-                return "RWE" if path.name.startswith("_mnncengine") else "RW"
+                values=states[path.name]
+                return values.pop(0)
             with patch.object(patcher, "read_stack_flags", side_effect=flags), \
                  patch.object(patcher.subprocess, "run") as run:
                 changed = patcher.patch_mnn_shared_objects(root)

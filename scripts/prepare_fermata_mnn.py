@@ -59,8 +59,8 @@ def build_codec_manifest(vocab, bpe):
     if (not isinstance(vocab,dict) or len(vocab)!=VOCAB_SIZE or
         set(vocab.values())!=set(range(VOCAB_SIZE))):
         raise ValueError("Original vocabulary is not a complete ID mapping")
-    if not isinstance(bpe, dict) or bpe.get("vocab_size") != VOCAB_SIZE:
-        raise ValueError("Original Fermata BPE vocabulary size mismatch")
+    if not isinstance(bpe, dict):
+        raise ValueError("Original Fermata BPE metadata is not an object")
     merges=bpe.get("merges")
     symbols=bpe.get("symbols")
     base=bpe.get("base_tokens")
@@ -72,11 +72,10 @@ def build_codec_manifest(vocab, bpe):
         not isinstance(boundary,list) or len(boundary)!=BOUNDARY_TOKEN_COUNT or
         not isinstance(rust,dict) or len(rust)!=BPE_MERGE_COUNT):
         raise ValueError("Original Fermata BPE metadata shape mismatch")
-    for name,items in (("merges",merges),("symbols",symbols),
-                       ("base_tokens",base),("boundary_tokens",boundary)):
+    for name,items in (("symbols",symbols),("base_tokens",base),("boundary_tokens",boundary)):
         if any(not isinstance(item,str) or not item for item in items):
             raise ValueError("Invalid original BPE "+name)
-        if name!="merges" and len(set(items))!=len(items):
+        if len(set(items))!=len(items):
             raise ValueError("Duplicate original BPE "+name)
     if any(not isinstance(pair,list) or len(pair)!=2 or
            any(not isinstance(part,str) or not part for part in pair)

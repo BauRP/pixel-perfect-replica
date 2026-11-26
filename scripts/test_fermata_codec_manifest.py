@@ -15,7 +15,6 @@ def fixture():
     tokens = base + symbols + extras
     vocab = {token: index for index, token in enumerate(tokens)}
     bpe = {
-        "vocab_size": VOCAB_SIZE,
         "merges": [["a", "b"] for _ in range(BPE_MERGE_COUNT)],
         "symbols": symbols,
         "base_tokens": base,
