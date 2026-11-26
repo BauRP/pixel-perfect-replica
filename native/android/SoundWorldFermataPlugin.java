@@ -137,12 +137,14 @@ public final class SoundWorldFermataPlugin extends Plugin {
       JSONArray files=manifest.optJSONArray("files");
       if(files==null || files.length()<6 || files.length()>128)return out;
       Set<String> roles=new HashSet<>();
+      Set<String> paths=new HashSet<>();
       boolean filesPresent=true;
       for(int i=0;i<files.length();i++) {
         JSONObject item=files.optJSONObject(i);
         if(item==null){filesPresent=false;break;}
         String role=item.optString("role");
         String path=item.optString("path");
+        if(!paths.add(path)){filesPresent=false;break;}
         if(!"Apache-2.0".equals(item.optString("license")) ||
            !item.has("sha256") || item.optString("sha256").length()!=64) {
           filesPresent=false;
@@ -164,7 +166,12 @@ public final class SoundWorldFermataPlugin extends Plugin {
       out.put("synthPackaged", roles.contains("synth-arm64"));
       out.put("soundbankPackaged", roles.contains("soundbank"));
       out.put("licenseEvidencePackaged", roles.contains("notice"));
-      out.put("packageComplete", filesPresent && roles.contains("model") &&
+      out.put("packageComplete", filesPresent &&
+        paths.contains("model/config.json") && paths.contains("model/llm_config.json") &&
+        paths.contains("model/llm.mnn") && paths.contains("model/llm.mnn.weight") &&
+        paths.contains("model/tokenizer.txt") && paths.contains("tokenizer/vocab.json") &&
+        paths.contains("libsoundworld_fermata_mnn.so") && paths.contains("libsoundworld_sonivox.so") &&
+        roles.contains("model") &&
         roles.contains("tokenizer") && roles.contains("mnn-arm64") &&
         roles.contains("synth-arm64") && roles.contains("soundbank") &&
         roles.contains("notice"));

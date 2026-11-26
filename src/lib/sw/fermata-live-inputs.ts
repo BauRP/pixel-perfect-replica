@@ -65,8 +65,10 @@ export function createLiveFermataInputs(favorites:()=>ClipMeta[]):{
   try{
     if(typeof document!=="undefined"){
       const onVisibility=()=>{
-        if(!visible()){planner.reset();lastBird=0;}
-        if(requested)void reconcile().catch(()=>undefined);
+        if(!visible()){
+          planner.reset();lastBird=0;
+          void lifecycle.enqueue(stopOwned).catch(()=>undefined);
+        }else if(requested)void reconcile().catch(()=>undefined);
       };
       document.addEventListener("visibilitychange",onVisibility);
       cleanup.push(()=>document.removeEventListener("visibilitychange",onVisibility));

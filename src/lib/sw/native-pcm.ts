@@ -148,8 +148,10 @@ export async function appendRealPcm(pcm:Uint8Array):Promise<Result<"queued">> {
           }
           if(positivePcmAcknowledgment(acknowledgment))
             return {ok:true,value:"queued"};
-          if(!retryablePcmBackpressure(acknowledgment))
+          if(!retryablePcmBackpressure(acknowledgment)){
+            if(matchingPcmSession(activeSessionId,sessionId))void stopNativeAudioSink().catch(()=>undefined);
             return {ok:false,code:"ERROR",message:"Android не подтвердил приём PCM"};
+          }
           if(attempt===24)return {ok:false,code:"TIMEOUT",message:"Очередь настоящего PCM не освободилась"};
           await new Promise<void>(resolve=>setTimeout(resolve,100));
         }

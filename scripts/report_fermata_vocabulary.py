@@ -19,5 +19,11 @@ def main():
     for name,items in sorted(families.items()):
         examples="; ".join(f"{token!r} = {identifier}" for token,identifier in items[:6])
         print(f"- {name}: {len(items)}; {examples}")
+        if name in ("TRK","DRUM","SUBPOS","VELOCITY","GENRE","ENSEMBLE"):
+            print("Atomic family "+name+": "+", ".join(token for token,_ in items))
+    # Report exact valid tempos, beat and duration bins (rather than assume
+    # every integer is present) for conditioning and score conversion.
+    for name in ("TEMPO","BEAT","DURATION"):
+        print("Atomic bins "+name+": "+",".join(token for token,_ in families[name]))
 if __name__=="__main__":
     main()

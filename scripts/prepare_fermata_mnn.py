@@ -17,7 +17,8 @@ import subprocess
 import sys
 
 MODEL = "haster/Fermata-0.2B-v1"
-REVISION = "18b6470"
+REVISION = "18b647098f579ee41db67c0ad4c7f7f39ce0eac1"
+ORIGINAL_VOCAB_SHA256 = "40ac92aa8a3683693e2bf725d46cf8a4825221185ed29a7fcec550deacf81224"
 VOCAB_SIZE = 9507
 
 def read_json(path):
@@ -86,7 +87,7 @@ def run(args):
     exporter = source / "transformers/llm/export/llmexport.py"
     if not exporter.is_file():
         raise ValueError("Official MNN exporter checkout is required")
-    license_path = source / "LICENSE"
+    license_path = source / "LICENSE.txt"
     if not license_path.is_file() or not re.search(r"Apache License\s*Version 2\.0", license_path.read_text(), re.I):
         raise ValueError("MNN Apache-2.0 license evidence missing")
     mnn_revision = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
@@ -105,10 +106,15 @@ def run(args):
     original = checkpoint/"tokenizer/vocab.json"
     if not original.is_file():
         raise ValueError("Original tokenizer/vocab.json was not found")
+    if sha256(original) != ORIGINAL_VOCAB_SHA256:
+        raise ValueError("Original Fermata vocabulary checksum differs from pinned revision")
     vocab = original_vocabulary(original)
-    unknown = next((name for name in ("<UNK>","<unk>","[UNK]") if name in vocab),None)
-    if unknown is None:
-        raise ValueError("Original unknown token not identified")
+    # Actual upstream inventory contains PAD but no UNK. The HF exporter
+    # requires an existing fallback ID; only its compatibility text wrapper
+    # uses PAD. The production numerical encoder rejects unknown strings.
+    unknown = next((name for name in ("<UNK>","<unk>","[UNK]") if name in vocab),"<PAD>")
+    if unknown not in vocab:
+        raise ValueError("Original export fallback ID not identified")
     if config.get("bos_token_id") != vocab["<BOS>"]:
         raise ValueError("Checkpoint and tokenizer BOS mismatch")
     checkpoint = Path(snapshot_download(MODEL, revision=info.sha,

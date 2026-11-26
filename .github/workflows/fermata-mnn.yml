@@ -83,18 +83,36 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install verified Android SDK and NDK
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/sw-android-sdk"
+          mkdir -p "$sdk/cmdline-tools/latest"
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/android-cli.zip" "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip"
+          echo "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583  $RUNNER_TEMP/android-cli.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/android-cli.zip" -d "$RUNNER_TEMP/android-cli"
+          mv "$RUNNER_TEMP/android-cli/cmdline-tools/"* "$sdk/cmdline-tools/latest/"
+          echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk" >> "$GITHUB_ENV"
+          echo "$sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$sdk" --licenses >/dev/null || true
+          "$sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$sdk" "ndk;27.2.12479018" "cmake;3.22.1"
+          test -f "$sdk/ndk/27.2.12479018/build/cmake/android.toolchain.cmake"
       - name: Build actual Android ARM64 JNI and MNN (no network features)
         run: |
           set -euo pipefail
           git clone --depth 1 --branch 3.6.1 https://github.com/alibaba/MNN.git "$RUNNER_TEMP/MNN"
-          sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
           ndk="$ANDROID_HOME/ndk/27.2.12479018"
-          cmake -S native/android/fermata-mnn -B "$RUNNER_TEMP/fermata-arm64" \
+          "$ANDROID_HOME/cmake/3.22.1/bin/cmake" -S native/android/fermata-mnn -B "$RUNNER_TEMP/fermata-arm64" \
             -DMNN_SOURCE="$RUNNER_TEMP/MNN" \
             -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-31 \
             -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release
-          cmake --build "$RUNNER_TEMP/fermata-arm64" --target soundworld_fermata_mnn --parallel 2
+          "$ANDROID_HOME/cmake/3.22.1/bin/cmake" --build "$RUNNER_TEMP/fermata-arm64" --target soundworld_fermata_mnn --parallel 2
           lib="$RUNNER_TEMP/fermata-arm64/libsoundworld_fermata_mnn.so"
           test -s "$lib"
           "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h "$lib" | grep -F AArch64
@@ -111,6 +129,25 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install verified Android SDK and NDK
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/sw-android-sdk"
+          mkdir -p "$sdk/cmdline-tools/latest"
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/android-cli.zip" "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip"
+          echo "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583  $RUNNER_TEMP/android-cli.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/android-cli.zip" -d "$RUNNER_TEMP/android-cli"
+          mv "$RUNNER_TEMP/android-cli/cmdline-tools/"* "$sdk/cmdline-tools/latest/"
+          echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk" >> "$GITHUB_ENV"
+          echo "$sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$sdk" --licenses >/dev/null || true
+          "$sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$sdk" "ndk;27.2.12479018" "cmake;3.22.1"
+          test -f "$sdk/ndk/27.2.12479018/build/cmake/android.toolchain.cmake"
       - name: Compile the actual Sonivox candidate for Android ARM64
         run: |
           set -euo pipefail
@@ -120,14 +157,13 @@ jobs:
           test -s "$RUNNER_TEMP/sonivox/LICENSE"
           test -s "$RUNNER_TEMP/sonivox/NOTICE"
           grep -q "Apache License" "$RUNNER_TEMP/sonivox/LICENSE"
-          sdkmanager "ndk;27.2.12479018"
           ndk="$ANDROID_HOME/ndk/27.2.12479018"
-          cmake -S native/android/sonivox -B "$RUNNER_TEMP/sonivox-arm64" \
+          "$ANDROID_HOME/cmake/3.22.1/bin/cmake" -S native/android/sonivox -B "$RUNNER_TEMP/sonivox-arm64" \
             -DSONIVOX_SOURCE="$RUNNER_TEMP/sonivox" \
             -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-31 \
             -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release
-          cmake --build "$RUNNER_TEMP/sonivox-arm64" --target soundworld_sonivox --parallel 2
+          "$ANDROID_HOME/cmake/3.22.1/bin/cmake" --build "$RUNNER_TEMP/sonivox-arm64" --target soundworld_sonivox --parallel 2
           lib="$RUNNER_TEMP/sonivox-arm64/libsoundworld_sonivox.so"
           test -s "$lib"
           "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h "$lib" | grep -F AArch64

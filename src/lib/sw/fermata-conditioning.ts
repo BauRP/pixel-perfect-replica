@@ -277,7 +277,10 @@ export function buildFermataConditioning(request:Readonly<MusicRequest>,sequence
   const offset=permittedInstruments.length>6?(sequenceIndex*6)%permittedInstruments.length:0;
   const rotated=[...permittedInstruments.slice(offset),...permittedInstruments.slice(0,offset)];
   const weakPrograms=new Set([...weakInstruments].map(id=>GM_BY_ID[id]).filter(p=>p!==undefined));
-  const preferredParts=permittedInstruments.filter(id=>!weakInstruments.has(id)&&!weakPrograms.has(GM_BY_ID[id]));
+  const preferredParts=permittedInstruments.filter(id=>{
+    const program=GM_BY_ID[id];
+    return program!==undefined&&!weakInstruments.has(id)&&!weakPrograms.has(program);
+  });
   const softParts=permittedInstruments.filter(id=>!preferredParts.includes(id));
   const prioritized=explicit?rotated.slice(0,6):
     preferredParts.length===0||sequenceIndex%4===3?[...preferredParts,...softParts]:preferredParts;

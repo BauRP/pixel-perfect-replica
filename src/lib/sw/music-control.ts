@@ -72,7 +72,12 @@ export class MusicControlPlanner {
       this.clearSensorEvidence();
       return false;
     }
-    if (this.locked || input.atmosphere === "unknown") return false;
+    if (input.atmosphere === "unknown") return false;
+    if(this.locked){
+      if(input.atmosphere===this.atmosphere&&Number.isFinite(input.confidence)&&input.confidence>=.65&&input.confidence<=1&&Number.isSafeInteger(input.timestamp)&&input.timestamp>this.lastAmbientEvidenceAt)
+        this.lastAmbientEvidenceAt=input.timestamp;
+      return false;
+    }
     const threshold = settings.environmentReaction==="weak" ? .8 : settings.environmentReaction==="strong" ? .53 : .65;
     if (!Number.isFinite(input.confidence) || input.confidence > 1 || input.confidence < threshold ||
         !Number.isFinite(input.timestamp) || input.timestamp <= 0 ||
